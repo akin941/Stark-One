@@ -1,0 +1,31 @@
+# STARK ONE — shared sdkconfig defaults (all targets).
+# Target-specific overrides live in sdkconfig.defaults.esp32s3.
+# This file is committed; sdkconfig (per-user) is git-ignored.
+
+# --- Target -------------------------------------------------------------
+CONFIG_IDF_TARGET="esp32s3"
+
+# --- Flash --------------------------------------------------------------
+# ESP32-S3-WROOM-1-N16R8: 16 MB flash (ADR-0001 / HARDWARE.md §1).
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASH_MODE_DVO_QSPI=n
+
+# --- Console ------------------------------------------------------------
+# UART0 console (GPIO 43/44), ADR-0015.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# --- FreeRTOS -----------------------------------------------------------
+CONFIG_FREERTOS_HZ=1000
+
+# --- Logging ------------------------------------------------------------
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# --- Partition table ----------------------------------------------------
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# --- PSRAM (ADR-0014) ---------------------------------------------------
+# PSRAM is physically present on the N16R8 SKU but deliberately disabled in
+# V0/V0.x firmware.  Explicitly unset to make the intent visible.
+# CONFIG_SPIRAM is not set

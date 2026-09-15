@@ -1,0 +1,8 @@
+# STARK-0001: V0 partition table.
+# Only the partitions V0 uses are defined; OTA and storage slots are added by
+# later milestones (see HARDWARE.md §8 / ROADMAP.md).
+#
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     ,        24K,
+phy_init, data, phy,     ,        4K,
+factory,  app,  factory, ,        4M,

@@ -1,0 +1,6 @@
+# STARK ONE — ESP32-S3 target-specific sdkconfig overrides.
+# Loaded automatically when idf.py targets esp32s3.
+# This file is committed.
+
+# Target selection flag (set by the build system, confirmed here for clarity).
+CONFIG_IDF_TARGET_ESP32S3=y
