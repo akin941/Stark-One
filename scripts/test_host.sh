@@ -52,8 +52,17 @@ ctest --output-on-failure --test-dir "$BUILD_DIR"
 if [[ "$ENABLE_COVERAGE" == "true" ]]; then
     echo "Generating coverage report..."
     if command -v gcovr >/dev/null 2>&1; then
+        # We always compile with clang, which emits LLVM-flavored .gcno/.gcda
+        # files. The system `gcov` (GCC's) can't read them ("version '408*',
+        # prefer version 'B33*'") — gcovr needs llvm-cov's gcov-compatible mode.
+        if [[ "$(uname)" == "Darwin" ]]; then
+            GCOV_EXECUTABLE="$(xcrun --find llvm-cov) gcov"
+        else
+            GCOV_EXECUTABLE="llvm-cov gcov"
+        fi
         gcovr -r "$PROJECT_ROOT" \
             --filter "$PROJECT_ROOT/components/stark_err" \
+            --gcov-executable "$GCOV_EXECUTABLE" \
             --xml --xml-pretty -o "$BUILD_DIR/coverage.xml"
         echo "Coverage report: $BUILD_DIR/coverage.xml"
     else
