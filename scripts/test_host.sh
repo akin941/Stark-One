@@ -57,8 +57,17 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
         # prefer version 'B33*'") — gcovr needs llvm-cov's gcov-compatible mode.
         if [[ "$(uname)" == "Darwin" ]]; then
             GCOV_EXECUTABLE="$(xcrun --find llvm-cov) gcov"
-        else
+        elif command -v llvm-cov >/dev/null 2>&1; then
             GCOV_EXECUTABLE="llvm-cov gcov"
+        else
+            # Ubuntu's clang packages ship versioned llvm-cov-N binaries with
+            # no unversioned symlink; use the highest available version.
+            LLVM_COV_BIN="$(compgen -c llvm-cov- | sort -V | tail -1)"
+            if [[ -z "$LLVM_COV_BIN" ]]; then
+                echo "ERROR: no llvm-cov binary found (required for --coverage with clang)" >&2
+                exit 1
+            fi
+            GCOV_EXECUTABLE="$LLVM_COV_BIN gcov"
         fi
         gcovr -r "$PROJECT_ROOT" \
             --filter "$PROJECT_ROOT/components/stark_err" \
