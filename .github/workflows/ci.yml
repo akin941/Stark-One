@@ -1,11 +1,10 @@
-# STARK-0004: CI pipeline.
+# STARK-0004/0005: CI pipeline.
 #
-# Two jobs for now, matching TASKS.md STARK-0004 exactly:
-#   lint      — clang-format --check + gitleaks
-#   firmware  — idf.py build (pinned espressif/idf image) + idf.py size
+#   lint      — clang-format --check + gitleaks (STARK-0004)
+#   firmware  — idf.py build (pinned espressif/idf image) + idf.py size (STARK-0004)
+#   host      — scripts/test_host.sh on ubuntu-latest + macos-latest (STARK-0005)
 #
-# Host tests (STARK-0005) and Wokwi scenarios (STARK-0021) are added by
-# later tasks, not stubbed here.
+# Wokwi scenarios (STARK-0021) are added by a later task, not stubbed here.
 name: CI
 
 on:
@@ -69,4 +68,35 @@ jobs:
         with:
           name: stark-one-size-report
           path: size-report.txt
+          if-no-files-found: error
+
+  host:
+    name: host
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: scripts/test_host.sh
+        if: matrix.os != 'ubuntu-latest'
+        run: scripts/test_host.sh
+
+      - name: scripts/test_host.sh --coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python3 -m venv /tmp/gcovr-venv
+          /tmp/gcovr-venv/bin/pip install --quiet gcovr
+          export PATH="/tmp/gcovr-venv/bin:$PATH"
+          scripts/test_host.sh --coverage
+
+      - name: Upload coverage report
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-host-coverage
+          path: build-host/coverage.xml
           if-no-files-found: error
