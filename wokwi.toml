@@ -1,0 +1,6 @@
+[wokwi]
+version = 1
+firmware = 'build/flasher_args.json'
+elf      = 'build/stark-one.elf'
+# Optional, enabled per-task when the logic analyser is in the diagram:
+# vcdFile = 'build/logic.vcd'

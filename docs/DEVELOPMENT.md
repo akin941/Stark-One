@@ -157,14 +157,34 @@ Baud rate is 115200 (UART0, GPIO 43/44) as per `CONFIG_ESP_CONSOLE_UART_DEFAULT=
 ## 6. Wokwi Simulation
 
 The simulator runs the **same build artifact** as real hardware (ADR-0010).
+There is **no separate simulator firmware** — the production ESP-IDF build is used directly.
 
-### 6.1 VS Code Extension (Interactive)
+### 6.1 Expected Serial Boot Banner
+
+When the simulation starts, the serial monitor (UART0, 115200 baud) will show:
+
+```
+boot: stark-one <version> idf=v6.1 heap=<bytes>
+boot: build: <timestamp> chip: esp32s3 rev: <n>
+```
+
+Where:
+- `<version>` = git describe tag (e.g., `d090530-dirty`) or `dev`
+- `<bytes>` = free internal heap at boot (typically ~200 KB+ with PSRAM disabled)
+- `<timestamp>` = UTC build timestamp (ISO 8601)
+- `<n>` = chip revision (0 for rev 0, etc.)
+
+This output comes from `main/stark_main.c` via `stark_log` and is the **same binary** flashed to hardware.
+
+### 6.2 VS Code Extension (Interactive)
 
 1. Install the "Wokwi for VS Code" extension.
-2. Open the repository root.
+2. Open the repository root (contains `diagram.json`, `wokwi.toml`).
 3. Press `F1` → **Wokwi: Start Simulator**.
+4. The simulator loads `build/flasher_args.json` (bootloader + partition table + app) and `build/stark-one.elf`.
+5. Serial output appears in the Wokwi terminal pane.
 
-### 6.2 Headless CLI (CI / Automation)
+### 6.3 Headless CLI (CI / Automation)
 
 ```bash
 # One-time
@@ -177,6 +197,39 @@ wokwi-cli . --timeout 20000 --scenario test/scenarios/v0-boot-and-menu.yaml
 
 The CI workflow (`.github/workflows/ci.yml`) runs scenarios via the GitHub Action
 `wokwi/wokwi-ci-action`.
+
+### 6.4 Circuit Diagram (STARK-0003 baseline)
+
+`diagram.json` contains only the board (`board-esp32-s3-devkitc-1`) configured as the
+target SKU **ESP32-S3-WROOM-1-N16R8**:
+
+```json
+{
+  "type": "board-esp32-s3-devkitc-1",
+  "id": "esp",
+  "attrs": { "flashSize": "16", "psramSize": "8", "psramType": "octal" }
+}
+```
+
+Plus a status LED on GPIO 18 (STARK-0008 will drive it).
+The panel, buttons, and buzzer are **not** modelled yet — each is added by the task
+that brings it up (STARK-0015, STARK-0012, STARK-0013 respectively).
+
+### 6.5 PSRAM Note
+
+The diagram declares `psramSize: "8"` and `psramType: "octal"` to match the physical
+N16R8 module. However, the firmware builds with `CONFIG_SPIRAM` **off** (ADR-0014).
+This proves V0 runs on the production SKU without using PSRAM.
+`psramType` is set but **not confirmed** in Wokwi's public docs — if the simulator
+ignores or rejects it, the attribute will be dropped and the result recorded in
+[WOKWI.md §4](WOKWI.md).
+
+### 6.6 Production vs. stark-one-lab
+
+This repository contains the **production ESP-IDF firmware**. The separate
+`stark-one-lab` (if it exists) uses Arduino/PlatformIO for rapid hardware
+bring-up experiments. They share no source code, no build system, and no
+configuration. Do not copy code or config between them.
 
 ---
 

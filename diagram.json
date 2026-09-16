@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "parts": [
+    {
+      "type": "board-esp32-s3-devkitc-1",
+      "id": "esp",
+      "attrs": {
+        "flashSize": "16",
+        "psramSize": "8",
+        "psramType": "octal"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led",
+      "attrs": { "color": "green" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "attrs": { "value": "330" }
+    }
+  ],
+  "connections": [
+    [ "esp:18", "r1:1", "", [] ],
+    [ "r1:2", "led:A", "", [] ],
+    [ "led:C", "esp:GND.1", "", [] ],
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ]
+  ],
+  "dependencies": {}
+}

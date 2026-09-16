@@ -86,6 +86,15 @@ on the 4 MB fiction" surprise.
 > `psramSize: "8"`, and note explicitly that the simulator models PSRAM size but not
 > octal/quad interface mode. Do not leave this ambiguous — the whole value of this
 > setting is knowing what is actually being simulated.
+>
+> **STARK-0003 outcome (2026-09-15):** `psramType: "octal"` is included in `diagram.json`
+> but **not verified** in the simulator. `wokwi-cli` is not available in the CI Docker
+> image (`espressif/idf:v6.1`), and `idf.py wokwi` requires a GUI. The attribute is
+> retained for now to match the physical SKU. When simulator access is available, the
+> test is: load `diagram.json` in Wokwi and confirm (a) no warning about unknown
+> attribute, and (b) boot proceeds normally. If Wokwi ignores/rejects `psramType`,
+> it will be removed and this note updated to state that the simulator models PSRAM
+> size (`psramSize: "8"`) but not the octal/quad interface mode.
 
 Parts:
 
