@@ -14,15 +14,11 @@ void app_main(void)
     stark_log_init();
 
     /* Print boot banner */
-    STARK_LOGI("boot", "stark-one %s idf=%s heap=%zu",
-               STARK_FIRMWARE_VERSION,
-               esp_get_idf_version(),
-               heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    STARK_LOGI("boot", "stark-one %s idf=%s heap=%zu", STARK_FIRMWARE_VERSION,
+               esp_get_idf_version(), heap_caps_get_free_size(MALLOC_CAP_8BIT));
 
     esp_chip_info_t chip_info;
     esp_chip_info(&chip_info);
-    STARK_LOGI("boot", "build: %s chip: %s rev: %d",
-               STARK_BUILD_TIMESTAMP,
-               CONFIG_IDF_TARGET,
+    STARK_LOGI("boot", "build: %s chip: %s rev: %d", STARK_BUILD_TIMESTAMP, CONFIG_IDF_TARGET,
                chip_info.revision);
 }

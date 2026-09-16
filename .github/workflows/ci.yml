@@ -1,0 +1,72 @@
+# STARK-0004: CI pipeline.
+#
+# Two jobs for now, matching TASKS.md STARK-0004 exactly:
+#   lint      — clang-format --check + gitleaks
+#   firmware  — idf.py build (pinned espressif/idf image) + idf.py size
+#
+# Host tests (STARK-0005) and Wokwi scenarios (STARK-0021) are added by
+# later tasks, not stubbed here.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install clang-format
+        run: sudo apt-get update -qq && sudo apt-get install -y clang-format
+
+      - name: clang-format --check
+        run: scripts/fmt.sh --check
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false
+
+  firmware:
+    name: firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: idf.py build (pinned espressif/idf Docker image)
+        run: scripts/build.sh --docker
+
+      - name: idf.py size
+        run: |
+          IDF_TAG="$(tr -d '[:space:]' < .idf-version)"
+          docker run --rm \
+            -v "$PWD:/p" -w /p \
+            "espressif/idf:${IDF_TAG}" \
+            idf.py size | tee size-report.txt
+
+      - name: Verify dependencies.lock unchanged
+        run: |
+          if git status --porcelain -- dependencies.lock | grep -q .; then
+            echo "::error::dependencies.lock changed during the build — commit the update explicitly."
+            git diff -- dependencies.lock
+            exit 1
+          fi
+
+      - name: Upload size report
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-size-report
+          path: size-report.txt
+          if-no-files-found: error

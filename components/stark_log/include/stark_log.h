@@ -20,7 +20,8 @@ void stark_log_init(void);
 /**
  * Sets the log level for a specific tag.
  * @param tag The log tag (e.g. "board", "ui", "input")
- * @param level One of ESP_LOG_NONE, ESP_LOG_ERROR, ESP_LOG_WARN, ESP_LOG_INFO, ESP_LOG_DEBUG, ESP_LOG_VERBOSE
+ * @param level One of ESP_LOG_NONE, ESP_LOG_ERROR, ESP_LOG_WARN, ESP_LOG_INFO, ESP_LOG_DEBUG,
+ * ESP_LOG_VERBOSE
  */
 void stark_log_set_level(const char *tag, int level);
 
@@ -39,39 +40,39 @@ void stark_log_set_level(const char *tag, int level);
  * passed to it must already be complete, so the facade prepends the tag
  * and appends "\n" here, once, rather than at every call site.
  */
-#define STARK_LOGV(tag, fmt, ...) \
-    do { \
-        if (stark_log_level_allowed(tag, ESP_LOG_VERBOSE)) { \
-            esp_log_write(ESP_LOG_VERBOSE, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__); \
-        } \
+#define STARK_LOGV(tag, fmt, ...)                                                                  \
+    do {                                                                                           \
+        if (stark_log_level_allowed(tag, ESP_LOG_VERBOSE)) {                                       \
+            esp_log_write(ESP_LOG_VERBOSE, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__);              \
+        }                                                                                          \
     } while (0)
 
-#define STARK_LOGD(tag, fmt, ...) \
-    do { \
-        if (stark_log_level_allowed(tag, ESP_LOG_DEBUG)) { \
-            esp_log_write(ESP_LOG_DEBUG, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__); \
-        } \
+#define STARK_LOGD(tag, fmt, ...)                                                                  \
+    do {                                                                                           \
+        if (stark_log_level_allowed(tag, ESP_LOG_DEBUG)) {                                         \
+            esp_log_write(ESP_LOG_DEBUG, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__);                \
+        }                                                                                          \
     } while (0)
 
-#define STARK_LOGI(tag, fmt, ...) \
-    do { \
-        if (stark_log_level_allowed(tag, ESP_LOG_INFO)) { \
-            esp_log_write(ESP_LOG_INFO, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__); \
-        } \
+#define STARK_LOGI(tag, fmt, ...)                                                                  \
+    do {                                                                                           \
+        if (stark_log_level_allowed(tag, ESP_LOG_INFO)) {                                          \
+            esp_log_write(ESP_LOG_INFO, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__);                 \
+        }                                                                                          \
     } while (0)
 
-#define STARK_LOGW(tag, fmt, ...) \
-    do { \
-        if (stark_log_level_allowed(tag, ESP_LOG_WARN)) { \
-            esp_log_write(ESP_LOG_WARN, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__); \
-        } \
+#define STARK_LOGW(tag, fmt, ...)                                                                  \
+    do {                                                                                           \
+        if (stark_log_level_allowed(tag, ESP_LOG_WARN)) {                                          \
+            esp_log_write(ESP_LOG_WARN, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__);                 \
+        }                                                                                          \
     } while (0)
 
-#define STARK_LOGE(tag, fmt, ...) \
-    do { \
-        if (stark_log_level_allowed(tag, ESP_LOG_ERROR)) { \
-            esp_log_write(ESP_LOG_ERROR, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__); \
-        } \
+#define STARK_LOGE(tag, fmt, ...)                                                                  \
+    do {                                                                                           \
+        if (stark_log_level_allowed(tag, ESP_LOG_ERROR)) {                                         \
+            esp_log_write(ESP_LOG_ERROR, tag, "%s: " fmt "\n", tag, ##__VA_ARGS__);                \
+        }                                                                                          \
     } while (0)
 
 /* Internal helper to check if a log level is enabled for a tag */
