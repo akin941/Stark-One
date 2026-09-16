@@ -32,23 +32,21 @@ const char *stark_err_str(stark_err_t err);
  * Checks a condition and returns the error code if false.
  * Usage: STARK_CHECK(ptr != NULL, STARK_ERR_INVALID_ARG);
  */
-#define STARK_CHECK(cond, err) \
-    do { \
-        if (!(cond)) { \
-            return (err); \
-        } \
+#define STARK_CHECK(cond, err)                                                                     \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
+            return (err);                                                                          \
+        }                                                                                          \
     } while (0)
 
 /**
  * Evaluates an expression that returns stark_err_t and returns early on error.
  * Usage: STARK_CHECK_RET(stark_something());
  */
-#define STARK_CHECK_RET(expr) \
-    do { \
-        stark_err_t _err = (expr); \
-        if (_err != STARK_OK) { \
-            return _err; \
-        } \
+#define STARK_CHECK_RET(expr)                                                                      \
+    do {                                                                                           \
+        stark_err_t _err = (expr);                                                                 \
+        if (_err != STARK_OK) {                                                                    \
+            return _err;                                                                           \
+        }                                                                                          \
     } while (0)
-
-

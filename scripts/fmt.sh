@@ -41,11 +41,12 @@ if [[ ${#SOURCES[@]} -eq 0 ]]; then
 fi
 
 if [[ "$CHECK_ONLY" == "true" ]]; then
-    # --dry-run reports "would reformat" for each file that differs.
-    OUTPUT="$(clang-format --dry-run "${SOURCES[@]}" 2>&1 || true)"
-    UNFORMATTED="$(echo "$OUTPUT" | grep -c 'would reformat' || true)"
-    if [[ "$UNFORMATTED" -gt 0 ]]; then
-        echo "ERROR: ${#SOURCES[@]} file(s) need formatting:" >&2
+    # --Werror turns clang-format's per-line "code should be clang-formatted"
+    # warnings into a non-zero exit code, which is the actual pass/fail signal.
+    # (There is no "would reformat" string in clang-format's output — checking
+    # for one, as a prior version of this script did, always reports success.)
+    if ! OUTPUT="$(clang-format --dry-run --Werror "${SOURCES[@]}" 2>&1)"; then
+        echo "ERROR: one or more of ${#SOURCES[@]} file(s) need formatting:" >&2
         echo "$OUTPUT" >&2
         echo "Run 'scripts/fmt.sh' to fix." >&2
         exit 1
