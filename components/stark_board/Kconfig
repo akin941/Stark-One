@@ -1,0 +1,44 @@
+menu "STARK"
+
+    choice STARK_BOARD
+        prompt "Board variant"
+        default STARK_BOARD_DEVKITC1
+        help
+            Selects the pin map and stark_board_init() implementation from
+            components/stark_board. Pin values are normative in
+            HARDWARE.md §2 and must not be duplicated elsewhere in the
+            firmware (AGENTS.md).
+
+        config STARK_BOARD_DEVKITC1
+            bool "ESP32-S3-DevKitC-1 (development target, also used by Wokwi)"
+    endchoice
+
+    # STARK_DISPLAY_BAND_H and STARK_DISPLAY_SPI_HZ are, by name and by
+    # ARCHITECTURE.md §9, stark_display's Kconfig symbols. stark_display
+    # does not exist yet, but stark_board_init() genuinely needs a byte
+    # count for spi_bus_initialize()'s max_transfer_sz *now* (TASKS.md
+    # STARK-0006: "max transfer = 320 * BAND_H * 2"). Declared here
+    # temporarily so the real mechanism (Kconfig, not a hardcoded C
+    # constant) is used without inventing any display driver code.
+    # Move both symbols to stark_display's own Kconfig when it exists.
+
+    config STARK_DISPLAY_BAND_H
+        int "Display render band height (lines)"
+        default 40
+        help
+            Height of one DMA render band, in scanlines. Sizes the SPI2
+            bus max transfer: 320 * STARK_DISPLAY_BAND_H * 2 bytes
+            (default 25600). See ARCHITECTURE.md §9, HARDWARE.md §2.3.
+
+    config STARK_DISPLAY_SPI_HZ
+        int "Display SPI clock (Hz)"
+        default 20000000
+        help
+            SPI2 bus clock for the panel. HARDWARE.md §2.3: 40 MHz on the
+            production PCB, 20 MHz on breadboard — long jumper wires will
+            not survive 40 MHz. The devkitc1 board variant is a
+            breadboard target, hence 20 MHz here; this intentionally
+            differs from ARCHITECTURE.md §9's PCB-oriented 40 MHz table
+            default, which applies once STARK_BOARD_PCB_R1 exists.
+
+endmenu

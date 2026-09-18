@@ -54,6 +54,14 @@ Rule: L(n) may include headers from L(n-1) … L0 only. L2 cores may include **n
 from L1 except `stark_err.h` (header-only, freestanding) — they receive their
 dependencies by injection.
 
+`stark_err.h` has no dependencies of its own (not even ESP-IDF) and is available to
+**every** layer, including L0 — it is the one universal exception to the rule above,
+not an L1-specific one. This is why `stark_board`'s contract below returns
+`stark_err_t` despite being listed under L0. `stark_log` is not exempted the same way:
+it depends on `esp_log`, and L0 components must not depend on it — `stark_board`
+returns `stark_err_t` and logs nothing itself; whatever calls it (currently `main.c`)
+decides what to log.
+
 ---
 
 ## 3. Repository layout

@@ -36,4 +36,5 @@ idf_component_register(
     REQUIRES
         stark_err
         stark_log
+        stark_board
 )
