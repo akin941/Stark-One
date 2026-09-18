@@ -1,6 +1,6 @@
-# STARK-0004/0005: CI pipeline.
+# STARK-0004/0005/0006: CI pipeline.
 #
-#   lint      — clang-format --check + gitleaks (STARK-0004)
+#   lint      — clang-format --check + check_pins.py + gitleaks (STARK-0004/0006)
 #   firmware  — idf.py build (pinned espressif/idf image) + idf.py size (STARK-0004)
 #   host      — scripts/test_host.sh on ubuntu-latest + macos-latest (STARK-0005)
 #
@@ -30,6 +30,9 @@ jobs:
 
       - name: clang-format --check
         run: scripts/fmt.sh --check
+
+      - name: check_pins.py
+        run: python3 scripts/check_pins.py
 
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v3

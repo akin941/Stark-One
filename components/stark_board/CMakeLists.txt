@@ -1,0 +1,11 @@
+idf_component_register(
+    SRCS
+        "stark_board.c"
+        "board_devkitc1.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        stark_err
+        esp_driver_gpio
+        esp_driver_spi
+)

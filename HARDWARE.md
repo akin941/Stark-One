@@ -23,6 +23,14 @@ single vendor toolchain for the whole product life.
 the module pads. Every pin assignment below avoids that range, so the DevKitC-1
 breadboard map and the future PCB map are identical.
 
+Verified against Espressif's ESP32-S3 hardware design guidelines and ESP-IDF's own
+`soc/spi_pins.h`: the functionally-required minimum is **GPIO 27–37** — the baseline
+flash SPI0/1 IOMUX pins (27–32) plus octal PSRAM's extra DQ4–7/DQS lines (33–37). GPIO
+26 is not itself wired to the flash/PSRAM interface. It is included in the reserved
+range anyway as a one-pin safety margin, not a functional requirement — no signal in
+this pin map needs it, so excluding it costs nothing and reduces the chance of a
+mis-remembered "27" becoming a real bug later.
+
 Additionally reserved:
 
 | Pins | Reason |
