@@ -50,22 +50,30 @@ check "idf-version-set" bash -c '[[ -s .idf-version ]]'
 check "no-wokwi-ifdef" \
     bash -c '! grep -rnE "#if.*(WOKWI|SIM)" main/ components/ apps/ 2>/dev/null'
 
-# --- GPIO centralization (STARK-0006, AC 1) -------------------------------
-# Nothing outside components/stark_board may name a GPIO. Grepping for a
-# specific set of "GPIO-looking" identifiers is easy to bypass by
-# accident; the robust, structural version of this check is: you cannot
-# reference a raw pin at all without first including the driver header
-# that lets you touch one. If no file outside stark_board includes any of
-# ESP-IDF's low-level GPIO/SPI/LEDC/I2C driver headers, no raw pin
-# manipulation can exist outside stark_board, full stop.
-# shellcheck disable=SC2016 # single-quoted on purpose: $violations is set
+# --- GPIO centralization (STARK-0006 AC 1, STARK-0007) --------------------
+# Nothing outside components/stark_board or components/stark_hal may name a
+# GPIO or touch ESP-IDF's driver layer. Grepping for a specific set of
+# "GPIO-looking" identifiers is easy to bypass by accident; the robust,
+# structural version of this check is: you cannot reference a raw pin at
+# all without first including the driver header that lets you touch one.
+# stark_board owns the pin *numbers* (gpio.h, spi_master.h — it owns SPI2
+# init); stark_hal owns the pin *mechanism* (gpio.h, ledc.h — TASKS.md
+# STARK-0007: "No SPI wrapper", so spi_master.h/i2c.h stay board-only too).
+# shellcheck disable=SC2016 # single-quoted on purpose: variables are set
 # and used inside this bash -c script, not by the outer shell.
 check "gpio-centralized" bash -c '
     violations=$(grep -rlE "driver/(gpio|spi_master|ledc|i2c)\.h" main/ components/ apps/ 2>/dev/null \
-        | grep -v "^components/stark_board/")
-    if [[ -n "$violations" ]]; then
-        echo "Raw ESP-IDF pin driver header included outside components/stark_board:" >&2
-        echo "$violations" >&2
+        | grep -v "^components/stark_board/" | grep -v "^components/stark_hal/")
+    hal_violations=$(grep -rlE "driver/(spi_master|i2c)\.h" components/stark_hal/ 2>/dev/null || true)
+    if [[ -n "$violations" || -n "$hal_violations" ]]; then
+        if [[ -n "$violations" ]]; then
+            echo "Raw ESP-IDF pin driver header included outside stark_board/stark_hal:" >&2
+            echo "$violations" >&2
+        fi
+        if [[ -n "$hal_violations" ]]; then
+            echo "stark_hal must not wrap SPI/I2C (TASKS.md STARK-0007: \"No SPI wrapper\"):" >&2
+            echo "$hal_violations" >&2
+        fi
         exit 1
     fi
     exit 0
