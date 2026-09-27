@@ -887,13 +887,17 @@ leading/trailing spaces, `\n`, multi-byte character at the break, `max_w` below 
 cell, empty string, NULL font/string/next; `gfx_text_box` clips at the box bottom and its
 return equals `gfx_text_lines` when everything fits. `gfx_font.c` ≥ 95 % lines.
 
-**Wokwi/runtime.** Screenshot of Display Test; the two sample rows decoded from the PNG
-are pixel-identical to a host render of the same strings (the STARK-0016 technique).
+**Host UI test port / emulator** (ADR-0017). `test_ui_displaytest.c` runs the real
+Display Test screen on the host UI port: both sample rows (mono16 at y 180, mono10 at
+y 200) are pixel-identical to a direct `gfx_text()` render of the same string, and the
+rendered frame is inspected once. `test/emu/v01-displaytest.toml` launches Display
+Test on the production image (new font tables on the target, continuous refresh, no
+fault) and leaves it. Panel glass: physical, deferred to HIL.
 
 **AC.**
 1. Host tests pass at the coverage above.
 2. `scripts/check.sh` regenerates both subsets and both C tables byte-identically.
-3. The Display Test screenshot matches the host render for both sample rows.
+3. On the host UI port, Display Test's two sample rows match the direct render.
 4. Font provenance and licence for both fonts are documented; both are public domain.
 5. Flash growth recorded in the PR (informational); heap unchanged (fonts are `const`).
 

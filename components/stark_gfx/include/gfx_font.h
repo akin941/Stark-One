@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "stark_gfx.h"
 
@@ -21,8 +22,12 @@ typedef struct {
     const uint8_t *bits;
 } gfx_font_t;
 
-/* 8x16 cells, U+0020..U+007E, fallback '?' (fonts/README.md). */
+/* 8x16 cells, U+0020..U+017F (Basic Latin, Latin-1, Latin Extended-A —
+ * Turkish included), fallback '?' (fonts/README.md). */
 extern const gfx_font_t gfx_font_mono16;
+
+/* 6x10 cells, same range and fallback: the small font for dense screens. */
+extern const gfx_font_t gfx_font_mono10;
 
 /*
  * Draws utf8 with the top-left of its first cell at logical (x, y), clipped
@@ -39,3 +44,31 @@ int16_t gfx_text(gfx_surface_t *s, const gfx_font_t *f, int16_t x, int16_t y, co
 /* Width in pixels of utf8 as gfx_text() draws it: cells x f->w, saturating
  * at INT16_MAX. NULL font or string: 0. */
 int16_t gfx_text_width(const gfx_font_t *f, const char *utf8);
+
+/*
+ * Wrapping (STARK-0102). Break opportunities are U+0020 and '\n' only.
+ *
+ * gfx_text_line() returns the byte length of the first line of utf8 that
+ * fits max_w pixels in f: it breaks after the last space that fits, at
+ * '\n' (consumed, never part of the line), or mid-word when a single word
+ * is wider than max_w. A line always holds at least one code point, even
+ * when max_w is narrower than one cell. Trailing spaces at a break are not
+ * part of the line, and the spaces at a break are skipped into *next, the
+ * start of the following line. Multi-byte sequences are never split; each
+ * malformed byte is one cell, as gfx_text() draws it. At the terminating
+ * NUL (or for a NULL font/string) it returns 0 with *next == utf8. next
+ * may be NULL.
+ */
+size_t gfx_text_line(const gfx_font_t *f, const char *utf8, int16_t max_w, const char **next);
+
+/* How many lines utf8 wraps to in max_w (no drawing); 0 for "" or NULL. */
+int16_t gfx_text_lines(const gfx_font_t *f, const char *utf8, int16_t max_w);
+
+/*
+ * Draws utf8 wrapped into box (logical coordinates), top-aligned, one line
+ * every f->h + line_gap pixels, clipped to box and the surface clip. Stops
+ * before a line whose cell would cross the box bottom. Returns the lines
+ * drawn (== gfx_text_lines() when everything fits).
+ */
+int16_t gfx_text_box(gfx_surface_t *s, const gfx_font_t *f, gfx_rect_t box, int16_t line_gap,
+                     const char *utf8, uint16_t fg, uint16_t bg, bool transparent);
