@@ -561,7 +561,7 @@ the complexity is not earned.
 | `stark_settings` | V0.2 | Typed key/value over NVS with defaults and change notifications |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
-| `stark_diag` | V0.7 | Heap/task/FPS/event-drop counters, self-test routines, log export |
+| `stark_diag` | V0.1 / V0.7 | v1 at V0.1 (STARK-0109): heap, task high-water marks, FPS, frame overruns, event drops, surfaced in a Diagnostics app. Self-test routines and log export: V0.7 |
 
 ---
 

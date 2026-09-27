@@ -14,8 +14,8 @@ architecture, own module standard, own PCB, own enclosure.
 > launcher, buzzer, and four apps (About, Input Test, Display Test, Buzzer Test).
 > CI builds it, runs the host test suite and the Wokwi scenarios. Evidence for every
 > V0 exit criterion: [docs/measurements.md](docs/measurements.md). Next: V0.1
-> (architecture hardening), then the V1 hardware prototype, where the performance
-> gates live.
+> (architecture hardening), specified task by task in [TASKS.md](TASKS.md)
+> (STARK-0100 … STARK-0110); the performance gates live at the V1 hardware prototype.
 
 ## Documents
 

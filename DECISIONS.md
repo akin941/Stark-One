@@ -291,6 +291,10 @@ same line region — a trivial merge conflict, accepted knowingly. Boot logs the
 contents so the app list is always observable. `stark_app_t` in V0 carries no
 `caps_required` field; V0.5 adds it along with the machinery that reads it.
 
+**Location amended by ADR-0016:** from STARK-0104 the array lives in
+`main/app_registry.c` (the composition root), so adding an app edits nothing under
+`components/`.
+
 **Revisit trigger:** when the app count passes ~15, or when apps start living outside
 this repository, re-evaluate link-time registration — the mechanism is understood and
 the migration is mechanical (replace the array with a section walk; the
@@ -426,3 +430,39 @@ with no V0 benefit and a CI-breaking failure mode.
 
 **Revisit trigger:** when USB device support becomes a feature (V2), move the console
 deliberately and update every scenario in the same change.
+
+---
+
+## ADR-0016 — The app registry array lives at the composition root
+
+**Status:** accepted (planned at V0 close; implemented by STARK-0104). Amends the
+file location in ADR-0009; everything else ADR-0009 decided stands.
+
+**Context.** ROADMAP V0.1 exit criterion 1 requires that a new app be added "in a single
+new component directory … with no edits to `components/`". ADR-0009 put the explicit
+static array in `components/stark_app/app_registry.c`, so every new app edits
+`components/` by construction. The two cannot both hold. What ADR-0009 actually decided
+— an explicit, static, observable list with no linker sections — does not depend on
+which directory the array lives in.
+
+**Decision.** The `stark_apps[]` array and its `extern` declarations move to
+`main/app_registry.{c,h}`. `stark_app_init()` receives the array and its length from
+`app_main()` (dependency injection from the composition root, which already owns every
+other wiring decision). Adding an app becomes: a new `apps/app_<name>/` directory plus
+one declaration and one array line in `main/app_registry.{c,h}`.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| Link-time section registration now | Exactly what ADR-0009 rejected at this app count; its revisit trigger (~15 apps, or apps outside the repository) has not fired — STARK-0506 re-evaluates it |
+| Read exit criterion 1 loosely ("one registry line in `components/` is fine") | Leaves the stated criterion unmet and the core component edited by every app author |
+| A registry component under `apps/` | Works, but adds a component whose only job is a list; `main` is already the place that knows which pieces make up this firmware |
+
+**Consequences.** `components/` no longer names any app; `check_layers.py` keeps
+forbidding every component but `main` from requiring an `app_*`. The registry is still
+one shared file (the accepted merge-conflict cost of ADR-0009), still logged at boot.
+The `stark_app_find/list/launch` API is unchanged; only `stark_app_init()` gains
+parameters.
+
+**Revisit trigger:** the same as ADR-0009's.
