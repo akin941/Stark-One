@@ -517,6 +517,12 @@ app_main()
         loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
 ```
 
+Until `stark_ui` exists (STARK-0017), `app_main` itself is the bus consumer: after
+`stark_input_start()` it loops on `stark_event_wait()` → `stark_event_dispatch()`, so
+producers never see a permanently full ring. The UI task replaces that loop. `main` also
+enables the `key` log tag at DEBUG (with `CONFIG_LOG_MAXIMUM_LEVEL_DEBUG` compiled in),
+because `key:` lines are DEBUG by contract yet asserted by scenarios (TESTING.md §4).
+
 Boot budget **target** (a hardware goal, not a simulation gate — ADR-0011): first pixel
 within 400 ms of reset, root menu interactive within 600 ms, measured on the physical
 prototype at V1. Firmware logs `boot: ui_ready in NNN ms` at every boot; Wokwi CI
