@@ -1,0 +1,6 @@
+## STARK ONE — stark_display registry dependencies.
+## The ILI9341 driver is load-bearing: pinned to an EXACT version (ADR-0004,
+## TASKS.md STARK-0015), never a range. dependencies.lock (project root) is
+## committed and CI fails if a build changes it.
+dependencies:
+  espressif/esp_lcd_ili9341: "==2.1.0"

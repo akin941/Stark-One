@@ -26,6 +26,15 @@ void stark_log_init(void);
 void stark_log_set_level(const char *tag, int level);
 
 /*
+ * Boot-critical failure (ARCHITECTURE.md §5): logs `panic: <what> failed:
+ * <error>` at ERROR, waits 5 s so the line reaches the console, and
+ * reboots. Never returns. Used by the composition root (main) for board and
+ * display init; a buzzer error pattern is added once stark_buzzer exists
+ * (it is L3, so it cannot be called from here without an injected hook).
+ */
+__attribute__((noreturn)) void stark_panic(const char *what, stark_err_t err);
+
+/*
  * Logging macros — mirror ESP_LOG* but with stark_ prefix.
  * Tags are per-component, lowercase snake_case: "board", "ui", "input", "event", etc.
  *

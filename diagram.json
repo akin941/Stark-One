@@ -21,6 +21,14 @@
       "attrs": { "value": "330" }
     },
     {
+      "type": "wokwi-ili9341",
+      "id": "lcd",
+      "top": -240,
+      "left": 220,
+      "rotate": 90,
+      "attrs": {}
+    },
+    {
       "type": "wokwi-pushbutton",
       "id": "btn_up",
       "top": -40,
@@ -67,6 +75,13 @@
     [ "esp:18", "r1:1", "", [] ],
     [ "r1:2", "led:A", "", [] ],
     [ "led:C", "esp:GND.1", "", [] ],
+    [ "esp:12", "lcd:SCK", "", [] ],
+    [ "esp:11", "lcd:MOSI", "", [] ],
+    [ "esp:13", "lcd:MISO", "", [] ],
+    [ "esp:10", "lcd:CS", "", [] ],
+    [ "esp:9", "lcd:D/C", "", [] ],
+    [ "lcd:VCC", "esp:3V3.1", "", [] ],
+    [ "lcd:GND", "esp:GND.3", "", [] ],
     [ "esp:4", "btn_up:1.l", "", [] ],
     [ "btn_up:2.l", "esp:GND.2", "", [] ],
     [ "esp:5", "btn_down:1.l", "", [] ],

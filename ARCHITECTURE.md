@@ -149,7 +149,10 @@ const char *stark_err_str(stark_err_t err);
 * `STARK_CHECK(cond, err)` / `STARK_CHECK_RET(expr)` macros in `stark_err.h`; they log
   through `stark_log` at the *port* layer only.
 * Boot-critical failures (display init, board init) call `stark_panic()` which logs,
-  emits a buzzer error pattern if available, and reboots after 5 s.
+  emits a buzzer error pattern if available, and reboots after 5 s. It lives in
+  `stark_log` (L1) as `stark_panic(const char *what, stark_err_t err)`, logging
+  `panic: <what> failed: <error>` (STARK-0015); the buzzer pattern needs a hook once
+  `stark_buzzer` exists.
 
 ---
 
@@ -569,7 +572,8 @@ asserts on the **presence and ordering** of that line, never on the number in it
 | `STARK_BOARD_*` | `DEVKITC1` | Board variant → pin map |
 | `STARK_DISPLAY_BAND_H` | 40 | Band height in lines |
 | `STARK_DISPLAY_SPI_HZ` | 40000000 | 20 MHz recommended on breadboard |
-| `STARK_DISPLAY_ROTATION` | 1 (landscape) | 320×240 |
+| `STARK_DISPLAY_SWAP_XY` / `_MIRROR_X` / `_MIRROR_Y` | y / n / n | Rotation: default = landscape 320×240 (MADCTL MV, "rotation 1"); replaces a single `ROTATION` symbol (STARK-0015) |
+| `STARK_DISPLAY_BGR` / `_INVERT` | y / n | Panel colour order / inversion — fix colours here, never in `stark_gfx` |
 | `STARK_INPUT_POLL_MS` | 5 | Key sampling period |
 | `STARK_EVENT_QUEUE_LEN` | 32 | Ring capacity |
 | `STARK_UI_TARGET_FPS` | 30 | Render cap |

@@ -5,4 +5,8 @@ idf_component_register(
         "include"
     REQUIRES
         stark_err
+        log
+    PRIV_REQUIRES
+        esp_system
+        freertos
 )
