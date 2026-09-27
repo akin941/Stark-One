@@ -250,7 +250,25 @@ stark_err_t stark_event_core_publish(stark_event_core_t *bus, const stark_event_
 size_t      stark_event_core_dispatch(stark_event_core_t *bus, uint32_t max_events);
 stark_err_t stark_event_core_subscribe(stark_event_core_t *bus, uint32_t type_mask,
                                        stark_event_handler_t fn, void *ctx);
+
+typedef void (*stark_event_handler_t)(const stark_event_t *e, void *ctx);
+#define STARK_EVT_MASK(type) (UINT32_C(1) << (uint32_t)(type))  /* one bit per type */
+typedef struct { uint32_t published, dropped, max_depth; } stark_event_stats_t;
 ```
+
+Core semantics (STARK-0009; `stark_event_core.h` documents each call in full):
+
+* The lock is never held while a handler runs, so a handler may publish or subscribe
+  under a non-recursive mutex.
+* `dispatch()` delivers only events queued before it started — a handler's publishes
+  wait for the next call, even if they overflow the ring — and returns the number of
+  events consumed (an event nobody subscribes to still counts). A nested `dispatch()`
+  on the same bus returns 0. A subscriber added during `dispatch()` receives events
+  from the next one dequeued. There is no unsubscribe: no V0 consumer needs one.
+* `publish()` rejects `STARK_EVT_NONE` and unknown types with `STARK_ERR_INVALID_ARG`;
+  a full ring still accepts the new event (`STARK_OK`) and drops the oldest.
+* `stark_event_core_t` is caller-allocated; its `stats` field is the only one the owner
+  may read (under its lock). `ts_us` is never touched by the core.
 
 Port (`stark_event.c`): one global bus, a FreeRTOS mutex as the injected lock, a
 counting semaphore so the UI task can block on "bus non-empty", and an ISR-safe
