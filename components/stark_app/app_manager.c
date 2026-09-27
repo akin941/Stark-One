@@ -16,6 +16,8 @@
 
 #define LAUNCHER_TITLE "STARK ONE"
 
+static const stark_app_t *const *s_apps; /* the registry, from stark_app_init() */
+static size_t s_app_count;
 static const stark_app_t **s_sorted;
 static ui_menu_item_t *s_items;
 static size_t s_count;
@@ -130,9 +132,7 @@ static void on_launcher_activate(size_t index, void *ctx)
 
 const stark_app_t *stark_app_find(const char *id)
 {
-    size_t n;
-    const stark_app_t *const *apps = app_registry(&n);
-    return app_catalog_find(apps, n, id);
+    return app_catalog_find(s_apps, s_app_count, id);
 }
 
 size_t stark_app_list(const stark_app_t **out, size_t max)
@@ -143,13 +143,21 @@ size_t stark_app_list(const stark_app_t **out, size_t max)
     return s_count;
 }
 
-stark_err_t stark_app_init(void)
+stark_err_t stark_app_init(const stark_app_t *const *apps, size_t n)
 {
     if (s_ready) {
         return STARK_ERR_STATE;
     }
-    size_t n;
-    const stark_app_t *const *apps = app_registry(&n);
+    if (apps == NULL && n > 0) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (apps[i] == NULL || apps[i]->id == NULL) {
+            return STARK_ERR_INVALID_ARG;
+        }
+    }
+    s_apps = apps;
+    s_app_count = n;
     log_registry(apps, n);
 
     if (n > 0) {

@@ -22,13 +22,6 @@ extern const stark_app_t app_buzzertest;
 extern const stark_app_t app_displaytest;
 static const stark_app_t *const k_apps[] = {&app_inputtest, &app_displaytest, &app_buzzertest};
 
-const stark_app_t *const *app_registry(size_t *count);
-const stark_app_t *const *app_registry(size_t *count)
-{
-    *count = sizeof k_apps / sizeof k_apps[0];
-    return k_apps;
-}
-
 void setUp(void)
 {}
 void tearDown(void)
@@ -68,7 +61,7 @@ static void test_app_frames(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_event_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_display_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_ui_init());
-    TEST_ASSERT_EQUAL(STARK_OK, stark_app_init());
+    TEST_ASSERT_EQUAL(STARK_OK, stark_app_init(k_apps, sizeof k_apps / sizeof k_apps[0]));
     stark_ui_tick();
 
     launch("inputtest");

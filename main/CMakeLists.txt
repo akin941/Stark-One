@@ -30,6 +30,7 @@ configure_file(
 idf_component_register(
     SRCS
         stark_main.c
+        app_registry.c
     INCLUDE_DIRS
         "."
         ${CMAKE_CURRENT_BINARY_DIR}

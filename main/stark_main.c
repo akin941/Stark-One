@@ -9,6 +9,7 @@
 #include "stark_event.h"
 #include "stark_input.h"
 #include "stark_app.h"
+#include "app_registry.h"
 #include "stark_ui.h"
 #include "stark_version.h"
 #include "esp_heap_caps.h"
@@ -87,7 +88,8 @@ void app_main(void)
     /* The UI task is the event bus's one consumer from here on (ARCHITECTURE §7). */
     err = stark_ui_init();
     if (err == STARK_OK) {
-        err = stark_app_init(); /* logs the registry, pushes the launcher */
+        /* The registry is the composition root's (ADR-0016). */
+        err = stark_app_init(stark_apps, stark_apps_count); /* logs it, pushes the launcher */
     }
     if (err != STARK_OK) {
         stark_panic("ui init", err);

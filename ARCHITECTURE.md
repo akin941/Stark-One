@@ -533,19 +533,21 @@ stark_err_t        stark_app_launch(const char *id);
 void               stark_app_stop_current(void);
 ```
 
-**Registration is explicit and static** (ADR-0009). Each app component exposes one
-`extern const stark_app_t app_<name>;`, declared in `components/stark_app/app_list.h`,
-and `app_registry.c` holds the single array:
+**Registration is explicit and static** (ADR-0009), and the array lives at the
+composition root (ADR-0016): each app component exposes one `extern const stark_app_t
+app_<name>;`, declared in `main/app_registry.h`, and `main/app_registry.c` holds the
+single array, which `app_main()` hands to `stark_app_init(stark_apps, stark_apps_count)`:
 
 ```c
-static const stark_app_t *const stark_apps[] = {
+const stark_app_t *const stark_apps[] = {
     &app_about, &app_inputtest, &app_displaytest, &app_buzzertest,
 };
 ```
 
-Adding an app is one new directory plus one line here. No linker sections, no section
-walking, nothing that can silently vanish under `--gc-sections`. The array is the only
-shared file an app author touches, and the registry is logged at boot so the list is
+Adding an app is one new directory plus one declaration and one array line in
+`main/app_registry.{h,c}` — nothing under `components/`. No linker sections, no
+section walking, nothing that can silently vanish under `--gc-sections`. The registry is
+the only shared file an app author touches, and it is logged at boot so the list is
 always observable.
 
 Link-time section registration remains a *documented future option* — the
@@ -597,7 +599,7 @@ app_main()
  ├─ stark_buzzer_init()                    – LEDC channel
  ├─ stark_input_start()                    – 5 ms sampling timer
  ├─ stark_ui_init()                        – status bar + root menu screen
- ├─ stark_app_init()                       – walk the registry section
+ ├─ stark_app_init(stark_apps, n)          – log the registry, push the launcher
  └─ xTaskCreate(stark_ui_task, prio 5, 6 kB stack, core 1)
         loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
 ```
@@ -695,15 +697,14 @@ to set differently (ADR-0010).
    build edit — `apps/README.md`). The root `CMakeLists.txt` lists `apps` in
    `EXTRA_COMPONENT_DIRS` once.
 2. Implement `stark_screen_t` callbacks and a `const stark_app_t app_<name>` descriptor.
-3. Declare it in `components/stark_app/app_list.h` and add one line to the
-   `stark_apps[]` array in `app_registry.c`.
+3. Declare it in `main/app_registry.h` and add one line to the `stark_apps[]` array in
+   `main/app_registry.c` (ADR-0016).
 4. Add host tests for any pure logic (protocol codec, parser, formatter).
 5. Add a Wokwi scenario if the app is reachable in simulation.
 6. From V0.5 onward: declare `caps_required` if it depends on a hardware module.
 
-Step 3 is the *only* core touch, and it is a declaration, not logic. If a new app
-forces any other core edit, the abstraction is wrong — fix the abstraction in a
-separate task.
+Step 3 touches the composition root, never `components/`. If a new app forces any core
+edit, the abstraction is wrong — fix the abstraction in a separate task.
 
 ## 12. Extension recipe: adding a hardware module (V0.5+)
 

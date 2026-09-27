@@ -69,14 +69,6 @@ TEST_APP(k_buzzer, "buzzertest", "Buzzer Test");
 
 static const stark_app_t *const k_apps[] = {&k_about, &k_input, &k_display, &k_buzzer};
 
-/* app_registry.c's contract (app_internal.h), provided by the test. */
-const stark_app_t *const *app_registry(size_t *count);
-const stark_app_t *const *app_registry(size_t *count)
-{
-    *count = sizeof k_apps / sizeof k_apps[0];
-    return k_apps;
-}
-
 /* ---- helpers ---------------------------------------------------------- */
 
 #define ROW_Y(i) (STARK_THEME_STATUSBAR_H + (i) * STARK_THEME_ROW_H)
@@ -135,7 +127,12 @@ static void test_launcher_story(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_event_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_display_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_ui_init());
-    TEST_ASSERT_EQUAL(STARK_OK, stark_app_init());
+    /* The registry is injected by the composition root (ADR-0016). */
+    static const stark_app_t *const k_bad[] = {&k_about, NULL};
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_app_init(NULL, 1));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_app_init(k_bad, 2));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_app_init(k_apps, sizeof k_apps / sizeof k_apps[0]));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, stark_app_init(k_apps, 1));
     TEST_ASSERT_TRUE(
         ui_port_log_contains("app: registry n=4 about,inputtest,displaytest,buzzertest"));
     s_app_screen = (stark_screen_t){.name = "App", .on_render = app_render};

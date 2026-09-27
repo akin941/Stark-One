@@ -435,7 +435,7 @@ deliberately and update every scenario in the same change.
 
 ## ADR-0016 — The app registry array lives at the composition root
 
-**Status:** accepted (planned at V0 close; implemented by STARK-0104). Amends the
+**Status:** accepted, implemented (STARK-0104). Amends the
 file location in ADR-0009; everything else ADR-0009 decided stands.
 
 **Context.** ROADMAP V0.1 exit criterion 1 requires that a new app be added "in a single

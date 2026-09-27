@@ -7,9 +7,6 @@
 #include <stddef.h>
 #include "stark_app.h"
 
-/* The stark_apps[] array and its length (app_registry.c). */
-const stark_app_t *const *app_registry(size_t *count);
-
 /*
  * Stable sort by category, then title (NULL sorts as ""), of the first
  * min(n, max) apps into out; returns that count. Apps with equal keys keep

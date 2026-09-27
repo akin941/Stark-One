@@ -19,13 +19,6 @@
 extern const stark_app_t app_displaytest;
 static const stark_app_t *const k_apps[] = {&app_displaytest};
 
-const stark_app_t *const *app_registry(size_t *count);
-const stark_app_t *const *app_registry(size_t *count)
-{
-    *count = 1;
-    return k_apps;
-}
-
 /* Must match apps/app_displaytest/app_displaytest.c. */
 #define SAMPLE   "ÇĞİÖŞÜ çğıöşü äéñß"
 #define SAMPLE_X 8
@@ -67,7 +60,7 @@ static void test_displaytest_sample_rows(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_event_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_display_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_ui_init());
-    TEST_ASSERT_EQUAL(STARK_OK, stark_app_init());
+    TEST_ASSERT_EQUAL(STARK_OK, stark_app_init(k_apps, sizeof k_apps / sizeof k_apps[0]));
     stark_ui_tick();
     TEST_ASSERT_EQUAL(STARK_OK, stark_app_launch("displaytest"));
     stark_ui_tick();
