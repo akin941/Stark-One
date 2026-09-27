@@ -14,6 +14,7 @@ const stark_app_t *const stark_apps[] = {
     &app_displaytest,
     &app_buzzertest,
     &app_hello,
+    &app_apptest,
 };
 /* clang-format on */
 

@@ -10,7 +10,7 @@ presses = [
     { key = "BACK", at_ms = 2900, hold_ms = 60 },
 ]
 expect = [
-    "app: registry n=5 about,inputtest,displaytest,buzzertest,hello",
+    "app: registry n=6 about,inputtest,displaytest,buzzertest,hello,apptest",
     "hello: uptime=00:00:00",    # on_start, before the launch is logged
     "app: start hello",
     "hello: uptime=00:00:01",    # the once-a-second refresh, twice

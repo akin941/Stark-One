@@ -23,6 +23,7 @@ typedef struct stark_screen {
     void (*on_render)(struct stark_screen *self, gfx_surface_t *s);      /* required */
     void *state;
     ui_damage_t damage; /* dirty areas (ui_damage.h); empty = nothing to redraw */
+    bool overlay;       /* drawn over the screen beneath it (a dialog, STARK-0105) */
 } stark_screen_t;
 
 /*
@@ -37,6 +38,12 @@ stark_err_t stark_ui_init(void);
  * screen, status bar included, is redrawn on the next tick. Depth is 8:
  * STARK_ERR_NO_MEM when full, STARK_ERR_INVALID_ARG for a NULL screen or
  * on_render, STARK_ERR_STATE before init.
+ *
+ * An overlay screen (screen->overlay) is drawn over the screen beneath it:
+ * each band renders the beneath screen first, then the overlay, both
+ * clipped to the content area; the status bar keeps the beneath screen's
+ * title; events go to the overlay only. An overlay is never pushed onto
+ * another overlay (STARK_ERR_BUSY) nor as the root (STARK_ERR_STATE).
  */
 stark_err_t stark_ui_push(stark_screen_t *screen);
 

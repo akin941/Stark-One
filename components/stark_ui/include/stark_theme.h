@@ -14,6 +14,9 @@
 #define STARK_THEME_FG           GFX_RGB565(255, 255, 255)
 #define STARK_THEME_ACTIVE       GFX_RGB565(255, 255, 0) /* something live: a held key, a readout */
 
+/* Dialog (STARK-0105) */
+#define STARK_THEME_ACCENT       GFX_RGB565(0, 128, 255) /* dialog border */
+
 /* Status bar */
 #define STARK_THEME_STATUS_BG    GFX_RGB565(0, 64, 128)
 #define STARK_THEME_STATUS_FG    GFX_RGB565(255, 255, 255)

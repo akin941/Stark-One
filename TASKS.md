@@ -1070,18 +1070,21 @@ ARCHITECTURE.md §6.7, TESTING.md §4 (prefix).
 and 6-line messages (6 clips to 4); empty message; title longer than the box truncates
 at a code-point boundary. 100 % lines of `ui_dialog_layout.c`.
 
-**Wokwi/runtime.** `v01-dialog.yaml` (≤ 20 s): launch App Test → `Confirm dialog` →
-`dialog: open "Confirm"` → BACK → `dialog: cancel`, `apptest: cancelled`, no
-`app: stop` → OK again → OK → `dialog: ok`, `apptest: confirmed`, `dialog: open "Done"`
-→ OK → `dialog: ok` → `Alert dialog` → OK → `apptest: alert closed` → BACK →
-`app: stop apptest`. Screenshot with the dialog open:
-border pixels at the computed box, App Test's menu visible outside it.
+**Emulator / host UI port** (ADR-0017). `test/emu/v01-dialog.toml` on the production
+image: App Test → `Confirm dialog` → `dialog: open "Confirm"` → BACK → `dialog: cancel`,
+`apptest: cancelled`, no `app: stop` → OK again → OK → `dialog: ok`, `apptest: confirmed`,
+`dialog: open "Done"` → OK → `dialog: ok` → `Alert dialog` → OK → `apptest: alert closed`
+→ BACK → `app: stop apptest`. `test_ui_dialog.c` on the host UI port: border pixels at
+the computed box, App Test's menu visible outside it, status bar unchanged, the copied
+message rendered exactly, BUSY cases, and the held-key rule (a press delivered before
+the dialog opens, its SHORT after — which only a test port can schedule exactly).
 
 **AC.**
-1. `v01-dialog.yaml` passes in CI; the dialog screenshot matches the layout.
+1. `v01-dialog.toml` passes in CI; on the host UI port the dialog's pixels match the
+   layout.
 2. Holding OK while opening the dialog (press before open, release after) does **not**
-   confirm — a scenario step shows `dialog: open` followed by no `dialog: ok` until a
-   fresh OK press.
+   confirm — on the host UI port, `done` is not called and no `dialog: ok` is logged
+   until a fresh OK press.
 3. Dialog strings are copied (the App Test caller passes a stack buffer; documented).
 4. `done` may open a dialog: the `Done` alert opens from the confirm's `done` in the
    scenario (no BUSY).

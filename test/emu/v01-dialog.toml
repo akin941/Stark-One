@@ -1,0 +1,40 @@
+# STARK-0105 (ROADMAP V0.1 exit 2): the modal confirm dialog on the
+# production image, through App Test (the last launcher row: UP wraps to
+# it). Cancel with BACK, confirm with OK — which opens a "Done" alert from
+# the confirm's result — then an alert closed with OK. The held-key rule
+# and the overlay pixels are asserted on the host UI port
+# (test/host/test_ui_dialog.c).
+name = "emu-v01-dialog"
+end_ms = 3600
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 400, hold_ms = 60 },
+    { key = "OK", at_ms = 600, hold_ms = 60 },
+    { key = "OK", at_ms = 900, hold_ms = 60 },
+    { key = "BACK", at_ms = 1200, hold_ms = 60 },
+    { key = "OK", at_ms = 1500, hold_ms = 60 },
+    { key = "OK", at_ms = 1800, hold_ms = 60 },
+    { key = "OK", at_ms = 2100, hold_ms = 60 },
+    { key = "DOWN", at_ms = 2400, hold_ms = 60 },
+    { key = "OK", at_ms = 2600, hold_ms = 60 },
+    { key = "OK", at_ms = 2900, hold_ms = 60 },
+    { key = "BACK", at_ms = 3200, hold_ms = 60 },
+]
+expect = [
+    'menu: sel=5 "App Test"',
+    "app: start apptest",
+    'dialog: open "Confirm"',
+    "dialog: cancel",
+    "apptest: cancelled",
+    'dialog: open "Confirm"',
+    "dialog: ok",
+    "apptest: confirmed",
+    'dialog: open "Done"',
+    "dialog: ok",
+    "apptest: done closed",
+    'menu: sel=1 "Alert dialog"',
+    'dialog: open "Alert"',
+    "dialog: ok",
+    "apptest: alert closed",
+    "app: stop apptest",
+]
