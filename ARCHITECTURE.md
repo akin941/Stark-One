@@ -305,12 +305,14 @@ No hardware knowledge whatsoever. Draws into a caller-provided RGB565 buffer.
 typedef struct { int16_t x, y, w, h; } gfx_rect_t;
 
 typedef struct {
-    uint16_t  *pixels;      /* RGB565, big-endian on the wire — see note */
+    uint16_t  *pixels;      /* RGB565, native-endian — the panel swap is stark_display's */
     int16_t    w, h;        /* buffer dimensions */
     int16_t    origin_x, origin_y;  /* where this buffer maps on the logical screen */
     gfx_rect_t clip;
 } gfx_surface_t;
 
+void gfx_surface_init(gfx_surface_t *s, uint16_t *pixels, int16_t w, int16_t h,
+                      int16_t origin_x, int16_t origin_y);   /* clip = its own area */
 void gfx_fill(gfx_surface_t *s, gfx_rect_t r, uint16_t colour);
 void gfx_rect(gfx_surface_t *s, gfx_rect_t r, uint16_t colour);
 void gfx_hline(gfx_surface_t *s, int16_t x, int16_t y, int16_t w, uint16_t colour);
@@ -322,6 +324,11 @@ int16_t gfx_text(gfx_surface_t *s, const gfx_font_t *f, int16_t x, int16_t y,
                  const char *utf8, uint16_t fg, uint16_t bg, bool transparent);
 int16_t gfx_text_width(const gfx_font_t *f, const char *utf8);
 ```
+
+Refinements fixed by STARK-0013: `clip` is in logical coordinates and drawing is limited to
+`clip ∩ the buffer's logical area`, computed by one shared helper (`gfx_clip()`,
+component-private) in 32-bit arithmetic; `w`/`h` ≤ 0 draws nothing; `gfx_rect` is a 1 px
+outline; `gfx_blit_1bpp` bits are row-major, rows padded to a byte, MSB = leftmost pixel.
 
 `origin_x/origin_y` is what makes band rendering transparent to callers: a screen draws
 in *logical screen coordinates* and the surface translates. Drawing entirely outside the
