@@ -30,8 +30,8 @@ void app_main(void)
      * boundary — see components/stark_board/board_devkitc1.c). main.c is
      * the composition root: it owns both the success line TASKS.md
      * STARK-0006 expects and the decision of what "a wiring mistake must
-     * not be subtle" means. No stark_panic()/stark_hal exists yet
-     * (STARK-0007), so a bad pin map halts here rather than rebooting.
+     * not be subtle" means. No stark_panic() exists yet, so a bad pin map
+     * halts here rather than rebooting.
      */
     stark_err_t err = stark_board_init();
     if (err != STARK_OK) {
@@ -42,4 +42,15 @@ void app_main(void)
     }
 
     STARK_LOGI("board", "%s pins ok spi2 ready", stark_board_name());
+
+    /*
+     * The heartbeat runs on the esp_timer task, so app_main() may return
+     * afterwards: that deletes only the main task, not the timer. A failure
+     * here is not fatal — the firmware keeps running, it just has no
+     * visible sign of life, which is itself the diagnostic.
+     */
+    err = stark_board_heartbeat_start();
+    if (err != STARK_OK) {
+        STARK_LOGE("board", "led heartbeat failed: %s", stark_err_str(err));
+    }
 }

@@ -47,6 +47,18 @@ const char *stark_board_name(void);
 stark_err_t stark_board_init(void);
 
 /*
+ * Starts the status LED heartbeat: 1 Hz, 10 % duty (a 100 ms blink once a
+ * second), driven by a periodic esp_timer — TASKS.md STARK-0008. Call once,
+ * after stark_board_init() has returned STARK_OK (it configures the LED
+ * pin as an output; this does not). The heartbeat keeps running after
+ * app_main() returns. Returns STARK_ERR_STATE if already started, and
+ * STARK_ERR_IO if the timer cannot be created or started — in that case no
+ * timer is left behind, the LED is left off, and a later call may retry.
+ * Logs nothing — the caller decides.
+ */
+stark_err_t stark_board_heartbeat_start(void);
+
+/*
  * Pure validation: rejects a pin map where two assigned (non -1) pins
  * collide, or where any assigned pin falls in the reserved ranges
  * 26-37 (internal flash/PSRAM), 19-20 (USB D-/D+), 43-46 (UART0 console
