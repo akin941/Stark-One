@@ -2,6 +2,7 @@
 # the six keys produces its press/release/short lines, exercised inside Input
 # Test so no key launches anything; BACK last, which also leaves the app.
 # The GPIO pad -> key bit step is host-tested (test/host/test_input_sample.c).
+# Four DOWN presses from About (row 1) skip the Tests header to Input Test.
 name = "emu-v0-input-matrix"
 end_ms = 3280
 heap_min = 200000
@@ -20,10 +21,10 @@ presses = [
 ]
 expect = [
     "boot: ui_ready in ",
-    'menu: sel=1 "About"',
-    'menu: sel=2 "Buzzer Test"',
-    'menu: sel=3 "Display Test"',
-    'menu: sel=4 "Input Test"',
+    'menu: sel=3 "App Test"',
+    'menu: sel=4 "Buzzer Test"',
+    'menu: sel=5 "Display Test"',
+    'menu: sel=6 "Input Test"',
     "app: start inputtest",
     "key: UP press",
     "key: UP release",

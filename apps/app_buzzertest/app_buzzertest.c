@@ -9,8 +9,8 @@
 #include "ui_menu.h"
 
 static const ui_menu_item_t k_items[] = {
-    {"440 Hz  (A4)", false}, {"1 kHz", false},  {"2 kHz", false},
-    {"4 kHz", false},        {"Melody", false},
+    {.label = "440 Hz  (A4)"}, {.label = "1 kHz"},  {.label = "2 kHz"},
+    {.label = "4 kHz"},        {.label = "Melody"},
 };
 static const uint16_t k_tones[] = {440, 1000, 2000, 4000};
 static const stark_buzzer_note_t k_melody[] = {
@@ -44,10 +44,17 @@ static stark_screen_t *buzzer_screen(void *state)
     return &s_menu.screen;
 }
 
+/* Launcher icon (16x16, 1bpp — ui_menu.h). */
+static const uint8_t k_icon[32] = {
+    0x00, 0x00, 0x00, 0xFC, 0x00, 0xFC, 0x00, 0x84, 0x00, 0x84, 0x00, 0x84, 0x00, 0x84, 0x00, 0x84,
+    0x00, 0x84, 0x0F, 0xBC, 0x1F, 0xBC, 0x1F, 0x98, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
 const stark_app_t app_buzzertest = {
     .id = "buzzertest",
     .title = "Buzzer Test",
-    .category = "System",
+    .category = "Tests",
     .on_stop = buzzer_stop,
     .screen = buzzer_screen,
+    .icon = k_icon,
 };

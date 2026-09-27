@@ -15,7 +15,7 @@
 #define STARK_THEME_ACTIVE       GFX_RGB565(255, 255, 0) /* something live: a held key, a readout */
 
 /* Dialog (STARK-0105) */
-#define STARK_THEME_ACCENT       GFX_RGB565(0, 128, 255) /* dialog border */
+#define STARK_THEME_ACCENT       GFX_RGB565(0, 128, 255) /* dialog border, menu headers */
 
 /* Status bar */
 #define STARK_THEME_STATUS_BG    GFX_RGB565(0, 64, 128)
@@ -35,3 +35,4 @@
 #define STARK_THEME_TEXT_X       8  /* label / content text inset */
 #define STARK_THEME_ROW_TEXT_Y   4  /* (24 - 16) / 2: the font cell centred in its row */
 #define STARK_THEME_SCROLLBAR_W  4  /* at the right edge, only when a list overflows */
+#define STARK_THEME_ICON_GAP     6  /* between a menu icon and its label */

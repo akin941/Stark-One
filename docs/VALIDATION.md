@@ -107,7 +107,7 @@ peripheral, deferred to HIL.
 | # | Wokwi assertion | Cat. | Replacement evidence |
 | --- | --- | --- | --- |
 | 1 | `boot: ui_ready in ` | 2 | emu `expect` |
-| 2 | DOWN → the next launcher row (`menu: sel=1 "About"` since Hello leads the list, STARK-0104) | 3 | emu (injected at `input_core_update`, then core → bus → menu) + host `test_input_sample.c` (GPIO 5 low → DOWN bit) + `check_pins.py` (diagram ↔ pin map) |
+| 2 | DOWN → the next launcher item (`menu: sel=3 "App Test"` since the header rows of STARK-0107) | 3 | emu (injected at `input_core_update`, then core → bus → menu) + host `test_input_sample.c` (GPIO 5 low → DOWN bit) + `check_pins.py` (diagram ↔ pin map) |
 | 3 | UP → back one row | 3 | as #2 (GPIO 4) |
 | 4 | OK short → `app: start about` | 3 | as #2 (GPIO 15); the SHORT semantics are also host-tested (`test_input_core.c`) |
 | 5 | BACK short → `app: stop about` | 3 | as #2 (GPIO 16) |
@@ -118,7 +118,7 @@ peripheral, deferred to HIL.
 
 | # | Wokwi assertion | Cat. | Replacement evidence |
 | --- | --- | --- | --- |
-| 1 | DOWN presses to Input Test (four since STARK-0104), OK → `app: start inputtest` | 3 | emu `expect` (`menu: sel=1/2/3`, `app: start inputtest`) + host pad test |
+| 1 | DOWN presses to Input Test (four from About, past the Tests header), OK → `app: start inputtest` | 3 | emu `expect` (`menu: sel=1/2/3`, `app: start inputtest`) + host pad test |
 | 2–19 | for UP, DOWN, LEFT, RIGHT, OK, BACK: `key: <K> press`, `key: <K> release`, `key: <K> short` in order | 3 | emu `expect` (all 18 lines, in order, logged by the production input service) + host `test_input_sample.c` (each of GPIO 4/5/6/7/15/16 maps to its bit, active-low, pull-up idle) + host `test_input_core.c` (press/release/short semantics, 100 % lines) |
 | 20 | `app: stop inputtest` after BACK | 3 | emu `expect` |
 | 21 | runner: heap, no panic | 2 | emu `heap_min`, default `forbid` |

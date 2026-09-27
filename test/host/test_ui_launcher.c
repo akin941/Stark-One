@@ -72,6 +72,8 @@ static const stark_app_t *const k_apps[] = {&k_about, &k_input, &k_display, &k_b
 /* ---- helpers ---------------------------------------------------------- */
 
 #define ROW_Y(i) (STARK_THEME_STATUSBAR_H + (i) * STARK_THEME_ROW_H)
+/* Row 0 is the "System" category header (STARK-0107); app i is on row i + 1. */
+#define APP_Y(i) ROW_Y((i) + 1)
 
 static void frame(void)
 {
@@ -92,7 +94,7 @@ static void assert_area(size_t i, int x, int y, int w, int h)
 static void assert_selected_row(int row)
 {
     for (int i = 0; i < 4; i++) {
-        uint16_t bg = ui_port_pixel(UI_PORT_W - 2, ROW_Y(i) + 1);
+        uint16_t bg = ui_port_pixel(UI_PORT_W - 2, APP_Y(i) + 1);
         TEST_ASSERT_EQUAL_HEX16_MESSAGE(i == row ? STARK_THEME_SEL_BG : STARK_THEME_BG, bg,
                                         "row background (selection inverted)");
     }
@@ -114,7 +116,7 @@ static void assert_no_poison(void)
 /* The committed golden of the V0 launcher's first frame (reviewed as
  * build-host/ui_launcher.ppm when it was recorded). A deliberate visual
  * change updates it in the same commit. */
-#define LAUNCHER_GOLDEN UINT64_C(0x63872b499bbce143)
+#define LAUNCHER_GOLDEN UINT64_C(0xb316862b00dd3d10) /* STARK-0107: "System" header row */
 
 void setUp(void)
 {}
@@ -162,25 +164,25 @@ static void test_launcher_story(void)
     /* DOWN: sel 0 -> 1, the two adjacent rows repaint (one union rect). */
     ui_port_key(STARK_KEY_DOWN, STARK_KEY_PRESS);
     frame();
-    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=1 \"Buzzer Test\""));
+    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=2 \"Buzzer Test\""));
     TEST_ASSERT_EQUAL_INT(1, ui_port_buzzer_clicks());
     TEST_ASSERT_EQUAL_UINT(1, ui_port_render_count());
-    assert_area(0, 0, ROW_Y(0), UI_PORT_W, 2 * STARK_THEME_ROW_H);
+    assert_area(0, 0, APP_Y(0), UI_PORT_W, 2 * STARK_THEME_ROW_H);
     assert_selected_row(1);
 
-    /* UP twice: back to 0, then wrap to the last row. The wrap repaints the
+    /* UP twice: back to About, then wrap past the header to the last row. The wrap repaints the
      * two rows involved, not the list between them (STARK-0101). */
     ui_port_reset_records();
     ui_port_key(STARK_KEY_UP, STARK_KEY_PRESS);
     frame();
-    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=0 \"About\""));
+    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=1 \"About\""));
     ui_port_reset_records();
     ui_port_key(STARK_KEY_UP, STARK_KEY_PRESS);
     frame();
-    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=3 \"Input Test\""));
+    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=4 \"Input Test\""));
     TEST_ASSERT_EQUAL_UINT(2, ui_port_render_count());
-    assert_area(0, 0, ROW_Y(0), UI_PORT_W, STARK_THEME_ROW_H);
-    assert_area(1, 0, ROW_Y(3), UI_PORT_W, STARK_THEME_ROW_H);
+    assert_area(0, 0, APP_Y(0), UI_PORT_W, STARK_THEME_ROW_H);
+    assert_area(1, 0, APP_Y(3), UI_PORT_W, STARK_THEME_ROW_H);
     assert_selected_row(3);
 
     /* OK (short) launches the selected app; its screen and title redraw. */

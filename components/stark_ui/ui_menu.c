@@ -13,7 +13,17 @@
 static bool item_enabled(size_t index, void *ctx)
 {
     const ui_menu_t *m = ctx;
-    return !m->items[index].disabled;
+    return !m->items[index].disabled && !m->items[index].header;
+}
+
+static bool has_icons(const ui_menu_t *m)
+{
+    for (size_t i = 0; i < m->count; i++) {
+        if (m->items[i].icon != NULL) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static size_t visible_rows(void)
@@ -68,18 +78,35 @@ static void menu_render(stark_screen_t *self, gfx_surface_t *s)
     }
     size_t top = ui_menu_model_top(&m->model);
     size_t rows = visible_rows();
+    bool icons = has_icons(m);
     for (size_t i = top; i < m->count && i < top + rows; i++) {
+        const ui_menu_item_t *it = &m->items[i];
         gfx_rect_t r = row_rect(m, i);
         bool selected =
             ui_menu_model_has_selection(&m->model) && ui_menu_model_selected(&m->model) == i;
         uint16_t bg = selected ? STARK_THEME_SEL_BG : STARK_THEME_BG;
-        uint16_t fg = selected ? STARK_THEME_SEL_FG
-                               : (m->items[i].disabled ? STARK_THEME_DISABLED : STARK_THEME_FG);
+        uint16_t fg = STARK_THEME_FG;
+        if (selected) {
+            fg = STARK_THEME_SEL_FG;
+        } else if (it->header) {
+            fg = STARK_THEME_ACCENT;
+        } else if (it->disabled) {
+            fg = STARK_THEME_DISABLED;
+        }
         if (selected) {
             gfx_fill(s, r, bg);
         }
-        (void)gfx_text(s, &gfx_font_mono16, STARK_THEME_TEXT_X,
-                       (int16_t)(r.y + STARK_THEME_ROW_TEXT_Y), m->items[i].label, fg, bg, true);
+        int16_t text_x = STARK_THEME_TEXT_X;
+        if (icons && !it->header) {
+            if (it->icon != NULL) {
+                gfx_blit_1bpp(s, STARK_THEME_TEXT_X,
+                              (int16_t)(r.y + (STARK_THEME_ROW_H - UI_MENU_ICON_SIZE) / 2),
+                              it->icon, UI_MENU_ICON_SIZE, UI_MENU_ICON_SIZE, fg, bg, true);
+            }
+            text_x = STARK_THEME_TEXT_X + UI_MENU_ICON_SIZE + STARK_THEME_ICON_GAP;
+        }
+        (void)gfx_text(s, &gfx_font_mono16, text_x, (int16_t)(r.y + STARK_THEME_ROW_TEXT_Y),
+                       it->label, fg, bg, true);
     }
     if (overflows(m)) {
         draw_scrollbar(m, s);

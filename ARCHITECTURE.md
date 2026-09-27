@@ -513,8 +513,8 @@ confirmation of the radio milestones (docs/SECURITY_SCOPE.md §4.2).
 Widgets in V0: **status bar** (title; battery/SD/clock arrive with their tasks — V0 draws
 nothing there rather than placeholders) and
 **list menu** (`ui_menu_t` in `ui_menu.h`: items, scroll window, selection,
-wrap-around; icons are not in V0). The menu *model* (selection movement, scroll window
-arithmetic, paging) lives in `ui_menu_model.c` as pure code with host tests; the
+wrap-around; since STARK-0107 also category header rows and 16×16 icons). The menu
+*model* (selection movement, scroll window arithmetic, paging) lives in `ui_menu_model.c` as pure code with host tests; the
 rendering lives beside it (`ui_menu.c`) and is verified visually in Wokwi.
 
 STARK-0018 specifics: 24 px rows (nine below the status bar), the selection inverted,
@@ -524,7 +524,18 @@ wrap; LEFT/RIGHT page one window, clamped at the ends; OK (short) activates. A m
 between visible rows invalidates exactly those two rows (adjacent rows merge into one
 rect, distant ones stay two since STARK-0101); a move that scrolls the window or pages
 invalidates the list.
-Each change logs `menu: sel=<n> "<label>"` (INFO; the index is 0-based).
+Each change logs `menu: sel=<n> "<label>"` (INFO; the 0-based row index, header rows
+included).
+
+STARK-0107 specifics: an item may be a **header** (`ui_menu_item_t.header`): drawn in
+`STARK_THEME_ACCENT`, never selected or activated, skipped by moves and paging like a
+disabled item. When the selection lands on the window's first row and the row above
+it is not selectable, the window scrolls up one more so that header stays in view (a
+window of two rows or more; pure, in `ui_menu_model.c`). An item may carry a 16×16
+1bpp **icon** (`gfx_blit_1bpp()` layout); when any item has one, icons sit at the text
+inset and every label shifts right past them (`STARK_THEME_ICON_GAP`). `disabled`
+stays a generic rendering state: nothing sets it from hardware before V0.5.
+`stark_app_t.icon` feeds the launcher.
 
 Navigation contract, global and non-negotiable:
 
@@ -578,8 +589,11 @@ is not V0's problem (ADR-0009 revisit trigger: ~15 apps, or apps living outside 
 repository).
 
 STARK-0019 specifics: `stark_app_init()` logs `app: registry n=<N> <id>,…` (registry
-order), builds the launcher — the root `ui_menu_t`, "STARK ONE", apps sorted by category
-then title (a stable, host-tested pure function) — and pushes it. `stark_app_launch()`
+order), builds the launcher — the root `ui_menu_t`, "STARK ONE": a header row per
+category, the categories in the order their first app appears in the registry (so the
+composition root controls it), apps by title within each, with their icons
+(`app_catalog_sort()` / `app_catalog_layout()`, pure and host-tested; STARK-0107) — and
+pushes it. `stark_app_launch()`
 runs `on_start`, pushes the app's screen and logs `app: start <id>`; popping that screen
 (BACK) calls `on_stop` and logs `app: stop <id>` — the manager chains onto the screen's
 `on_exit` for the duration. A failing `on_start` (or a NULL screen) logs

@@ -9,6 +9,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 #include "stark_err.h"
 #include "stark_ui.h"
 
@@ -19,23 +20,26 @@ typedef struct {
     stark_err_t (*on_start)(void **state);  /* optional; a failure is logged, never fatal */
     void (*on_stop)(void *state);           /* optional */
     stark_screen_t *(*screen)(void *state); /* the app's one screen */
+    const uint8_t *icon; /* optional launcher icon: 16x16 1bpp (ui_menu.h), NULL for none */
 } stark_app_t;
 
 /*
  * Takes the registry — the explicit static array the composition root
  * defines (main/app_registry.c, ADR-0009/ADR-0016); it must outlive the
  * firmware — logs it (`app: registry n=<N> <id>,<id>,…`, registry order),
- * builds the launcher — the root menu, apps sorted by category then title —
- * and pushes it. Call after stark_ui_init(). STARK_ERR_STATE if already
- * initialised; STARK_ERR_INVALID_ARG for a NULL array with count > 0 or an
- * entry (or its id) that is NULL.
+ * builds the launcher — the root menu: a header row per category, the
+ * categories in the order their first app appears in the registry, apps
+ * by title within each, with their icons (STARK-0107) — and pushes it. Call after stark_ui_init().
+ * STARK_ERR_STATE if already initialised; STARK_ERR_INVALID_ARG for a NULL array with count > 0 or
+ * an entry (or its id) that is NULL.
  */
 stark_err_t stark_app_init(const stark_app_t *const *apps, size_t count);
 
 /* The registered app with this id, or NULL. */
 const stark_app_t *stark_app_find(const char *id);
 
-/* Copies up to max apps, in launcher order, to out; returns how many exist. */
+/* Copies up to max apps, in launcher order (headers excluded), to out;
+ * returns how many exist. */
 size_t stark_app_list(const stark_app_t **out, size_t max);
 
 /*

@@ -141,7 +141,51 @@ void test_disabled_items_are_skipped(void)
     TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, -1)); /* wraps past 0 and 11 */
     assert_at(10, 2);
     TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, +1)); /* wraps past 11 and 0 */
-    assert_at(1, 1); /* the window scrolls just enough to show item 1 */
+    assert_at(1, 0); /* item 1 on the first row would hide non-selectable 0: shown too */
+}
+
+/* ---- header reveal (STARK-0107) ------------------------------------------ */
+
+void test_selection_below_a_header_keeps_the_header_in_view(void)
+{
+    /* rows: 0 hdr, 1..5 items, 6 hdr, 7..11 items; window of 4 */
+    s_disabled[0] = true;
+    s_disabled[6] = true;
+    init(12, 4);
+    assert_at(1, 0);
+    for (int i = 0; i < 9; i++) {
+        TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, +1)); /* 2..5, 7..11 */
+    }
+    assert_at(11, 8);
+    TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, -1));
+    TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, -1));
+    TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, -1));
+    assert_at(8, 8); /* first row, but 7 above is selectable: no reveal */
+    TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, -1));
+    assert_at(7, 6); /* first row with header 6 above: scrolled one more */
+    TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, -1));
+    assert_at(5, 5); /* past the header: 5 is visible again at the top */
+    for (int i = 0; i < 4; i++) {
+        TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, -1));
+    }
+    assert_at(1, 0); /* on the first item: its header (row 0) stays visible */
+}
+
+void test_header_reveal_on_paging_up_but_not_with_a_one_row_window(void)
+{
+    s_disabled[7] = true;
+    init(12, 3);
+    for (int i = 0; i < 10; i++) {
+        TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, +1)); /* 1..6, 8..11 */
+    }
+    assert_at(11, 9);
+    TEST_ASSERT_TRUE(ui_menu_model_page(&s_m, -1)); /* 11 -> 8, header 7 above */
+    assert_at(8, 7);
+    init(12, 1); /* a single row can only show the selection */
+    for (int i = 0; i < 7; i++) {
+        TEST_ASSERT_TRUE(ui_menu_model_move(&s_m, +1)); /* 1..6, 8 */
+    }
+    assert_at(8, 8);
 }
 
 void test_paging_onto_disabled_items_lands_on_the_nearest_enabled(void)
@@ -233,6 +277,8 @@ int main(void)
     RUN_TEST(test_list_shorter_than_the_window_never_scrolls);
     RUN_TEST(test_single_item_list);
     RUN_TEST(test_disabled_items_are_skipped);
+    RUN_TEST(test_selection_below_a_header_keeps_the_header_in_view);
+    RUN_TEST(test_header_reveal_on_paging_up_but_not_with_a_one_row_window);
     RUN_TEST(test_paging_onto_disabled_items_lands_on_the_nearest_enabled);
     RUN_TEST(test_all_items_disabled_means_no_selection);
     RUN_TEST(test_null_enabled_callback_means_all_enabled_and_zero_visible_means_one);

@@ -1,6 +1,6 @@
 # STARK-0021 — boot -> navigate -> launch an app -> BACK (ROADMAP V0 exit 2).
-# Launcher order is category then title: Hello (Examples), then About,
-# Buzzer Test, Display Test, Input Test (System). A menu move logs on the key press, an app starts on OK's
+# Launcher rows (STARK-0107): System header, About, Tests header, App Test,
+# Buzzer Test, Display Test, Input Test, Examples header, Hello. A menu move logs on the key press, an app starts on OK's
 # release (short press), BACK leaves the app.
 name: v0-boot-and-menu
 version: 1
@@ -9,12 +9,7 @@ steps:
   - wait-serial: "boot: ui_ready in "
   - delay: 400ms
   - set-control: { part-id: btn_down, control: pressed, value: 1 }
-  - wait-serial: "menu: sel=1 \"About\""
-  - delay: 60ms
-  - set-control: { part-id: btn_down, control: pressed, value: 0 }
-  - delay: 150ms
-  - set-control: { part-id: btn_down, control: pressed, value: 1 }
-  - wait-serial: "menu: sel=2 \"Buzzer Test\""
+  - wait-serial: "menu: sel=3 \"App Test\""
   - delay: 60ms
   - set-control: { part-id: btn_down, control: pressed, value: 0 }
   - delay: 150ms

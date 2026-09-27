@@ -8,7 +8,7 @@ heap_min = 200000
 expect = [
     "board: devkitc1 pins ok spi2 ready",
     "display: init 320x240 band=40 bufs=2x25600",
-    "app: registry n=6 about,inputtest,displaytest,buzzertest,hello,apptest",
+    "app: registry n=6 about,inputtest,displaytest,buzzertest,apptest,hello",
     "boot: ui_ready in ",
     "diag: heap=",
     "display: full refresh ",

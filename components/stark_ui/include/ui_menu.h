@@ -7,12 +7,19 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include "stark_ui.h"
 #include "ui_menu_model.h"
 
+/* Menu icons: 16x16, 1bpp, gfx_blit_1bpp() layout (2 bytes per row, MSB
+ * leftmost) — 32 bytes. */
+#define UI_MENU_ICON_SIZE 16
+
 typedef struct {
     const char *label;
-    bool disabled; /* shown dimmed, never selected */
+    bool disabled;       /* shown dimmed, never selected (a rendering state only) */
+    bool header;         /* a section title: accent colour, never selected (STARK-0107) */
+    const uint8_t *icon; /* optional UI_MENU_ICON_SIZE² 1bpp icon (NULL: none) */
 } ui_menu_item_t;
 
 /* OK (short press) on the selected item. */
@@ -30,7 +37,9 @@ typedef struct {
 /*
  * items must outlive the menu. Rows are 24 px below the status bar (nine
  * visible on 320x240) with the selection inverted and a scroll indicator at
- * the right edge while the list overflows. Keys: UP/DOWN (press and
+ * the right edge while the list overflows. Header rows are drawn in the
+ * accent colour and skipped like disabled ones; when any item has an icon,
+ * icons sit at the text inset and every label shifts right past them. Keys: UP/DOWN (press and
  * repeat) move with wrap, LEFT/RIGHT page by one window, OK activates;
  * BACK is left to stark_ui (pop). Every selection change logs
  * `menu: sel=<n> "<label>"` at INFO and repaints only the two rows involved

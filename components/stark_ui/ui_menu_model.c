@@ -9,7 +9,9 @@ static bool is_enabled(const ui_menu_model_t *m, size_t i)
 }
 
 /* Keeps top such that top <= sel < top + visible and, for a list longer
- * than the window, top + visible <= count. */
+ * than the window, top + visible <= count. When the selection sits on the
+ * window's first row and the row above it is not selectable (a category
+ * header), the window scrolls up one so that row stays in view (STARK-0107). */
 static void follow(ui_menu_model_t *m)
 {
     if (m->count <= m->visible) {
@@ -23,6 +25,9 @@ static void follow(ui_menu_model_t *m)
     }
     if (m->top > m->count - m->visible) {
         m->top = m->count - m->visible;
+    }
+    if (m->visible >= 2 && m->sel == m->top && m->top > 0 && !is_enabled(m, m->top - 1)) {
+        m->top--;
     }
 }
 

@@ -11,8 +11,8 @@
 #include "ui_menu.h"
 
 static const ui_menu_item_t k_items[] = {
-    {"Confirm dialog", false},
-    {"Alert dialog", false},
+    {.label = "Confirm dialog"},
+    {.label = "Alert dialog"},
 };
 
 static ui_menu_t s_menu;
@@ -55,9 +55,16 @@ static stark_screen_t *apptest_screen(void *state)
     return &s_menu.screen;
 }
 
+/* Launcher icon (16x16, 1bpp — ui_menu.h). */
+static const uint8_t k_icon[32] = {
+    0x00, 0x00, 0xFF, 0xFC, 0x80, 0x04, 0x80, 0x14, 0x80, 0x34, 0x80, 0x64, 0xA0, 0xC4, 0xB1, 0x84,
+    0x9B, 0x04, 0x8E, 0x04, 0x84, 0x04, 0x80, 0x04, 0xFF, 0xFC, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
 const stark_app_t app_apptest = {
     .id = "apptest",
     .title = "App Test",
     .category = "Tests",
     .screen = apptest_screen,
+    .icon = k_icon,
 };
