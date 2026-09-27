@@ -4,6 +4,7 @@
 # adds its line here in the same change.
 menu "STARK"
 
+    rsource "../components/stark_app/Kconfig.stark"
     rsource "../components/stark_board/Kconfig.stark"
     rsource "../components/stark_display/Kconfig.stark"
     rsource "../components/stark_event/Kconfig.stark"

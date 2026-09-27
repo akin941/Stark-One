@@ -605,6 +605,23 @@ disabled-because-hardware-is-absent menu items arrive at V0.5 together with
 `stark_module` and the hardware they describe. V0 lists the apps that exist and
 launches them.
 
+STARK-0108 specifics — **worker, join contract, fault containment.** An app may start one
+background worker, `stark_app_worker_start(fn, ctx)`: a FreeRTOS task in a static slot
+(`STARK_APP_WORKER_STACK` 4096 B, priority `STARK_APP_WORKER_PRIO` 4 — below the UI —
+pinned to core 0), no allocation. It reports to its app through the bus
+(`STARK_EVT_APP_REQUEST`, `app.id = STARK_APP_REQ_NOTIFY`) and polls
+`stark_app_worker_should_stop()`. Stopping the app — BACK, long-BACK or a fault — sets
+the stop flag and joins the worker **before** `on_stop` (`app: worker <id> joined`);
+after `STARK_APP_WORKER_JOIN_MS` (1000) it is deleted anyway (`app: worker <id> join
+timeout`, counted) and `on_stop` still runs. The wrapper suspends itself after `fn`
+returns and the joiner deletes only a suspended (or, on timeout, a deleted-and-reaped)
+task, so the static slot is never reused while FreeRTOS owns it. `stark_app_fail(err)`
+(UI task or worker) records the error with the current launch generation and publishes
+`STARK_APP_REQ_FAIL`; `stark_app` subscribes to `STARK_EVT_APP_REQUEST` and, on the UI
+task, a report of the running generation logs `app: fault <id>: <err>`, unwinds with
+`stark_ui_pop_to_root()` and shows an "App stopped" alert; a stale report is ignored
+(pure `app_fault_accept()`). Containment covers reported errors, not CPU exceptions.
+
 Execution model: **cooperative, single task**. Apps run inside the UI task through their
 screen callbacks. An app that needs a worker (Sub-GHz receive loop, SD write) creates
 its own FreeRTOS task in `on_start` and communicates via the event bus; `on_stop` must
@@ -657,6 +674,7 @@ asserts on the **presence and ordering** of that line, never on the number in it
 | Task / context | Prio | Stack | Role |
 | --- | --- | --- | --- |
 | `stark_ui` | 5 | 6 kB | Event dispatch, app ticks, rendering. Owns SPI2 and the band buffers. |
+| `app_worker` | 4 | 4 kB (static) | The running app's optional background worker, core 0 (STARK-0108); joined before the app's `on_stop` |
 | `esp_timer` (input) | high | – | 5 ms key sample → publish events. Never blocks. |
 | `esp_timer` (led/buzzer) | high | – | Heartbeat blink, tone sequence steps. |
 | IDLE/main | – | – | Standard IDF. |
@@ -689,6 +707,8 @@ gains options adds its line there in the same change:
 | `STARK_INPUT_POLL_MS` | 5 | Key sampling period |
 | `STARK_EVENT_QUEUE_LEN` | 32 | Ring capacity |
 | `STARK_UI_TARGET_FPS` | 30 | Render cap |
+| `STARK_INPUT_REPEAT_DELAY_MS` / `_INTERVAL_MS` | 400 / 120 | Key repeat timing (STARK-0106) |
+| `STARK_APP_WORKER_STACK` / `_PRIO` / `_JOIN_MS` | 4096 / 4 / 1000 | App worker slot (STARK-0108) |
 | `STARK_LOG_LEVEL` | INFO | Maps to esp_log level |
 
 No runtime behaviour may depend on a Kconfig symbol that Wokwi and hardware would need

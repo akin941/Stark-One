@@ -1,0 +1,27 @@
+# stark_app options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9).
+
+config STARK_APP_WORKER_STACK
+    int "App worker stack (bytes)"
+    range 2048 16384
+    default 4096
+    help
+        Stack of the running app's one background worker (a static slot:
+        reserved at build time, whether or not an app uses it).
+        ARCHITECTURE.md §6.8, §8.
+
+config STARK_APP_WORKER_PRIO
+    int "App worker priority"
+    range 1 4
+    default 4
+    help
+        FreeRTOS priority of the worker task; below the UI task's 5 so a
+        busy worker never starves the UI.
+
+config STARK_APP_WORKER_JOIN_MS
+    int "App worker join timeout (ms)"
+    range 100 10000
+    default 1000
+    help
+        How long stopping an app waits for its worker to return before the
+        task is deleted anyway (a contract violation, logged and counted).
