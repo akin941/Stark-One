@@ -72,6 +72,7 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
         gcovr -r "$PROJECT_ROOT" \
             --filter "$PROJECT_ROOT/components/stark_err" \
             --filter "$PROJECT_ROOT/components/stark_event" \
+            --filter "$PROJECT_ROOT/components/stark_input" \
             --gcov-executable "$GCOV_EXECUTABLE" \
             --xml --xml-pretty -o "$BUILD_DIR/coverage.xml"
         echo "Coverage report: $BUILD_DIR/coverage.xml"
