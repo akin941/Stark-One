@@ -373,6 +373,13 @@ SPI2_HOST, `esp_lcd_panel_draw_bitmap` per band. Two DMA-capable band buffers of
 RAM, ping-ponged so rendering overlaps the DMA transfer. `stark_display_render()` walks
 the requested area band by band; the UI never sees this.
 
+STARK-0016 specifics: the band grid is fixed (rows `[k·BAND_H, (k+1)·BAND_H)`); for each
+intersected band the callback's surface covers exactly *area ∩ band* (its origin is
+that rectangle's corner) and only those pixels are transferred, so a partial render
+touches nothing else. The walk is a pure, host-tested function (`display_bands.c`). The
+call returns only after every transfer has completed; a full-screen render logs
+`display: full refresh <N> ms` (informational — `docs/measurements.md`).
+
 Constraints this satisfies: no PSRAM (ADR-0014), no 150 kB framebuffer, partial updates
 are naturally cheap, and the same code works on any panel size.
 

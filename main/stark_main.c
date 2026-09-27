@@ -6,6 +6,7 @@
 #include "stark_board.h"
 #include "stark_display.h"
 #include "stark_event.h"
+#include "stark_gfx.h"
 #include "stark_input.h"
 #include "stark_version.h"
 #include "esp_heap_caps.h"
@@ -14,6 +15,31 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+/*
+ * NOTE: bring-up pattern (STARK-0015), now drawn through the band renderer
+ * (STARK-0016) until stark_ui (STARK-0017) owns the screen: eight colour
+ * bars (red, green, blue, yellow, cyan, magenta, white, black), a 1 px white
+ * border and a white top-left orientation marker.
+ */
+static void draw_test_pattern(gfx_surface_t *s, void *ctx)
+{
+    (void)ctx;
+    static const uint16_t bars[8] = {
+        GFX_RGB565(255, 0, 0),     GFX_RGB565(0, 255, 0),   GFX_RGB565(0, 0, 255),
+        GFX_RGB565(255, 255, 0),   GFX_RGB565(0, 255, 255), GFX_RGB565(255, 0, 255),
+        GFX_RGB565(255, 255, 255), GFX_RGB565(0, 0, 0),
+    };
+    const int16_t w = stark_display_width();
+    const int16_t h = stark_display_height();
+    const int16_t bar_w = (int16_t)(w / 8);
+    for (int16_t i = 0; i < 8; i++) {
+        gfx_fill(s, (gfx_rect_t){(int16_t)(i * bar_w), 0, bar_w, h}, bars[i]);
+    }
+    const uint16_t white = GFX_RGB565(255, 255, 255);
+    gfx_rect(s, (gfx_rect_t){0, 0, w, h}, white);
+    gfx_fill(s, (gfx_rect_t){2, 2, 12, 12}, white);
+}
 
 void app_main(void)
 {
@@ -64,9 +90,8 @@ void app_main(void)
     if (err != STARK_OK) {
         stark_panic("display init", err);
     }
-    /* NOTE: temporary bring-up pattern (STARK-0015); STARK-0016 replaces it
-     * with the same pattern drawn through stark_display_render(). */
-    err = stark_display_test_pattern();
+    err = stark_display_render((gfx_rect_t){0, 0, stark_display_width(), stark_display_height()},
+                               draw_test_pattern, NULL);
     if (err != STARK_OK) {
         STARK_LOGE("display", "test pattern failed: %s", stark_err_str(err));
     }
