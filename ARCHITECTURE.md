@@ -334,7 +334,11 @@ outline; `gfx_blit_1bpp` bits are row-major, rows padded to a byte, MSB = leftmo
 in *logical screen coordinates* and the surface translates. Drawing entirely outside the
 band is a cheap clip-reject, not a special case in UI code.
 
-Fonts: 1bpp bitmap fonts generated offline by `tools/fontconv.py` into `.c` arrays.
+Fonts: 1bpp bitmap fonts generated offline by `tools/fontconv.py` into `.c` arrays
+(STARK-0014: `gfx_font.h` holds `gfx_font_t`, `gfx_text()` and `gfx_text_width()`;
+`gfx_text()` returns the string's width; each malformed UTF-8 byte draws the fallback;
+`gfx_font_mono16` is public-domain X.Org misc-fixed 8x13 in 8x16 cells —
+`components/stark_gfx/fonts/README.md`).
 V0 ships one 8×16 ASCII font (`gfx_font_mono16`) plus optionally a 6×10. Latin-1 /
 Turkish glyph coverage is a V0.1 follow-up; `gfx_text` decodes UTF-8 and substitutes
 `?` for unmapped code points from the start so the API never changes.

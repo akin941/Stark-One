@@ -79,6 +79,22 @@ check "gpio-centralized" bash -c '
     exit 0
 '
 
+# --- Font table reproducible (STARK-0014 AC 4) ---------------------------
+# tools/fontconv.py must regenerate the committed subset BDF and C table
+# byte-for-byte (commands: components/stark_gfx/fonts/README.md).
+# shellcheck disable=SC2016 # single-quoted on purpose (see gpio-centralized)
+check "font-reproducible" bash -c '
+    set -e
+    tmp=$(mktemp -d); trap "rm -rf \"\$tmp\"" EXIT
+    fonts=components/stark_gfx/fonts
+    python3 tools/fontconv.py subset "$fonts/misc-fixed-8x13-ascii.bdf" "$tmp/subset.bdf" \
+        --first 0x20 --last 0x7E
+    cmp -s "$fonts/misc-fixed-8x13-ascii.bdf" "$tmp/subset.bdf"
+    python3 tools/fontconv.py generate "$fonts/misc-fixed-8x13-ascii.bdf" "$tmp/font_mono16.c" \
+        --name gfx_font_mono16 --cell 8x16 --baseline 13 --first 0x20 --last 0x7E --fallback 0x3F
+    sed "s|$tmp/font_mono16.c|font_mono16.c|" "$tmp/font_mono16.c" | cmp -s - "$fonts/font_mono16.c"
+'
+
 # --- Git status after build (no tracked generated files) -----------------
 # This check is also run manually; here we verify .gitignore covers the
 # standard ESP-IDF build outputs.
