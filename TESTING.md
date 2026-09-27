@@ -72,8 +72,7 @@ test-shaped noise).
 **Representative cases to write**
 
 * *Event bus:* publish/dispatch ordering; capacity overflow drops the oldest and counts
-  it; type-mask filtering; subscribe/unsubscribe during dispatch; empty dispatch is a
-  no-op.
+  it; type-mask filtering; subscribe during dispatch; empty dispatch is a no-op.
 * *Input FSM:* bounce shorter than 20 ms is ignored; press→release < 500 ms = SHORT;
   hold ≥ 500 ms = exactly one LONG; repeats start at 400 ms and recur every 120 ms;
   two keys tracked independently; OK/BACK never repeat.
