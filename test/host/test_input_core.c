@@ -3,7 +3,9 @@
  *
  * TESTING.md §2 "Input FSM", driven by an explicit now_ms timeline (one
  * sample per millisecond unless a test says otherwise) — nothing sleeps.
+ * Timing injection and the OK+BACK chord: STARK-0106.
  */
+#include <string.h>
 #include "input_core.h"
 #include "unity.h"
 
@@ -71,7 +73,7 @@ static uint32_t press(stark_key_t key)
 
 void setUp(void)
 {
-    input_core_init(&s_core);
+    TEST_ASSERT_EQUAL(STARK_OK, input_core_init(&s_core, NULL));
     s_n = 0;
     s_t = 1000;
 }
@@ -269,16 +271,127 @@ void test_all_six_keys_at_once_fit_in_max_actions(void)
 {
     const uint8_t all = (uint8_t)((1u << STARK_KEY_COUNT) - 1u);
     run(all, 30);
-    TEST_ASSERT_EQUAL_size_t(STARK_KEY_COUNT, s_n);
+    /* six PRESS on one sample, then the OK+BACK chord */
+    TEST_ASSERT_EQUAL_size_t(STARK_KEY_COUNT + 1, s_n);
+    TEST_ASSERT_EQUAL(STARK_KEY_CHORD, s_log[STARK_KEY_COUNT].a.action);
     s_n = 0;
     run(0, INPUT_DEBOUNCE_MS); /* nothing yet */
     TEST_ASSERT_EQUAL_size_t(0, s_n);
     sample_at(0, s_t++); /* every key's release debounces on the same sample */
-    TEST_ASSERT_EQUAL_size_t(INPUT_CORE_MAX_ACTIONS, s_n); /* RELEASE + SHORT x6 */
-    for (size_t i = 0; i < s_n; i++) {
+    /* RELEASE + SHORT for the four directions, RELEASE alone for the chord's keys */
+    TEST_ASSERT_EQUAL_size_t(4 * 2 + 2, s_n);
+    TEST_ASSERT_LESS_OR_EQUAL(INPUT_CORE_MAX_ACTIONS, s_n);
+    for (size_t i = 0; i < 8; i++) {
         TEST_ASSERT_EQUAL(i / 2, s_log[i].a.key); /* key order */
         TEST_ASSERT_EQUAL(i % 2 ? STARK_KEY_SHORT : STARK_KEY_RELEASE, s_log[i].a.action);
     }
+    TEST_ASSERT_EQUAL(STARK_KEY_OK, s_log[8].a.key);
+    TEST_ASSERT_EQUAL(STARK_KEY_RELEASE, s_log[8].a.action);
+    TEST_ASSERT_EQUAL(STARK_KEY_BACK, s_log[9].a.key);
+    TEST_ASSERT_EQUAL(STARK_KEY_RELEASE, s_log[9].a.action);
+}
+
+/* ---- timing injection (STARK-0106) --------------------------------------- */
+
+void test_custom_timing_is_honoured(void)
+{
+    const input_core_timing_t t = {10, 300, 200, 50};
+    TEST_ASSERT_EQUAL(STARK_OK, input_core_init(&s_core, &t));
+    uint32_t edge = s_t;
+    run(BIT(STARK_KEY_UP), 11);
+    uint32_t p = when(STARK_KEY_UP, STARK_KEY_PRESS, 0);
+    TEST_ASSERT_EQUAL_UINT32(edge + 10, p);
+    run(BIT(STARK_KEY_UP), 400);
+    TEST_ASSERT_EQUAL_UINT32(p + 200, when(STARK_KEY_UP, STARK_KEY_REPEAT, 0));
+    TEST_ASSERT_EQUAL_UINT32(p + 250, when(STARK_KEY_UP, STARK_KEY_REPEAT, 1));
+    TEST_ASSERT_EQUAL_UINT32(p + 300, when(STARK_KEY_UP, STARK_KEY_LONG, 0));
+}
+
+void test_invalid_timing_is_rejected_and_core_untouched(void)
+{
+    press(STARK_KEY_OK); /* some state to preserve */
+    input_core_t before;
+    memcpy(&before, &s_core, sizeof before);
+    static const input_core_timing_t bad[] = {
+        {20, 500, 400, INPUT_REPEAT_MIN_MS - 1}, /* repeat interval too short */
+        {20, 500, 19, 120},                      /* repeat delay below debounce */
+        {20, 20, 400, 120},                      /* long press not above debounce */
+    };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, input_core_init(&s_core, &bad[i]));
+        TEST_ASSERT_EQUAL_MEMORY(&before, &s_core, sizeof before);
+    }
+    const input_core_timing_t edge = {20, 21, 20, INPUT_REPEAT_MIN_MS}; /* all at the limit */
+    TEST_ASSERT_EQUAL(STARK_OK, input_core_init(&s_core, &edge));
+}
+
+/* ---- the OK+BACK chord (STARK-0106) --------------------------------------- */
+
+void test_chord_ok_then_back(void)
+{
+    press(STARK_KEY_OK);
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), INPUT_DEBOUNCE_MS + 1);
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_OK, STARK_KEY_CHORD));
+    TEST_ASSERT_EQUAL_UINT32(when(STARK_KEY_BACK, STARK_KEY_PRESS, 0),
+                             when(STARK_KEY_OK, STARK_KEY_CHORD, 0));
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), 100);
+    run(0, 60);
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_OK, STARK_KEY_RELEASE));
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_BACK, STARK_KEY_RELEASE));
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_OK, STARK_KEY_SHORT));
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_BACK, STARK_KEY_SHORT));
+}
+
+void test_chord_back_then_ok_and_both_at_once(void)
+{
+    press(STARK_KEY_BACK);
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), INPUT_DEBOUNCE_MS + 1);
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_OK, STARK_KEY_CHORD));
+    run(0, 60);
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), INPUT_DEBOUNCE_MS + 1); /* both on one sample */
+    TEST_ASSERT_EQUAL_size_t(2, count(STARK_KEY_OK, STARK_KEY_CHORD));
+    TEST_ASSERT_EQUAL(STARK_KEY_CHORD, s_log[s_n - 1].a.action); /* after both PRESS */
+}
+
+void test_chord_suppresses_long_while_held(void)
+{
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), 900);
+    run(0, 60);
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_OK, STARK_KEY_CHORD));
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_OK, STARK_KEY_LONG));
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_BACK, STARK_KEY_LONG));
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_OK, STARK_KEY_SHORT));
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_BACK, STARK_KEY_SHORT));
+}
+
+void test_chord_stays_latched_until_both_released(void)
+{
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), 50);
+    run(BIT(STARK_KEY_BACK), 50);                     /* OK released, BACK held */
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), 50); /* OK pressed again */
+    TEST_ASSERT_EQUAL_size_t(2, count(STARK_KEY_OK, STARK_KEY_PRESS));
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_OK, STARK_KEY_CHORD)); /* no second chord */
+    run(0, 60);
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_OK, STARK_KEY_SHORT));
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_BACK, STARK_KEY_SHORT));
+    /* both released: the chord is free again, and plain OK works normally */
+    run(BIT(STARK_KEY_OK), 50);
+    run(0, 60);
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_OK, STARK_KEY_SHORT));
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), 50);
+    TEST_ASSERT_EQUAL_size_t(2, count(STARK_KEY_OK, STARK_KEY_CHORD));
+}
+
+void test_chord_after_ok_long_suppresses_back_long(void)
+{
+    uint32_t p = press(STARK_KEY_OK);
+    run(BIT(STARK_KEY_OK), 600);
+    TEST_ASSERT_EQUAL_UINT32(p + 500, when(STARK_KEY_OK, STARK_KEY_LONG, 0));
+    run(BIT(STARK_KEY_OK) | BIT(STARK_KEY_BACK), 800);
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_OK, STARK_KEY_CHORD));
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_BACK, STARK_KEY_LONG));
+    run(0, 60);
+    TEST_ASSERT_EQUAL_size_t(0, count(STARK_KEY_BACK, STARK_KEY_SHORT));
 }
 
 /* ---- update-rate independence ------------------------------------------ */
@@ -350,13 +463,13 @@ void test_null_out_advances_state_and_null_core_is_ignored(void)
 
     input_action_t out[INPUT_CORE_MAX_ACTIONS];
     TEST_ASSERT_EQUAL_size_t(0, input_core_update(NULL, 0x3F, 0, out, INPUT_CORE_MAX_ACTIONS));
-    input_core_init(NULL); /* must not crash */
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, input_core_init(NULL, NULL));
 }
 
 void test_init_forgets_a_held_key(void)
 {
     press(STARK_KEY_OK);
-    input_core_init(&s_core);
+    TEST_ASSERT_EQUAL(STARK_OK, input_core_init(&s_core, NULL));
     s_n = 0;
     run(0, 100);
     TEST_ASSERT_EQUAL_size_t(0, s_n);
@@ -379,6 +492,13 @@ int main(void)
     RUN_TEST(test_two_keys_are_tracked_independently);
     RUN_TEST(test_each_bit_maps_to_its_key_and_high_bits_are_ignored);
     RUN_TEST(test_all_six_keys_at_once_fit_in_max_actions);
+    RUN_TEST(test_custom_timing_is_honoured);
+    RUN_TEST(test_invalid_timing_is_rejected_and_core_untouched);
+    RUN_TEST(test_chord_ok_then_back);
+    RUN_TEST(test_chord_back_then_ok_and_both_at_once);
+    RUN_TEST(test_chord_suppresses_long_while_held);
+    RUN_TEST(test_chord_stays_latched_until_both_released);
+    RUN_TEST(test_chord_after_ok_long_suppresses_back_long);
     RUN_TEST(test_a_gap_between_updates_does_not_burst_repeats);
     RUN_TEST(test_release_seen_late_emits_long_then_release_never_short);
     RUN_TEST(test_now_ms_may_wrap);

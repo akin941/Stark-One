@@ -8,5 +8,22 @@ config STARK_INPUT_POLL_MS
     help
         Period of the esp_timer that samples the six key GPIOs and runs
         the debounce/repeat core (components/stark_input). The debounce,
-        long-press and repeat timings are separate constants in
-        input_core.h and do not depend on this. ARCHITECTURE.md §6.6, §9.
+        long-press and repeat timings are separate and do not depend on
+        this. ARCHITECTURE.md §6.6, §9.
+
+config STARK_INPUT_REPEAT_DELAY_MS
+    int "Key repeat delay (ms)"
+    range 150 1000
+    default 400
+    help
+        How long UP/DOWN/LEFT/RIGHT must be held before they start to
+        repeat. Tuned on hardware at the V1 prototype ("repeat timing feels
+        right", TESTING.md §5); the same value in simulation and on the
+        board (ADR-0010). Runtime adjustment is V0.2's settings.
+
+config STARK_INPUT_REPEAT_INTERVAL_MS
+    int "Key repeat interval (ms)"
+    range 40 500
+    default 120
+    help
+        Time between two repeats while a direction key stays held.

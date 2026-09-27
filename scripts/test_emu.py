@@ -26,6 +26,9 @@ Scenario files (test/emu/*.toml):
   presses = [ { key = "DOWN", at_ms = 400, hold_ms = 60 } ]
   expect = [ "boot: ui_ready in ", 'menu: sel=1 "Buzzer Test"' ]  # in order
   forbid = [ "panic:" ]                 # optional; added to DEFAULT_FORBID
+  forbid_after = [ { after = "ui: chord reserved", text = "app: start" } ]
+                                        # optional; text must not follow the
+                                        # first line containing `after`
   heap_min = 200000                     # optional; first `diag: heap=` gate
 
 Usage:
@@ -121,6 +124,14 @@ def check_log(scenario, log, gdb_log):
         hit = next((line for line in lines if bad in line), None)
         if hit is not None:
             failures.append("forbidden output %r: %s" % (bad, hit.strip()))
+    for rule in scenario.get("forbid_after", []):
+        anchor = next((i for i, line in enumerate(lines) if rule["after"] in line), None)
+        if anchor is None:
+            failures.append("forbid_after anchor not found: %r" % rule["after"])
+            continue
+        hit = next((line for line in lines[anchor + 1:] if rule["text"] in line), None)
+        if hit is not None:
+            failures.append("%r after %r: %s" % (rule["text"], rule["after"], hit.strip()))
     if "heap_min" in scenario:
         m = re.search(r"diag: heap=(\d+)", log)
         if not m:

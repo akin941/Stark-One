@@ -13,7 +13,9 @@
 #define ROW_H    28
 
 static const char *const k_names[STARK_KEY_COUNT] = {"UP", "DOWN", "LEFT", "RIGHT", "OK", "BACK"};
-static const char *const k_actions[] = {"press", "release", "repeat", "long", "short"};
+static const char *const k_actions[] = {"press", "release", "repeat", "long", "short", "chord"};
+_Static_assert(sizeof k_actions / sizeof k_actions[0] == STARK_KEY_CHORD + 1,
+               "one name per stark_key_action_t");
 
 static bool s_down[STARK_KEY_COUNT];
 static int s_last[STARK_KEY_COUNT]; /* stark_key_action_t, or -1 */

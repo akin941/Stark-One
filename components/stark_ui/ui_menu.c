@@ -126,6 +126,9 @@ static bool menu_event(stark_screen_t *self, const stark_event_t *e)
                 return true;
             }
             moved = ui_menu_model_page(&m->model, e->key.key == STARK_KEY_LEFT ? -1 : +1);
+            if (!moved) {
+                stark_buzzer_reject(); /* already at that end (STARK-0106) */
+            }
             break;
         case STARK_KEY_OK:
             if (e->key.action != STARK_KEY_SHORT) {

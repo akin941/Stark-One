@@ -53,6 +53,17 @@ stark_err_t stark_ui_push(stark_screen_t *screen);
  */
 stark_err_t stark_ui_pop(void);
 
+/*
+ * Pops every screen above the root, top-down, each through the normal pop
+ * path (so a running app's on_stop runs and an open dialog reports
+ * CANCEL), then redraws the root. Logs `ui: home depth=<n>` (screens
+ * popped); already at the root, it logs `ui: home at root` and gives the
+ * reject buzz. A BACK held long (STARK_KEY_LONG) calls it from anywhere,
+ * before the top screen sees the key (STARK-0106). STARK_ERR_STATE before
+ * init.
+ */
+stark_err_t stark_ui_pop_to_root(void);
+
 /* The area below the status bar: where a screen draws (STARK-0103). */
 gfx_rect_t stark_ui_content_rect(void);
 
@@ -61,11 +72,12 @@ gfx_rect_t stark_ui_content_rect(void);
 void stark_ui_invalidate(stark_screen_t *s, gfx_rect_t area);
 
 /*
- * One UI frame: dispatch every queued event (each goes to the top screen's
- * on_event; an unconsumed BACK short press pops, and at the root is a
- * no-op), then, if the top screen or the status bar has damage, clear it
- * and render each rectangle of it once (non-overlapping, so no pixel is
- * drawn twice). Allocates nothing.
+ * One UI frame: dispatch every queued event (OK+BACK chord: reserved, logged
+ * `ui: chord reserved`; BACK long: stark_ui_pop_to_root(); anything else
+ * goes to the top screen's on_event, and an unconsumed BACK short press
+ * pops — at the root a no-op with a reject buzz), then, if the top screen or the status bar has
+ * damage, clear it and render each rectangle of it once (non-overlapping, so no pixel is drawn
+ * twice). Allocates nothing.
  */
 void stark_ui_tick(void);
 

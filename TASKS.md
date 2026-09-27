@@ -1113,7 +1113,7 @@ build time without code edits, and OK+BACK is reserved for a future soft reset.
 **Files.** `components/stark_input/{input_core.c,include/input_core.h,include/stark_input.h,input_service.c,Kconfig.stark}`,
 `components/stark_ui/{ui_stack.c,include/stark_ui.h,ui_menu.c}`, `main/Kconfig.projbuild`
 (if the menu lists files), `test/host/test_input_core.c`,
-`test/scenarios/v01-navigation.yaml`, ARCHITECTURE.md §6.6/§6.7.
+`test/emu/v01-navigation.toml`, ARCHITECTURE.md §6.6/§6.7.
 
 **Deps.** STARK-0105.
 
@@ -1147,14 +1147,17 @@ then re-press of it while the other is still held does not re-emit CHORD until b
 were released; OK then BACK after OK's LONG still chords (BACK's LONG suppressed).
 `input_core.c` stays at 100 % lines.
 
-**Wokwi/runtime.** `v01-navigation.yaml` (≤ 20 s): App Test → `Confirm dialog` → hold
-BACK 700 ms → `dialog: cancel`, `app: stop apptest`, `ui: home depth=2` (dialog plus
-app); hold BACK at the root → `ui: home at root`; OK+BACK together in the launcher →
-`key: OK+BACK chord`, `ui: chord reserved`, and no `app: start`.
+**Emulator / host UI port** (ADR-0017). `test/emu/v01-navigation.toml` on the production
+image: App Test → `Confirm dialog` → BACK held 700 ms → `key: BACK long`,
+`dialog: cancel`, `app: stop apptest`, `ui: home depth=2`; held again at the root →
+`ui: home at root`; OK+BACK together → `key: OK+BACK chord`, `ui: chord reserved`, and
+no `app: start` or `key: OK short` after it (`forbid_after`). `test_ui_navigation.c` on
+the host UI port: the same unwinding and its log order, the reject buzz at the root,
+the chord activating nothing, `stark_ui_pop_to_root()` directly, and the paging reject.
 
 **AC.**
 1. Host tests pass at 100 % of `input_core.c`.
-2. `v01-navigation.yaml` passes in CI.
+2. `v01-navigation.toml` passes in CI.
 3. Kconfig ranges enforce valid timing; defaults reproduce V0 timings exactly (the V0
    input-matrix scenario passes unchanged).
 4. `stark_ui_pop_to_root()` documented (never pops the root; STARK_ERR_STATE before

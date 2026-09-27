@@ -74,6 +74,14 @@ class CheckLog(unittest.TestCase):
         self.assertTrue(self.check(heap_min=400000))
         self.assertTrue(self.check(log="boot: ui_ready\n", heap_min=1))
 
+    def test_forbid_after(self):
+        rule = [{"after": "menu: sel=1", "text": "app: start"}]
+        self.assertTrue(self.check(forbid_after=rule))  # app: start follows sel=1
+        rule = [{"after": "app: start about", "text": "menu: sel="}]
+        self.assertEqual(self.check(forbid_after=rule), [])  # sel= only before
+        rule = [{"after": "not in the log", "text": "x"}]
+        self.assertTrue(self.check(forbid_after=rule))  # a missing anchor fails
+
     def test_schedule_must_complete(self):
         self.assertTrue(self.check(gdb="Remote connection closed\n"))
 

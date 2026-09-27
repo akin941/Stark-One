@@ -419,7 +419,15 @@ bursts missed repeats, and a release seen after 500 ms without `LONG` yields `LO
 * debounce: 20 ms stable-state filter
 * `SHORT` on release before 500 ms; `LONG` at 500 ms held (emitted once)
 * `REPEAT` every 120 ms after a 400 ms hold, for UP/DOWN/LEFT/RIGHT only
-* simultaneous keys are independent; no chords in V0
+* simultaneous keys are independent — except the OK+BACK **chord** (STARK-0106): when
+  both are debounced-pressed the core emits one `STARK_KEY_CHORD` (key = OK) and
+  suppresses SHORT and LONG for both keys until both are released. It is reserved for a
+  future soft reset; `stark_ui` consumes it (`ui: chord reserved`).
+
+The timings are injected (`input_core_init(c, &timing)`, NULL = the defaults above,
+invalid combinations rejected), so the core stays Kconfig-free; the service passes
+`STARK_INPUT_REPEAT_DELAY_MS` / `_INTERVAL_MS` (Kconfig, ranges 150–1000 / 40–500),
+tuned on hardware at V1. Runtime adjustment arrives with settings at V0.2.
 
 Service: a 5 ms `esp_timer` samples the six GPIOs (active-low, internal pull-up),
 runs the core, publishes `STARK_EVT_KEY` events. No ISR, no per-pin interrupts —
@@ -526,7 +534,8 @@ Navigation contract, global and non-negotiable:
 | LEFT / RIGHT | Page, or adjust coarse value; app-defined |
 | OK | Activate / confirm / enter |
 | BACK | Leave screen; at root, no-op with a short buzz |
-| BACK long-press | Force-return to root menu from anywhere (added in V0.1) |
+| BACK long-press | Force-return to root menu from anywhere (`stark_ui_pop_to_root()`, STARK-0106); at the root a reject buzz |
+| OK + BACK together | Reserved chord (future soft reset); no screen ever receives it |
 
 ### 6.8 `stark_app` (L4)
 

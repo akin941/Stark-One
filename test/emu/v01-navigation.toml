@@ -1,0 +1,36 @@
+# STARK-0106 on the production image: a BACK held long unwinds a dialog and
+# its app to the launcher (`ui: home depth=2`, the dialog reporting CANCEL);
+# held again at the root it only buzzes (`ui: home at root`); OK+BACK
+# together is the reserved chord — logged, and nothing launches after it.
+name = "emu-v01-navigation"
+end_ms = 3800
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 400, hold_ms = 60 },     # wrap to App Test
+    { key = "OK", at_ms = 600, hold_ms = 60 },     # launch it
+    { key = "OK", at_ms = 900, hold_ms = 60 },     # Confirm dialog
+    { key = "BACK", at_ms = 1200, hold_ms = 700 }, # long-BACK: home
+    { key = "BACK", at_ms = 2200, hold_ms = 700 }, # long-BACK at the root
+    { key = "OK", at_ms = 3100, hold_ms = 200 },   # OK+BACK chord
+    { key = "BACK", at_ms = 3130, hold_ms = 170 },
+]
+expect = [
+    'menu: sel=5 "App Test"',
+    "app: start apptest",
+    'dialog: open "Confirm"',
+    "key: BACK long",
+    "dialog: cancel",
+    "apptest: cancelled",
+    "app: stop apptest",
+    "ui: home depth=2",
+    "key: BACK long",
+    "ui: home at root",
+    "key: OK+BACK chord",
+    "ui: chord reserved",
+    "key: OK release",
+    "key: BACK release",
+]
+forbid_after = [
+    { after = "ui: chord reserved", text = "app: start" },
+    { after = "ui: chord reserved", text = "key: OK short" },
+]
