@@ -420,6 +420,23 @@ Service: a 5 ms `esp_timer` samples the six GPIOs (active-low, internal pull-up)
 runs the core, publishes `STARK_EVT_KEY` events. No ISR, no per-pin interrupts —
 polling at 5 ms is cheaper and immune to contact bounce storms.
 
+### 6.6a `stark_buzzer` (L3)
+
+```c
+stark_err_t stark_buzzer_init(void);                     /* LEDC channel 0, silent */
+stark_err_t stark_buzzer_tone(uint16_t hz, uint16_t ms);
+stark_err_t stark_buzzer_play(const stark_buzzer_note_t *notes, size_t count); /* <= 16 */
+void        stark_buzzer_stop(void);
+void        stark_buzzer_click(void);   /* 20 ms, 2 kHz: menu selection change */
+void        stark_buzzer_reject(void);  /* 60 ms, 300 Hz: BACK at root, nothing to select */
+```
+
+Non-blocking (STARK-0020): a request starts the first note and returns; a one-shot
+`esp_timer` steps through the rest; a new request replaces the old. One mutex covers
+the sequence, the PWM and the timer; a callback that fired for an older arming is
+recognised by its deadline and ignored. Before `init()` every call is a no-op, so
+`stark_ui` calls the feedback sounds unconditionally.
+
 ### 6.7 `stark_ui` (L4)
 
 A screen stack plus a small widget set. Retained-mode-lite: screens keep their own

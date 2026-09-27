@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "sdkconfig.h"
+#include "stark_buzzer.h"
 #include "stark_display.h"
 #include "stark_hal.h"
 #include "stark_input.h"
@@ -146,11 +147,11 @@ static void on_bus_event(const stark_event_t *e, void *ctx)
         return;
     }
     /* Global navigation (ARCHITECTURE §6.7): an unconsumed BACK leaves the
-     * screen; at the root it is a no-op — the short buzz arrives with
-     * stark_buzzer. */
+     * screen; at the root it is a no-op with a short low buzz. */
     if (e->type == STARK_EVT_KEY && e->key.key == STARK_KEY_BACK &&
         e->key.action == STARK_KEY_SHORT && stark_ui_pop() != STARK_OK) {
         STARK_LOGD("ui", "back at root");
+        stark_buzzer_reject();
     }
 }
 

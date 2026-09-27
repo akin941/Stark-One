@@ -7,7 +7,11 @@
 #include "app_list.h"
 
 static const stark_app_t *const stark_apps[] = {
-    /* one line per app, e.g. &app_about, — see app_list.h */
+    /* one line per app — see app_list.h */
+    &app_about,
+    &app_inputtest,
+    &app_displaytest,
+    &app_buzzertest,
 };
 
 const stark_app_t *const *app_registry(size_t *count)
