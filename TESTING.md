@@ -94,11 +94,11 @@ Run in CI on every commit, and locally via `scripts/check.sh`:
 | --- | --- | --- |
 | Clean build | `idf.py build` in `espressif/idf:v6.1` | Zero warnings. ESP-IDF v6 treats warnings as errors by default; we additionally enable `-Wshadow -Wconversion -Wundef -Wdouble-promotion` on `stark_*` components only (not on vendor components) |
 | Formatting | `clang-format` (config committed) | `scripts/fmt.sh --check` must produce no diff |
-| Layer rules | `scripts/check_layers.py` | Component `REQUIRES` must respect ARCHITECTURE §2 |
+| Layer rules | `scripts/check_layers.py` | Component `REQUIRES` must respect ARCHITECTURE §2 — *created by STARK-0100* |
 | Pin-map consistency | `scripts/check_pins.py` | `diagram.json` connections must match `stark_board` pins |
-| Static analysis | `clang-tidy` (bugprone-*, cert-*, readability-* subset) over `stark_*` sources | Findings fail CI; suppressions require an inline reason comment |
+| Static analysis | `clang-tidy` (bugprone-*, cert-*, readability-* subset) over `stark_*` sources | Findings fail CI; suppressions require an inline reason comment — **not yet active** (TASKS.md infrastructure debt register) |
 | Secrets | `gitleaks` | Any hit fails; no exceptions |
-| Binary size | `idf.py size` recorded per build | Informational until V0 completes, then a ±10 % regression is flagged in the PR |
+| Binary size | `idf.py size` recorded per build | Recorded per build; the ±10 % regression flag in the PR is **not yet active** (TASKS.md infrastructure debt register) — sizes are tracked in `docs/measurements.md` |
 | Dependency lock | `dependencies.lock` committed | CI fails if `idf.py build` modifies it |
 
 **Warnings policy, explicitly:** a warning is a bug we have not read yet. No
@@ -132,11 +132,15 @@ commit. Reserved prefixes:
 | `menu:` | `stark_ui` | `menu: sel=2 "Input Test"` |
 | `app:` | `stark_app` | `app: start inputtest` / `app: stop inputtest` |
 | `key:` | `stark_input` (DEBUG) | `key: OK short` |
-| `diag:` | `stark_diag` | `diag: heap=228412 fps=30 drops=0` |
+| `diag:` | `stark_diag` | `diag: heap=228412 min=224000 fps=30.0 drops=0 overruns=0` (STARK-0109; `heap=` stays first) |
+| `dialog:` | `stark_ui` dialogs | `dialog: open "Confirm"` / `dialog: ok` / `dialog: cancel` (STARK-0105) |
 
 **Scenario budget:** ≤ 20 s simulated time each. The full set runs on pull requests;
 a single smoke scenario runs on every push, because Wokwi CI minutes are quota-limited
-(free tier ≈ 50 min/month).
+(free tier ≈ 50 min/month). The one exception is the V0.1 soak (60 s simulated, ROADMAP
+V0.1 exit 3): it lives in `test/scenarios/soak/`, outside the default set, and runs in a
+`workflow_dispatch`-only CI job so it costs minutes only when a milestone close-out asks
+for it.
 
 **Planned scenarios by milestone**
 
@@ -145,7 +149,11 @@ a single smoke scenario runs on every push, because Wokwi CI minutes are quota-l
 | V0 | `v0-boot.yaml` | Boot lines appear in order, `boot: ui_ready` present, `diag: heap=` above the threshold |
 | V0 | `v0-boot-and-menu.yaml` | Navigate, launch an app, BACK returns to menu |
 | V0 | `v0-input-matrix.yaml` | All six keys produce the expected `key:` lines |
-| V0.1 | `v01-dialog.yaml` | Modal confirm opens, OK/BACK behave, no frame overruns |
+| V0.1 | `v01-dialog.yaml` | Modal confirm opens, OK/BACK behave, a key pressed before opening cannot confirm (overruns are reported, never asserted — ADR-0011) |
+| V0.1 | `v01-navigation.yaml` | Long-BACK unwinds dialog + app to the root; OK+BACK chord is reserved |
+| V0.1 | `v01-app-lifecycle.yaml` | Worker joined before `on_stop`; faults unwind to the launcher with an alert |
+| V0.1 | `v01-diag.yaml` | Diagnostics app shows live heap and FPS |
+| V0.1 | `soak/v01-soak.yaml` | 60 s of use: `drops=0` throughout, root heap delta ≤ 1 kB (dispatch-only — see budget) |
 | V0.2 | `v02-settings-persist.yaml` | Change a setting, reboot, value survives |
 | V0.2 | `v02-sd-write.yaml` | 100 kB write/read-back while UI renders |
 | V0.7 | `v07-i2c-scan.yaml` | Scanner finds the simulated devices' addresses |
@@ -208,29 +216,39 @@ hardware and must be documented as such in the test file.
 
 ## 7. CI pipeline
 
-`.github/workflows/ci.yml`, three jobs:
+`.github/workflows/ci.yml`, as it runs today (items marked *planned* are owned by the
+named task or the TASKS.md infrastructure debt register):
 
 ```
 lint      (ubuntu-latest, ~30 s)
-  ├─ clang-format --check
-  ├─ check_layers.py
+  ├─ clang-format --check        (scripts/fmt.sh --check)
+  ├─ check_layers.py             (planned: STARK-0100)
   ├─ check_pins.py
+  ├─ wokwi_gate.py unit tests
   └─ gitleaks
 
 host      (ubuntu-latest + macos-latest, ~1 min)
-  ├─ cmake -S test/host -B build-host -DSTARK_SANITIZE=ON
-  ├─ ctest --output-on-failure
-  └─ gcovr coverage report (artifact)
+  └─ scripts/test_host.sh        (sanitised Unity suite)
 
-firmware  (ubuntu-latest, container espressif/idf:v6.1, ~2-3 min)
-  ├─ idf.py build          (warnings-as-errors)
-  ├─ idf.py size           (artifact + size report in PR comment)
-  ├─ clang-tidy on stark_* (changed files on push, full set on PR)
+firmware  (ubuntu-latest, espressif/idf:v6.1, ~2-3 min)
+  ├─ idf.py build                (warnings-as-errors)
+  ├─ idf.py size                 (log; PR comment + ±10 % flag planned: debt register)
   ├─ verify dependencies.lock unchanged
-  └─ wokwi-ci-action: smoke scenario (push) / all scenarios (PR)
+  └─ upload firmware artifact for the wokwi job
+
+wokwi     (needs firmware; always reports)
+  ├─ scripts/wokwi_gate.py       (runtime-relevant change set? else "not applicable")
+  └─ scripts/test_wokwi.sh       (all scenarios on pull requests, v0-boot on push)
+
+wokwi-soak (workflow_dispatch only; planned: STARK-0110)
+  └─ scripts/test_wokwi.sh --soak
+
+clang-tidy on stark_*            (planned: debt register)
 ```
 
-Branch protection: `lint`, `host` and `firmware` must pass before merge.
+Merge rule: every job above that ran — `lint`, `host`, `firmware` and `wokwi` — must be
+green before merge. `main` has no GitHub branch protection configured; the rule is
+enforced by the working agreement (AGENTS.md), not by the repository settings.
 `main` is always releasable — if a milestone is mid-flight, it lives on a branch.
 
 ---

@@ -65,6 +65,9 @@ to run on the production SKU without using PSRAM (ADR-0014).
 **Goal:** turn the V0 skeleton into something a dozen apps can be built on without
 touching core code.
 
+**Entry:** V0 complete (STARK-0021). Tasks: STARK-0100 … STARK-0110 in
+[TASKS.md](TASKS.md), which also records how the V0 planning debt was disposed of.
+
 **Scope**
 
 * Damage-tracking refinement: per-widget invalidation, coalescing, frame-overrun stats
@@ -77,15 +80,27 @@ touching core code.
   (an app returning an error unwinds to the root menu instead of panicking)
 * `stark_diag` v1: heap, task high-water marks, FPS, event drops — surfaced in an app
 * Theme/colour constants centralised
+* Infrastructure owed by V0, settled first: the layer checker, one STARK Kconfig menu,
+  the strict warning flags (STARK-0100)
+
+Interpretations fixed at planning time (TASKS.md has the detail): categories are
+section headers in one launcher list, ordered by the registry; key-repeat tuning means
+build-time timing configuration (runtime adjustment arrives with settings at V0.2);
+`stark_diag` v1 is heap/task/FPS/drops/overruns — self-test and log export stay V0.7.
 
 **Exit criteria**
 
 1. A new "hello" app can be added in a single new component directory, < 120 lines,
-   with no edits to `components/`.
+   with no edits to `components/` (the registry line lives at the composition root,
+   ADR-0016).
 2. Modal confirm dialog works and is covered by a Wokwi scenario.
 3. Event-drop counters are zero over a 60 s scenario. Frame-overrun counts are
    *reported* from simulation but gated only on hardware (ADR-0011).
 4. Diagnostics app displays live heap and FPS.
+
+**Out of scope:** storage and settings persistence, runtime-adjustable key repeat,
+capability bits or hardware-driven disabling (V0.5), nested submenus, self-test, LVGL,
+PSRAM, any radio, any new hardware.
 
 ---
 
