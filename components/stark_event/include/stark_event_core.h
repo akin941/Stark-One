@@ -8,6 +8,9 @@
  * bus with the injected lock, and the lock is never held while a handler
  * runs — so a handler may publish or subscribe even when the lock is a
  * non-recursive mutex. Host tests inject a no-op lock.
+ *
+ * stark_event_handler_t and stark_event_stats_t are declared in
+ * stark_event.h, which the global bus's API (STARK-0010) shares.
  */
 #pragma once
 
@@ -25,15 +28,6 @@ typedef struct {
     void (*unlock)(void *ctx);
     void *ctx;
 } stark_lock_t;
-
-/* `e` points at a copy owned by dispatch(), valid only for the call. */
-typedef void (*stark_event_handler_t)(const stark_event_t *e, void *ctx);
-
-typedef struct {
-    uint32_t published; /* events accepted by publish(), dropped ones included */
-    uint32_t dropped;   /* oldest events discarded because the ring was full */
-    uint32_t max_depth; /* high-water mark of queued events */
-} stark_event_stats_t;
 
 typedef struct {
     uint32_t mask;

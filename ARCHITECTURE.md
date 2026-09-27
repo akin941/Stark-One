@@ -271,8 +271,27 @@ Core semantics (STARK-0009; `stark_event_core.h` documents each call in full):
   may read (under its lock). `ts_us` is never touched by the core.
 
 Port (`stark_event.c`): one global bus, a FreeRTOS mutex as the injected lock, a
-counting semaphore so the UI task can block on "bus non-empty", and an ISR-safe
+binary semaphore so the UI task can block until something is published, and an ISR-safe
 `stark_event_publish_from_isr()` added **only when a producer needs it** (not in V0).
+STARK-0010 implements it with static storage and static FreeRTOS objects (no allocation
+at all); the core's ring is the only event storage:
+
+```c
+stark_err_t stark_event_init(void);                       /* once, from app_main() */
+stark_err_t stark_event_publish(const stark_event_t *e);  /* stamps ts_us if 0 */
+stark_err_t stark_event_subscribe(uint32_t type_mask, stark_event_handler_t fn, void *ctx);
+size_t      stark_event_dispatch(uint32_t max_events);
+stark_err_t stark_event_wait(uint32_t timeout_ms);        /* STARK_OK | STARK_ERR_TIMEOUT */
+stark_err_t stark_event_stats(stark_event_stats_t *out);  /* snapshot under the mutex */
+```
+
+The semaphore only wakes; the ring decides. `wait()` returns `STARK_OK` exactly when the
+bus holds an undispatched event (checked before every take, so neither a lost wakeup nor
+a stale token after a drained burst is possible) and `STARK_ERR_TIMEOUT` otherwise.
+Binary rather than counting because a burst needs one wakeup, not one per event. Any
+number of producer tasks; exactly one consumer task (the UI task) calls `wait()` and
+`dispatch()`. Task context only — `esp_timer` callbacks qualify only with the default
+`ESP_TIMER_TASK` dispatch. Every call returns `STARK_ERR_STATE` before `init()`.
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
