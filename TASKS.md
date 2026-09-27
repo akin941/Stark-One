@@ -995,14 +995,17 @@ ARCHITECTURE.md §6.8/§11, DECISIONS.md (ADR-0016 status → implemented).
 
 **Host tests.** `test_app_catalog.c` unchanged and green.
 
-**Wokwi/runtime.** Launch Hello, see `app: start hello`, its screen (screenshot), BACK →
-`app: stop hello`; `app: registry n=5 about,…,hello` at boot.
+**Emulator / host** (ADR-0017). `test/emu/v01-hello.toml`: `app: registry n=5 …,hello`
+at boot, OK launches Hello (the first launcher row), `hello: uptime=` logs its
+once-a-second refresh, BACK → `app: stop hello`. The host UI port's tests inject their
+registries through `stark_app_init()` like `main` does (NULL array/entry rejected).
 
 **AC.**
 1. `git diff --stat` of the commit that adds `apps/app_hello/` plus its registry line
    touches only `apps/app_hello/**` and `main/app_registry.{c,h}` — shown by making it a
-   separate, final commit in the PR (both commits carry the `STARK-0104:` subject);
-   `wc -l apps/app_hello/*` < 120.
+   separate commit in the PR (every commit carries the `STARK-0104:` subject; a third
+   commit carries the scenario-expectation and doc updates the new launcher order
+   implies); `wc -l apps/app_hello/*` < 120.
 2. `grep -rn "app_about\|app_hello" components/` returns nothing.
 3. Hello launches, renders, exits; V0 scenarios updated and green.
 4. `check_layers.py` still passes (main may reference apps; nothing else does).

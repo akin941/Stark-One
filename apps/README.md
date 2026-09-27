@@ -21,4 +21,5 @@ Every `apps/app_<name>/` directory is an ESP-IDF component, discovered through
 3. one `&app_<name>,` line in the `stark_apps[]` array in `main/app_registry.c`.
 
 The registry lives at the composition root (ADR-0016), so adding an app edits nothing
-under `components/`. Nothing else. If a new app needs any other core edit, the abstraction is wrong.
+under `components/`. `app_hello/` is the reference: 96 lines, added in one commit that
+touched only its directory and `main/app_registry.{h,c}` (STARK-0104). Nothing else. If a new app needs any other core edit, the abstraction is wrong.
