@@ -144,6 +144,25 @@ stark_err_t stark_ui_pop(void)
     return STARK_OK;
 }
 
+stark_err_t stark_ui_pop_to_root(void)
+{
+    if (!s_ready) {
+        return STARK_ERR_STATE;
+    }
+    unsigned popped = 0;
+    while (s_depth > 1) {
+        (void)stark_ui_pop(); /* each screen's normal exit: on_stop, dialog CANCEL */
+        popped++;
+    }
+    if (popped > 0) {
+        STARK_LOGI("ui", "home depth=%u", popped);
+    } else {
+        STARK_LOGI("ui", "home at root");
+        stark_buzzer_reject();
+    }
+    return STARK_OK;
+}
+
 /* ---- events ----------------------------------------------------------- */
 
 static void on_bus_event(const stark_event_t *e, void *ctx)
@@ -151,6 +170,18 @@ static void on_bus_event(const stark_event_t *e, void *ctx)
     (void)ctx;
     stark_screen_t *t = top();
     if (t == NULL) {
+        return;
+    }
+    /* Global navigation first, before any screen can consume it
+     * (ARCHITECTURE §6.7): OK+BACK is reserved for a future soft reset, and
+     * a BACK held long goes home from anywhere (STARK-0106). */
+    if (e->type == STARK_EVT_KEY && e->key.action == STARK_KEY_CHORD) {
+        STARK_LOGI("ui", "chord reserved");
+        return;
+    }
+    if (e->type == STARK_EVT_KEY && e->key.key == STARK_KEY_BACK &&
+        e->key.action == STARK_KEY_LONG) {
+        (void)stark_ui_pop_to_root();
         return;
     }
     if (t->on_event != NULL && t->on_event(t, e)) {

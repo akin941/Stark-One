@@ -31,6 +31,7 @@ typedef enum {
     STARK_KEY_REPEAT,  /* held: after 400 ms, then every 120 ms — UP/DOWN/LEFT/RIGHT only */
     STARK_KEY_LONG,    /* held 500 ms: emitted once per press */
     STARK_KEY_SHORT,   /* released before LONG was emitted */
+    STARK_KEY_CHORD,   /* OK and BACK held together (key = OK): reserved, STARK-0106 */
 } stark_key_action_t;
 
 /*

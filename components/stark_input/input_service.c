@@ -36,6 +36,8 @@ static const char *action_name(stark_key_action_t action)
             return "long";
         case STARK_KEY_SHORT:
             return "short";
+        case STARK_KEY_CHORD:
+            return "chord";
     }
     return "?";
 }
@@ -57,7 +59,11 @@ static void sample_cb(void *arg)
         /* NOTE: never retry — if the bus is full it drops its oldest event
          * and counts it in stats.dropped, which is the signal (TASKS.md). */
         (void)stark_event_publish(&e);
-        STARK_LOGD("key", "%s %s", k_key_names[out[i].key], action_name(out[i].action));
+        if (out[i].action == STARK_KEY_CHORD) {
+            STARK_LOGD("key", "OK+BACK chord");
+        } else {
+            STARK_LOGD("key", "%s %s", k_key_names[out[i].key], action_name(out[i].action));
+        }
     }
 }
 
@@ -67,13 +73,22 @@ stark_err_t stark_input_start(void)
         return STARK_ERR_STATE;
     }
 
-    input_core_init(&s_core);
+    static const input_core_timing_t timing = {
+        INPUT_DEBOUNCE_MS,
+        INPUT_LONG_PRESS_MS,
+        CONFIG_STARK_INPUT_REPEAT_DELAY_MS,
+        CONFIG_STARK_INPUT_REPEAT_INTERVAL_MS,
+    };
+    stark_err_t err = input_core_init(&s_core, &timing); /* Kconfig ranges keep it valid */
+    if (err != STARK_OK) {
+        return err;
+    }
     const esp_timer_create_args_t args = {
         .callback = sample_cb,
         .dispatch_method = ESP_TIMER_TASK,
         .name = "stark_input",
     };
-    stark_err_t err = stark_err_from_esp(esp_timer_create(&args, &s_timer));
+    err = stark_err_from_esp(esp_timer_create(&args, &s_timer));
     if (err != STARK_OK) {
         s_timer = NULL;
         return err;

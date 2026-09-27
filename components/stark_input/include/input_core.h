@@ -17,22 +17,38 @@
  *    that arrives after INPUT_LONG_PRESS_MS without LONG having been seen
  *    (a gap between updates) emits LONG then RELEASE, never SHORT.
  * Elapsed times use unsigned subtraction, so now_ms may wrap.
+ *
+ * Chord (STARK-0106): when OK and BACK are both debounced-pressed, one
+ * CHORD action (key = OK) is emitted, and from then on SHORT and LONG are
+ * suppressed for both keys (PRESS and RELEASE still flow) until both have
+ * been released; only then can a new chord form. OK+BACK is reserved for a
+ * future soft reset, so no app can ever act on it.
  */
 #pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "stark_err.h"
 #include "stark_input.h"
 
+/* Default timings (the V0 values); input_core_init() takes others. */
 #define INPUT_DEBOUNCE_MS        20
 #define INPUT_LONG_PRESS_MS      500
 #define INPUT_REPEAT_DELAY_MS    400
 #define INPUT_REPEAT_INTERVAL_MS 120
+#define INPUT_REPEAT_MIN_MS      40 /* the shortest repeat interval accepted */
 
 /* At most two actions per key per update (RELEASE+SHORT, LONG+RELEASE or
- * LONG+REPEAT): an out array this large never loses an action. */
-#define INPUT_CORE_MAX_ACTIONS   (2 * STARK_KEY_COUNT)
+ * LONG+REPEAT) plus one CHORD: an out array this large never loses one. */
+#define INPUT_CORE_MAX_ACTIONS   (2 * STARK_KEY_COUNT + 1)
+
+typedef struct {
+    uint16_t debounce_ms;
+    uint16_t long_ms;
+    uint16_t repeat_delay_ms;
+    uint16_t repeat_interval_ms;
+} input_core_timing_t;
 
 typedef struct {
     stark_key_t key;
@@ -53,10 +69,17 @@ typedef struct {
 
 typedef struct {
     input_key_state_t key[STARK_KEY_COUNT];
+    input_core_timing_t t;
+    bool chord; /* OK+BACK latched until both are released */
 } input_core_t;
 
-/* Every key released, no history. */
-void input_core_init(input_core_t *c);
+/*
+ * Every key released, no history, with timing `t` (NULL: the defaults
+ * above). STARK_ERR_INVALID_ARG — and c untouched — for a NULL c or a
+ * timing with repeat_interval_ms < INPUT_REPEAT_MIN_MS, repeat_delay_ms <
+ * debounce_ms, or long_ms <= debounce_ms.
+ */
+stark_err_t input_core_init(input_core_t *c, const input_core_timing_t *t);
 
 /*
  * Advances every key to now_ms given the raw levels in raw_bitmap (bit k set
