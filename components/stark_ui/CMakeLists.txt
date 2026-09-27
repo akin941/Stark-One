@@ -1,8 +1,11 @@
-# STARK-0017: screen stack, status bar, damage-driven rendering, UI loop.
+# Screen stack, status bar, damage-driven rendering, UI loop (STARK-0017);
+# list menu widget + pure, host-tested menu model (STARK-0018).
 idf_component_register(
     SRCS
         "ui_stack.c"
         "ui_statusbar.c"
+        "ui_menu.c"
+        "ui_menu_model.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

@@ -454,10 +454,19 @@ draw with their clip limited to the area below the 16 px status bar. The loop bo
 
 Widgets in V0: **status bar** (title; battery/SD/clock arrive with their tasks — V0 draws
 nothing there rather than placeholders) and
-**list menu** (`stark_ui_menu_t`: items, icons optional, scroll window, selection,
-wrap-around). The menu *model* (selection movement, scroll window arithmetic, paging)
-lives in `stark_ui_model.c` as pure code with host tests; the rendering lives beside it
-and is verified visually in Wokwi.
+**list menu** (`ui_menu_t` in `ui_menu.h`: items, scroll window, selection,
+wrap-around; icons are not in V0). The menu *model* (selection movement, scroll window
+arithmetic, paging) lives in `ui_menu_model.c` as pure code with host tests; the
+rendering lives beside it (`ui_menu.c`) and is verified visually in Wokwi.
+
+STARK-0018 specifics: 24 px rows (nine below the status bar), the selection inverted,
+disabled items dimmed and skipped, a 4 px scroll indicator at the right while the list
+overflows, `(empty)` for a list with no items. UP/DOWN act on press and repeat with
+wrap; LEFT/RIGHT page one window, clamped at the ends; OK (short) activates. A move
+between adjacent visible rows invalidates exactly those two rows; a move that scrolls
+the window, wraps or pages invalidates the list; because the UI renders the *union* of a
+frame's damage, a move that skips disabled items also repaints the rows between.
+Each change logs `menu: sel=<n> "<label>"` (INFO; the index is 0-based).
 
 Navigation contract, global and non-negotiable:
 
