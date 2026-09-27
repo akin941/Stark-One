@@ -650,7 +650,7 @@ and 0104 (registry + hello app) are new splits of ROADMAP scope items.
 same log lines (the soak is `test/emu/soak/v01-soak.toml`); a "screenshot" means a
 host render check at the display boundary — the screen rendered into a memory surface
 by the production drawing code on a host display test port and compared pixel by
-pixel (docs/VALIDATION.md §3.3); a "throwaway build" runs in the emulator. Evidence
+pixel (docs/VALIDATION.md §3.3, §3.4); a "throwaway build" runs in the emulator. Evidence
 that needs a real panel, switch, piezo or LED is labelled *physical, deferred to HIL*.
 Per-task wording is updated as each task is taken up.
 
