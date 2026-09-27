@@ -473,7 +473,11 @@ redraws the new top screen and the status bar in full; otherwise each tick takes
 screen's damage plus the status bar's, clears them, and renders each rectangle once.
 Screens
 draw with their clip limited to the area below the 16 px status bar. The loop body is
-`stark_ui_task()` (created by `main`, §7); colours and layout live in `ui_theme.h`.
+`stark_ui_task()` (created by `main`, §7). Since STARK-0103 every colour and layout
+constant lives in the public `stark_theme.h`, and screens get their drawing area from
+`stark_ui_content_rect()`: apps use theme names, never literal colours, the literal
+320/240 or the status-bar height (a test pattern's own colours excepted). A constant
+is added with its first user.
 
 STARK-0101 specifics: damage is a set of at most four non-overlapping rectangles
 (`ui_damage.h`, pure, host-tested). An invalidation merges with every stored rect it

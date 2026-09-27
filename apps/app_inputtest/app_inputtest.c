@@ -7,8 +7,9 @@
 #include "gfx_font.h"
 #include "stark_app.h"
 #include "stark_input.h"
+#include "stark_theme.h"
 
-#define ROW_Y(k) (int16_t)(16 + 8 + (k) * 28)
+#define ROW_Y(k) (int16_t)(stark_ui_content_rect().y + 8 + (k) * 28)
 #define ROW_H    28
 
 static const char *const k_names[STARK_KEY_COUNT] = {"UP", "DOWN", "LEFT", "RIGHT", "OK", "BACK"};
@@ -32,7 +33,7 @@ static bool input_event(stark_screen_t *self, const stark_event_t *e)
     } else if (e->key.action == STARK_KEY_RELEASE) {
         s_down[k] = false;
     }
-    stark_ui_invalidate(self, (gfx_rect_t){0, ROW_Y(k), 320, ROW_H});
+    stark_ui_invalidate(self, (gfx_rect_t){0, ROW_Y(k), stark_ui_content_rect().w, ROW_H});
     /* BACK short is left unconsumed so stark_ui still pops the app. */
     return !(k == STARK_KEY_BACK && e->key.action == STARK_KEY_SHORT);
 }
@@ -40,14 +41,14 @@ static bool input_event(stark_screen_t *self, const stark_event_t *e)
 static void input_render(stark_screen_t *self, gfx_surface_t *s)
 {
     (void)self;
-    gfx_fill(s, s->clip, GFX_RGB565(0, 0, 0));
+    gfx_fill(s, s->clip, STARK_THEME_BG);
     for (int k = 0; k < STARK_KEY_COUNT; k++) {
         char line[48];
         snprintf(line, sizeof line, "%-6s %-4s %-8s n=%u", k_names[k], s_down[k] ? "DOWN" : "up",
                  s_last[k] >= 0 ? k_actions[s_last[k]] : "-", s_presses[k]);
-        uint16_t fg = s_down[k] ? GFX_RGB565(255, 255, 0) : GFX_RGB565(255, 255, 255);
-        (void)gfx_text(s, &gfx_font_mono16, 8, (int16_t)(ROW_Y(k) + 6), line, fg,
-                       GFX_RGB565(0, 0, 0), true);
+        uint16_t fg = s_down[k] ? STARK_THEME_ACTIVE : STARK_THEME_FG;
+        (void)gfx_text(s, &gfx_font_mono16, STARK_THEME_TEXT_X, (int16_t)(ROW_Y(k) + 6), line, fg,
+                       STARK_THEME_BG, true);
     }
 }
 

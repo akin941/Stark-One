@@ -161,6 +161,9 @@ the root rejects with no render; a failed render is logged, not fatal. Building 
 also exposed a latent defect — `ui_statusbar.c` used `NULL` without `<stddef.h>`,
 compiling on target only through an ESP-IDF header — fixed with the port.
 
+`test_ui_apps.c` pins the real Input Test (idle and key held), Buzzer Test and Display
+Test frames; they proved STARK-0103's theme refactor pixel-identical.
+
 A golden is recorded only after the rendered frame (`build-host/*.ppm`) was looked at;
 a deliberate visual change updates it in the same commit. A one-pixel shift of the
 menu text inset fails it.
