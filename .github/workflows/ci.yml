@@ -1,6 +1,7 @@
 # STARK-0004/0005/0006: CI pipeline.
 #
-#   lint      — clang-format --check + check_pins.py + gitleaks (STARK-0004/0006)
+#   lint      — clang-format --check + check_layers.py (STARK-0100) + check_pins.py
+#               + gitleaks (STARK-0004/0006)
 #   firmware  — idf.py build (pinned espressif/idf image) + idf.py size (STARK-0004)
 #   host      — scripts/test_host.sh on ubuntu-latest + macos-latest (STARK-0005)
 #   esp-emulator — Tier 3: the built firmware runs in Espressif's pinned,
@@ -35,6 +36,9 @@ jobs:
 
       - name: clang-format --check
         run: scripts/fmt.sh --check
+
+      - name: check_layers.py
+        run: python3 scripts/check_layers.py
 
       - name: check_pins.py
         run: python3 scripts/check_pins.py

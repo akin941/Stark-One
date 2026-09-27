@@ -1,0 +1,13 @@
+# stark_event options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). ESP-IDF does not pick up a
+# `Kconfig.stark` on its own, so the menu is assembled in one place.
+
+config STARK_EVENT_QUEUE_LEN
+    int "Event bus capacity (events)"
+    default 32
+    help
+        Number of events the global bus (components/stark_event) can
+        hold. When it is full, publishing drops the oldest queued event
+        and counts it in stark_event_stats().dropped. Static storage:
+        this many stark_event_t (24 bytes each on ESP32-S3), reserved at
+        build time. See ARCHITECTURE.md §6.3 and §9.

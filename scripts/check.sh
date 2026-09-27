@@ -40,6 +40,9 @@ check "shell-syntax-test-wokwi" bash -n scripts/test_wokwi.sh
 check "shell-syntax-test-emu"   bash -n scripts/test_emu.sh
 check "shell-syntax-install-esp-emu" bash -n scripts/install_esp_emu.sh
 
+# --- Layer rules (ARCHITECTURE.md §2, §10; STARK-0100) --------------------
+check "layers" python3 scripts/check_layers.py
+
 # --- Script unit tests: emulator harness, Wokwi gate ----------------------
 check "script-unit-tests" python3 -m unittest discover -s scripts -p 'test_*.py' -q
 
