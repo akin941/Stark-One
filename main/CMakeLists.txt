@@ -39,5 +39,6 @@ idf_component_register(
         stark_board
         stark_display
         stark_event
+        stark_gfx
         stark_input
 )
