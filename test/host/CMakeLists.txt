@@ -321,6 +321,7 @@ add_executable(run_ui_apps_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_inputtest/app_inputtest.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_buzzertest/app_buzzertest.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_displaytest/app_displaytest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest.c
     ${UI_PORT_SOURCES}
 )
 target_include_directories(run_ui_apps_tests BEFORE PRIVATE ${UI_PORT_INCLUDES})

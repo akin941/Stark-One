@@ -1,6 +1,7 @@
 /*
  * test_app_catalog.c — host tests for the app registry helpers
- * (STARK-0019): launcher order (category, then title, stable) and lookup.
+ * (STARK-0019): launcher order (categories in registry order since
+ * STARK-0107, titles within, stable), the header/app row layout, lookup.
  */
 #include "app_internal.h"
 #include "unity.h"
@@ -24,15 +25,21 @@ void setUp(void)
 void tearDown(void)
 {}
 
-void test_sorted_by_category_then_title(void)
+void test_categories_follow_the_registry_titles_sort_within(void)
 {
     const stark_app_t *const reg[] = {&a_about, &a_input, &a_display, &a_buzzer};
     const stark_app_t *out[4];
     TEST_ASSERT_EQUAL_size_t(4, app_catalog_sort(reg, 4, out, 4));
-    TEST_ASSERT_EQUAL_PTR(&a_buzzer, out[0]);  /* Lab: Buzzer Test */
-    TEST_ASSERT_EQUAL_PTR(&a_display, out[1]); /* Lab: Display Test */
-    TEST_ASSERT_EQUAL_PTR(&a_input, out[2]);   /* Lab: Input Test */
-    TEST_ASSERT_EQUAL_PTR(&a_about, out[3]);   /* System: About */
+    TEST_ASSERT_EQUAL_PTR(&a_about, out[0]);   /* System: its first app is registry #0 */
+    TEST_ASSERT_EQUAL_PTR(&a_buzzer, out[1]);  /* Lab: Buzzer Test */
+    TEST_ASSERT_EQUAL_PTR(&a_display, out[2]); /* Lab: Display Test */
+    TEST_ASSERT_EQUAL_PTR(&a_input, out[3]);   /* Lab: Input Test */
+
+    const stark_app_t *const lab_first[] = {&a_input, &a_about, &a_buzzer};
+    app_catalog_sort(lab_first, 3, out, 3);
+    TEST_ASSERT_EQUAL_PTR(&a_buzzer, out[0]); /* Lab first now: its first app leads */
+    TEST_ASSERT_EQUAL_PTR(&a_input, out[1]);
+    TEST_ASSERT_EQUAL_PTR(&a_about, out[2]);
 }
 
 void test_equal_keys_keep_registry_order(void)
@@ -49,11 +56,15 @@ void test_equal_keys_keep_registry_order(void)
     TEST_ASSERT_EQUAL_PTR(&a_about, out[2]);
 }
 
-void test_null_category_sorts_first(void)
+void test_null_category_groups_as_empty_in_registry_order(void)
 {
     const stark_app_t *const reg[] = {&a_about, &a_nocat};
     const stark_app_t *out[2];
     app_catalog_sort(reg, 2, out, 2);
+    TEST_ASSERT_EQUAL_PTR(&a_about, out[0]);
+    TEST_ASSERT_EQUAL_PTR(&a_nocat, out[1]);
+    const stark_app_t *const rev[] = {&a_nocat, &a_about};
+    app_catalog_sort(rev, 2, out, 2);
     TEST_ASSERT_EQUAL_PTR(&a_nocat, out[0]);
 }
 
@@ -74,8 +85,38 @@ void test_output_is_limited_to_max(void)
     const stark_app_t *const reg[] = {&a_about, &a_input, &a_display};
     const stark_app_t *out[2];
     TEST_ASSERT_EQUAL_size_t(2, app_catalog_sort(reg, 3, out, 2));
-    TEST_ASSERT_EQUAL_PTR(&a_input, out[0]); /* the first two, sorted */
-    TEST_ASSERT_EQUAL_PTR(&a_about, out[1]);
+    TEST_ASSERT_EQUAL_PTR(&a_about, out[0]); /* the first two, sorted */
+    TEST_ASSERT_EQUAL_PTR(&a_input, out[1]);
+}
+
+void test_layout_puts_a_header_before_each_category(void)
+{
+    const stark_app_t *const reg[] = {&a_about, &a_input, &a_display, &a_nocat};
+    const stark_app_t *sorted[4];
+    app_catalog_sort(reg, 4, sorted, 4);
+    app_catalog_row_t rows[8];
+    TEST_ASSERT_EQUAL_size_t(7, app_catalog_layout(sorted, 4, rows, 8));
+    TEST_ASSERT_EQUAL_STRING("System", rows[0].header);
+    TEST_ASSERT_NULL(rows[0].app);
+    TEST_ASSERT_EQUAL_PTR(&a_about, rows[1].app);
+    TEST_ASSERT_NULL(rows[1].header);
+    TEST_ASSERT_EQUAL_STRING("Lab", rows[2].header);
+    TEST_ASSERT_EQUAL_PTR(&a_display, rows[3].app);
+    TEST_ASSERT_EQUAL_PTR(&a_input, rows[4].app);
+    TEST_ASSERT_EQUAL_STRING("", rows[5].header); /* the NULL category */
+    TEST_ASSERT_EQUAL_PTR(&a_nocat, rows[6].app);
+}
+
+void test_layout_limits_and_empty(void)
+{
+    const stark_app_t *const sorted[] = {&a_about, &a_input};
+    app_catalog_row_t rows[4];
+    TEST_ASSERT_EQUAL_size_t(1, app_catalog_layout(sorted, 2, rows, 1)); /* header only */
+    TEST_ASSERT_EQUAL_size_t(3, app_catalog_layout(sorted, 2, rows, 3)); /* hdr, app, hdr */
+    TEST_ASSERT_NULL(rows[2].app);
+    TEST_ASSERT_EQUAL_size_t(0, app_catalog_layout(sorted, 0, rows, 4));
+    TEST_ASSERT_EQUAL_size_t(0, app_catalog_layout(NULL, 2, rows, 4));
+    TEST_ASSERT_EQUAL_size_t(0, app_catalog_layout(sorted, 2, NULL, 4));
 }
 
 void test_find_by_id_including_not_found(void)
@@ -93,11 +134,13 @@ void test_find_by_id_including_not_found(void)
 int main(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_sorted_by_category_then_title);
+    RUN_TEST(test_categories_follow_the_registry_titles_sort_within);
     RUN_TEST(test_equal_keys_keep_registry_order);
-    RUN_TEST(test_null_category_sorts_first);
+    RUN_TEST(test_null_category_groups_as_empty_in_registry_order);
     RUN_TEST(test_empty_and_single_registries);
     RUN_TEST(test_output_is_limited_to_max);
+    RUN_TEST(test_layout_puts_a_header_before_each_category);
+    RUN_TEST(test_layout_limits_and_empty);
     RUN_TEST(test_find_by_id_including_not_found);
     return UNITY_END();
 }

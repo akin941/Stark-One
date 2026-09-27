@@ -1213,13 +1213,16 @@ headers; all-header list has no selection. Catalog: category order by first
 appearance; stable title sort within; empty categories impossible; NULL category
 groups as "". `ui_menu_model.c` and `app_catalog.c` ≥ 95 % lines.
 
-**Wokwi/runtime.** Launcher screenshot: header rows in the accent colour, icons
-pixel-identical to their bitmaps at the computed positions; navigation across headers
-in `v0-boot-and-menu.yaml` (updated).
+**Host UI test port / emulator** (ADR-0017). `test_ui_apps.c` pins the launcher with the
+"Tests" header and the real apps' icons (frame golden, inspected), checks the header's
+accent pixels and one icon bit for bit at its computed position; `test_ui_launcher.c`
+pins the headered V0-style launcher. Every emulator scenario follows the new rows
+(`v0-boot-and-menu` navigates across the Tests header).
 
 **AC.**
 1. Host tests pass at the coverage above.
-2. Launcher screenshot decodes as specified (headers, icons, selection).
+2. The launcher frame on the host UI port matches its golden, with header and icon
+   pixels asserted explicitly.
 3. All scenarios updated and green.
 4. `stark_app_t.icon` optional (NULL renders no icon, label unshifted only if no item
    has one); ARCHITECTURE §6.7/§6.8 updated.

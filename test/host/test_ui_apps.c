@@ -20,7 +20,9 @@
 extern const stark_app_t app_inputtest;
 extern const stark_app_t app_buzzertest;
 extern const stark_app_t app_displaytest;
-static const stark_app_t *const k_apps[] = {&app_inputtest, &app_displaytest, &app_buzzertest};
+extern const stark_app_t app_apptest;
+static const stark_app_t *const k_apps[] = {&app_inputtest, &app_displaytest, &app_buzzertest,
+                                            &app_apptest};
 
 void setUp(void)
 {}
@@ -63,6 +65,25 @@ static void test_app_frames(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_ui_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_app_init(k_apps, sizeof k_apps / sizeof k_apps[0]));
     stark_ui_tick();
+    /* The launcher with a category header and the apps' own icons (STARK-0107). */
+    check_frame("launcher_icons", UINT64_C(0x2949cf5925ebb6bc));
+    /* Row 0: the "Tests" header, in the accent colour. */
+    size_t accent = 0;
+    for (int y = STARK_THEME_STATUSBAR_H; y < STARK_THEME_STATUSBAR_H + STARK_THEME_ROW_H; y++) {
+        for (int x = 0; x < UI_PORT_W; x++) {
+            accent += ui_port_pixel(x, y) == STARK_THEME_ACCENT ? 1u : 0u;
+        }
+    }
+    TEST_ASSERT_TRUE(accent > 50);
+    /* Row 2 (Buzzer Test, unselected): its icon, bit for bit, at the text inset. */
+    const int iy = STARK_THEME_STATUSBAR_H + 2 * STARK_THEME_ROW_H + (STARK_THEME_ROW_H - 16) / 2;
+    for (int y = 0; y < 16; y++) {
+        for (int x = 0; x < 16; x++) {
+            bool bit = (app_buzzertest.icon[y * 2 + x / 8] >> (7 - x % 8)) & 1u;
+            TEST_ASSERT_EQUAL_HEX16(bit ? STARK_THEME_FG : STARK_THEME_BG,
+                                    ui_port_pixel(STARK_THEME_TEXT_X + x, iy + y));
+        }
+    }
 
     launch("inputtest");
     check_frame("inputtest", UINT64_C(0x889fc0a48b74aa7f));

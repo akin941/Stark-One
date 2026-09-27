@@ -1,14 +1,13 @@
 # STARK-0105 (ROADMAP V0.1 exit 2): the modal confirm dialog on the
-# production image, through App Test (the last launcher row: UP wraps to
-# it). Cancel with BACK, confirm with OK — which opens a "Done" alert from
-# the confirm's result — then an alert closed with OK. The held-key rule
-# and the overlay pixels are asserted on the host UI port
-# (test/host/test_ui_dialog.c).
+# production image, through App Test (row 3: one DOWN from About). Cancel
+# with BACK, confirm with OK — which opens a "Done" alert from the confirm's
+# result — then an alert closed with OK. The held-key rule and the overlay
+# pixels are asserted on the host UI port (test/host/test_ui_dialog.c).
 name = "emu-v01-dialog"
 end_ms = 3600
 heap_min = 200000
 presses = [
-    { key = "UP", at_ms = 400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },
     { key = "OK", at_ms = 600, hold_ms = 60 },
     { key = "OK", at_ms = 900, hold_ms = 60 },
     { key = "BACK", at_ms = 1200, hold_ms = 60 },
@@ -21,7 +20,7 @@ presses = [
     { key = "BACK", at_ms = 3200, hold_ms = 60 },
 ]
 expect = [
-    'menu: sel=5 "App Test"',
+    'menu: sel=3 "App Test"',
     "app: start apptest",
     'dialog: open "Confirm"',
     "dialog: cancel",

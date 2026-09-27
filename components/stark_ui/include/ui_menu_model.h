@@ -47,5 +47,7 @@ bool ui_menu_model_page(ui_menu_model_t *m, int dir);
 bool ui_menu_model_has_selection(const ui_menu_model_t *m);
 size_t ui_menu_model_selected(const ui_menu_model_t *m);
 /* First visible index; the window always contains the selection and never
- * shows empty rows past the end while the list is longer than it. */
+ * shows empty rows past the end while the list is longer than it. With a
+ * window of two rows or more, a selection on the first row never hides a
+ * non-selectable row (a header) directly above it. */
 size_t ui_menu_model_top(const ui_menu_model_t *m);
