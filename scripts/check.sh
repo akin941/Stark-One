@@ -37,9 +37,11 @@ check "shell-syntax-fmt"    bash -n scripts/fmt.sh
 check "shell-syntax-check"  bash -n scripts/check.sh
 check "shell-syntax-test-host"  bash -n scripts/test_host.sh
 check "shell-syntax-test-wokwi" bash -n scripts/test_wokwi.sh
+check "shell-syntax-test-emu"   bash -n scripts/test_emu.sh
+check "shell-syntax-install-esp-emu" bash -n scripts/install_esp_emu.sh
 
-# --- Wokwi gate classifier (scripts/wokwi_gate.py) -----------------------
-check "wokwi-gate-tests" python3 -m unittest discover -s scripts -p 'test_*.py' -q
+# --- Script unit tests: emulator harness, Wokwi gate ----------------------
+check "script-unit-tests" python3 -m unittest discover -s scripts -p 'test_*.py' -q
 
 # --- Required files ------------------------------------------------------
 for f in CMakeLists.txt sdkconfig.defaults partitions.csv .idf-version \
@@ -53,7 +55,7 @@ check "idf-version-set" bash -c '[[ -s .idf-version ]]'
 # --- No simulator conditionals (ADR-0010) --------------------------------
 # grep for #ifdef / #ifdef WOKWI / #ifdef SIM in source files only.
 check "no-wokwi-ifdef" \
-    bash -c '! grep -rnE "#if.*(WOKWI|SIM)" main/ components/ apps/ 2>/dev/null'
+    bash -c '! grep -rnE "#if.*(WOKWI|SIM|QEMU|ESP_EMU)" main/ components/ apps/ 2>/dev/null'
 
 # --- No simulator references in firmware code (AGENTS.md, STARK-0021 AC 3) --
 check "no-wokwi-mention" \

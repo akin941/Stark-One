@@ -1,0 +1,24 @@
+# Tier 3 replacement for test/scenarios/v0-boot-and-menu.yaml (ROADMAP V0
+# exit 2): boot -> navigate -> launch an app -> BACK. Launcher order is
+# category then title: About, Buzzer Test, Display Test, Input Test. Presses
+# enter at the input core's sampling boundary (scripts/test_emu.py).
+name = "emu-v0-boot-and-menu"
+end_ms = 3200
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },
+    { key = "UP", at_ms = 700, hold_ms = 60 },
+    { key = "OK", at_ms = 1000, hold_ms = 60 },
+    { key = "BACK", at_ms = 2500, hold_ms = 60 },
+]
+expect = [
+    "boot: ui_ready in ",
+    "key: DOWN press",
+    'menu: sel=1 "Buzzer Test"',
+    "key: UP press",
+    'menu: sel=0 "About"',
+    "key: OK short",
+    "app: start about",
+    "key: BACK short",
+    "app: stop about",
+]

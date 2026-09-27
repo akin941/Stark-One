@@ -466,3 +466,49 @@ The `stark_app_find/list/launch` API is unchanged; only `stark_app_init()` gains
 parameters.
 
 **Revisit trigger:** the same as ADR-0009's.
+
+---
+
+## ADR-0017 — Free validation only: Espressif emulator mandatory, Wokwi optional
+
+**Status:** accepted (owner decision, 2026-09-27). Amends ADR-0010 and ADR-0011 where
+they name Wokwi as the integration tier; their substance — one artifact, no simulator
+conditionals, performance gated only on hardware — is unchanged.
+
+**Context.** Wokwi's Free plan has a monthly CI-minute quota. V0 used it up, and with
+Wokwi as a required check every firmware change stopped until the quota reset. The
+owner's decision is final: **the project never depends on a paid Wokwi plan**, and a
+quota must not be able to stop normal development.
+
+**Decision.**
+* Mandatory validation is free and runs locally and in CI: Tier 1 host tests, Tier 2
+  the pinned ESP-IDF build, Tier 3 Espressif's **esp-emulator** running the production
+  merged image (`scripts/test_emu.sh`, pinned version and SHA-256 in
+  `scripts/esp_emu.lock`).
+* External-peripheral behaviour the emulator cannot model is covered by host fakes and
+  test ports (Tier 4A/B) and, from V1, by physical HIL (Tier 4C) — never by a paid cloud
+  simulator.
+* Wokwi is **optional** (Tier 5): manual dispatch or the `wokwi` PR label, only while
+  free quota exists, never a required check. Its failures are shown, not hidden.
+* `docs/VALIDATION.md` holds the tier model, the verified emulator capabilities and
+  limits, and the per-assertion coverage matrix that justified removing Wokwi from the
+  mandatory contract.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| Paid Wokwi plan | Excluded by the owner: a recurring cost the project must not depend on |
+| Wait for the monthly reset | Makes delivery hostage to a quota |
+| Keep Wokwi required but skip it when the quota is gone | A skip that looks like a pass is a false green |
+| QEMU (Espressif fork) | Viable, but esp-emu is the maintained Espressif emulator with native macOS/Linux builds, dual-core S3, GP-SPI/GDMA/LEDC and a GDB stub; one emulator is enough |
+
+**Consequences.** The emulator cannot drive external GPIO pads and models no SPI
+device, so key presses are injected at the input core's sampling boundary via GDB and
+the pad → key-bit step is host-tested; pixels are validated on the host at the display
+boundary; panel glass, switch wiring, buzzer and LED output are explicitly deferred to
+HIL. `scripts/wokwi_gate.py` stays useful for optional Wokwi runs.
+
+**Revisit trigger:** an esp-emu release that adds external-pad stimulus or SPI device
+models (widen Tier 3), or the V1 prototype (add HIL as a mandatory tier for hardware
+milestones).

@@ -1,0 +1,88 @@
+# Wokwi — OPTIONAL supplemental simulation (ADR-0017, docs/VALIDATION.md).
+#
+# Never a required check, never a project dependency: STARK ONE's mandatory
+# validation is free and local (ci.yml: lint, firmware, host, esp-emulator).
+# Runs only when asked for — manual dispatch, or a pull request carrying the
+# `wokwi` label — and only while the free Wokwi quota lasts. Its result is
+# shown as it is: a quota, token or scenario failure fails this workflow's
+# check visibly; it just does not gate a merge.
+#
+# scripts/wokwi_gate.py still skips change sets that cannot affect the
+# firmware or the simulation, so a labelled documentation PR costs no minutes.
+name: Wokwi (optional)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  wokwi:
+    name: wokwi (optional)
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'wokwi')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the gate diffs the change set against its base
+
+      - name: Does this change set need Wokwi? (scripts/wokwi_gate.py)
+        id: gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE"; head="$PR_HEAD"
+          else
+            base=""; head="$HEAD_SHA"
+          fi
+          python3 scripts/wokwi_gate.py --event "$EVENT_NAME" --base "$base" \
+            --head "$head" --fallback-ref origin/main --github-output "$GITHUB_OUTPUT"
+
+      # Never let a missing decision read as "not applicable".
+      - name: Gate decision sanity check
+        if: steps.gate.outputs.required != 'true' && steps.gate.outputs.required != 'false'
+        run: |
+          echo "::error::wokwi_gate.py produced no decision"
+          exit 1
+
+      - name: Wokwi not applicable
+        if: steps.gate.outputs.required == 'false'
+        run: |
+          echo "Wokwi: not applicable for this change set — no simulator minutes used."
+
+      - name: idf.py build (pinned espressif/idf Docker image)
+        if: steps.gate.outputs.required == 'true'
+        run: scripts/build.sh --docker
+
+      - name: Install wokwi-cli (pinned v0.27.1, sha256-verified)
+        if: steps.gate.outputs.required == 'true'
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/wokwi-cli" \
+            https://github.com/wokwi/wokwi-cli/releases/download/v0.27.1/wokwi-cli-linuxstatic-x64
+          echo "c3faa32b752c63762a9e4852288f0ce26952475ade16c95ebb8f61a272425633  $HOME/.local/bin/wokwi-cli" \
+            | sha256sum -c -
+          chmod +x "$HOME/.local/bin/wokwi-cli"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: scripts/test_wokwi.sh
+        if: steps.gate.outputs.required == 'true'
+        env:
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+        run: scripts/test_wokwi.sh
+
+      - name: Upload serial logs
+        if: always() && steps.gate.outputs.required == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-wokwi-logs
+          path: build/wokwi/*.log
+          if-no-files-found: ignore

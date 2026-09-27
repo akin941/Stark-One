@@ -12,7 +12,8 @@ architecture, own module standard, own PCB, own enclosure.
 > simulated ESP32-S3 N16R8 in Wokwi: status LED heartbeat, event bus, debounced
 > six-key input, ILI9341 band rendering, screen stack + list menu, app registry and
 > launcher, buzzer, and four apps (About, Input Test, Display Test, Buzzer Test).
-> CI builds it, runs the host test suite and the Wokwi scenarios. Evidence for every
+> CI builds it, runs the host test suite and the emulator scenarios (free, local —
+> [docs/VALIDATION.md](docs/VALIDATION.md)). Evidence for every
 > V0 exit criterion: [docs/measurements.md](docs/measurements.md). Next: V0.1
 > (architecture hardening), specified task by task in [TASKS.md](TASKS.md)
 > (STARK-0100 … STARK-0110); the performance gates live at the V1 hardware prototype.
@@ -38,7 +39,8 @@ architecture, own module standard, own PCB, own enclosure.
 * **Framework:** ESP-IDF v6.1 (pinned), C11, CMake
 * **Display:** ILI9341 2.8" 320×240 SPI, driven through `esp_lcd`
 * **UI:** in-house `stark_gfx` + `stark_ui` (LVGL deliberately deferred — see ADR-0005)
-* **Simulation:** Wokwi, running the *same* build artifact as real hardware
+* **Validation:** host tests + Espressif's esp-emulator running the *same* build
+  artifact as real hardware, locally and in CI; Wokwi optional (ADR-0017)
 * **First milestone (V0):** boot → display → 6 buttons → menu → buzzer, in Wokwi
 
 ## Where to start

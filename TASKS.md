@@ -645,6 +645,15 @@ registry move ahead of the first new V0.1 app, and one infrastructure task
 0105, 0103 → 0106, 0104 → 0107, 0106 → 0108, 0107 → 0109, 0108 → 0110; 0103 (theme)
 and 0104 (registry + hello app) are new splits of ROADMAP scope items.
 
+**Validation (ADR-0017).** Wokwi is optional and never required. Throughout V0.1 a
+"Wokwi scenario" means an emulator scenario `test/emu/<same name>.toml` asserting the
+same log lines (the soak is `test/emu/soak/v01-soak.toml`); a "screenshot" means a
+host render check at the display boundary — the screen rendered into a memory surface
+by the production drawing code on a host display test port and compared pixel by
+pixel (docs/VALIDATION.md §3.3); a "throwaway build" runs in the emulator. Evidence
+that needs a real panel, switch, piezo or LED is labelled *physical, deferred to HIL*.
+Per-task wording is updated as each task is taken up.
+
 **Hardware.** None. V0.1 runs on the unchanged V0 circuit (`diagram.json`, HARDWARE.md
 §2). No task needs a physical device; every behavioural criterion is verified in Wokwi,
 every pure function on the host. Performance figures stay informational (ADR-0011).

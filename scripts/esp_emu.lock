@@ -1,0 +1,10 @@
+# Espressif esp-emulator pin (docs/VALIDATION.md, ADR-0017).
+# https://github.com/espressif/esp-emulator — Apache-2.0.
+# A bump is a deliberate change: update the version and every SHA-256 below
+# from the release's SHA256SUMS (and GitHub's asset digests), then run the
+# full emulator suite. Never float to "latest".
+version=0.44.0
+url=https://github.com/espressif/esp-emulator/releases/download/v{version}/esp-emu-{version}-{triple}.tar.gz
+sha256.x86_64-unknown-linux-gnu=340316dda477602fafe5e994c7e535f667d1ca654f890f99c2b7ea391eb1644b
+sha256.aarch64-unknown-linux-gnu=9ea205c5ae0fd43aae42f2333a121dd70b81c224f0642e7763dfbc4caf1c5fd3
+sha256.aarch64-apple-darwin=a38624cc98d3d9ec7e9a331873ae393e39b995562f5c763a2f217114d6d8b1bf

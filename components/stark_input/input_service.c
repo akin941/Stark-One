@@ -8,6 +8,7 @@
 #include "stark_input.h"
 #include "esp_timer.h"
 #include "input_core.h"
+#include "input_sample.h"
 #include "sdkconfig.h"
 #include "stark_event.h"
 #include "stark_hal.h"
@@ -42,17 +43,8 @@ static const char *action_name(stark_key_action_t action)
 static void sample_cb(void *arg)
 {
     (void)arg;
-    const stark_board_pins_t *pins = stark_board_pins();
     uint64_t now_us = stark_hal_now_us();
-
-    uint8_t raw = 0;
-    for (int k = 0; k < STARK_KEY_COUNT; k++) {
-        /* Active-low: a pressed key pulls its pin to ground. A key the
-         * board does not have (-1) reads as released (ARCHITECTURE §6.1). */
-        if (pins->key[k] >= 0 && !stark_hal_gpio_read(pins->key[k])) {
-            raw |= (uint8_t)(1u << k);
-        }
-    }
+    uint8_t raw = input_sample_raw(stark_board_pins());
 
     input_action_t out[INPUT_CORE_MAX_ACTIONS];
     size_t n =

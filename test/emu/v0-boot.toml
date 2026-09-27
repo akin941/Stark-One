@@ -1,0 +1,15 @@
+# Tier 3 replacement for test/scenarios/v0-boot.yaml (docs/VALIDATION.md):
+# the boot lines appear in this order, and the boot heap diagnostic clears
+# ROADMAP V0 exit 6. Presence and ordering only — never the numbers in the
+# lines (ADR-0011); the heap figure is memory, a legitimate gate.
+name = "emu-v0-boot"
+end_ms = 1500
+heap_min = 200000
+expect = [
+    "board: devkitc1 pins ok spi2 ready",
+    "display: init 320x240 band=40 bufs=2x25600",
+    "app: registry n=4 about,inputtest,displaytest,buzzertest",
+    "boot: ui_ready in ",
+    "diag: heap=",
+    "display: full refresh ",
+]

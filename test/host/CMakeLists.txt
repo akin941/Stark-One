@@ -115,6 +115,21 @@ target_compile_options(run_hal_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_hal_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_hal_tests PRIVATE unity)
 
+# --- key GPIO levels -> raw bitmap (input_sample.c) ---------------------------
+# The one piece of the input path the target emulator cannot drive: pin order
+# and active-low polarity, against the fake HAL (docs/VALIDATION.md).
+add_executable(run_input_sample_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_input_sample.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/stark_err/stark_err.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/stark_input/input_sample.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/stark_hal_host.c
+)
+target_include_directories(run_input_sample_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/stark_input)
+target_compile_options(run_input_sample_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_input_sample_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_input_sample_tests PRIVATE unity)
+
 # --- stark_event core tests (STARK-0009) --------------------------------------
 # Only the pure core; stark_err.c is not needed (the core never calls
 # stark_err_str()).
@@ -214,6 +229,7 @@ add_test(NAME stark_board_tests COMMAND run_board_tests)
 add_test(NAME stark_hal_tests COMMAND run_hal_tests)
 add_test(NAME stark_event_tests COMMAND run_event_tests)
 add_test(NAME stark_input_tests COMMAND run_input_tests)
+add_test(NAME stark_input_sample_tests COMMAND run_input_sample_tests)
 add_test(NAME stark_gfx_tests COMMAND run_gfx_tests)
 add_test(NAME stark_text_tests COMMAND run_text_tests)
 add_test(NAME stark_display_band_tests COMMAND run_display_band_tests)
