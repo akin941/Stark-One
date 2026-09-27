@@ -451,7 +451,7 @@ typedef struct stark_screen {
     bool (*on_event)(struct stark_screen *self, const stark_event_t *e); /* true = consumed */
     void (*on_render)(struct stark_screen *self, gfx_surface_t *s);
     void       *state;
-    gfx_rect_t  damage;      /* union of dirty areas; empty = nothing to redraw */
+    ui_damage_t damage;      /* dirty areas (ui_damage.h); empty = nothing to redraw */
 } stark_screen_t;
 
 stark_err_t stark_ui_init(void);
@@ -464,10 +464,21 @@ void        stark_ui_tick(void);   /* called by the UI loop: dispatch + render *
 STARK-0017 specifics: `stark_ui_init()` subscribes the UI to every event type on the
 global bus and `stark_ui_tick()` dispatches it, so screens receive events through
 `on_event`; an unconsumed BACK **short** press pops (a no-op at the root). A push or pop
-redraws the new top screen and the status bar in full; otherwise each tick renders the
-union of the top screen's damage and the status bar's, cleared before rendering. Screens
+redraws the new top screen and the status bar in full; otherwise each tick takes the top
+screen's damage plus the status bar's, clears them, and renders each rectangle once.
+Screens
 draw with their clip limited to the area below the 16 px status bar. The loop body is
 `stark_ui_task()` (created by `main`, §7); colours and layout live in `ui_theme.h`.
+
+STARK-0101 specifics: damage is a set of at most four non-overlapping rectangles
+(`ui_damage.h`, pure, host-tested). An invalidation merges with every stored rect it
+overlaps or shares an edge with, cascading; a distant one is kept apart (a menu wrap
+repaints two rows, not the list between them); a fifth distinct rect merges the pair
+whose union adds the least area. `stark_ui_stats()` reports frames, render calls,
+overruns (a rendering tick over `1 000 000 / STARK_UI_TARGET_FPS` µs, dispatch
+included), render errors and the last/longest frame time; the UI task is the only
+writer and every counter is a C11 atomic, so any task may read them. Overruns are
+reported in simulation and gated only on hardware (ADR-0011).
 
 Widgets in V0: **status bar** (title; battery/SD/clock arrive with their tasks — V0 draws
 nothing there rather than placeholders) and
@@ -480,9 +491,9 @@ STARK-0018 specifics: 24 px rows (nine below the status bar), the selection inve
 disabled items dimmed and skipped, a 4 px scroll indicator at the right while the list
 overflows, `(empty)` for a list with no items. UP/DOWN act on press and repeat with
 wrap; LEFT/RIGHT page one window, clamped at the ends; OK (short) activates. A move
-between adjacent visible rows invalidates exactly those two rows; a move that scrolls
-the window, wraps or pages invalidates the list; because the UI renders the *union* of a
-frame's damage, a move that skips disabled items also repaints the rows between.
+between visible rows invalidates exactly those two rows (adjacent rows merge into one
+rect, distant ones stay two since STARK-0101); a move that scrolls the window or pages
+invalidates the list.
 Each change logs `menu: sel=<n> "<label>"` (INFO; the index is 0-based).
 
 Navigation contract, global and non-negotiable:

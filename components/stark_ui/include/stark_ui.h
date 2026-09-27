@@ -9,9 +9,11 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "stark_err.h"
 #include "stark_event.h"
 #include "stark_gfx.h"
+#include "ui_damage.h"
 
 typedef struct stark_screen {
     const char *name; /* shown in the status bar while this screen is on top */
@@ -20,7 +22,7 @@ typedef struct stark_screen {
     bool (*on_event)(struct stark_screen *self, const stark_event_t *e); /* true = consumed */
     void (*on_render)(struct stark_screen *self, gfx_surface_t *s);      /* required */
     void *state;
-    gfx_rect_t damage; /* union of dirty areas; empty = nothing to redraw */
+    ui_damage_t damage; /* dirty areas (ui_damage.h); empty = nothing to redraw */
 } stark_screen_t;
 
 /*
@@ -44,16 +46,38 @@ stark_err_t stark_ui_push(stark_screen_t *screen);
  */
 stark_err_t stark_ui_pop(void);
 
-/* Adds `area` (logical coordinates) to s->damage; empty areas are ignored. */
+/* Adds `area` (logical coordinates) to s->damage (ui_damage_add()); empty
+ * areas are ignored. */
 void stark_ui_invalidate(stark_screen_t *s, gfx_rect_t area);
 
 /*
  * One UI frame: dispatch every queued event (each goes to the top screen's
  * on_event; an unconsumed BACK short press pops, and at the root is a
- * no-op), then, if the top screen or the status bar has damage, render
- * the union of it once and clear it. Allocates nothing.
+ * no-op), then, if the top screen or the status bar has damage, clear it
+ * and render each rectangle of it once (non-overlapping, so no pixel is
+ * drawn twice). Allocates nothing.
  */
 void stark_ui_tick(void);
+
+/* Frame statistics (TASKS.md STARK-0101). A frame is a tick that rendered;
+ * an overrun is one whose dispatch-plus-render time exceeded
+ * 1 000 000 / CONFIG_STARK_UI_TARGET_FPS µs. Informational in simulation,
+ * gated only on hardware (ADR-0011). */
+typedef struct {
+    uint32_t frames;        /* ticks that rendered */
+    uint32_t renders;       /* stark_display_render() calls */
+    uint32_t overruns;      /* frames over the budget */
+    uint32_t render_errors; /* failed stark_display_render() calls */
+    uint32_t last_frame_us; /* duration of the latest frame */
+    uint32_t max_frame_us;  /* longest frame so far */
+} stark_ui_stats_t;
+
+/*
+ * Copies the counters. Callable from any task: the UI task is their only
+ * writer and each one is atomic, so every field is consistent on its own
+ * (a snapshot may straddle one frame). STARK_ERR_INVALID_ARG for NULL.
+ */
+stark_err_t stark_ui_stats(stark_ui_stats_t *out);
 
 /*
  * The UI task body (ARCHITECTURE §7: created by main, priority 5, 6 kB,

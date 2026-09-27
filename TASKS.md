@@ -797,9 +797,11 @@ frame is counted so overruns and render failures are observable.
   counts display calls; an overrun is a rendering tick whose dispatch-plus-render time
   exceeds `1 000 000 / CONFIG_STARK_UI_TARGET_FPS` µs; a failed
   `stark_display_render()` increments `render_errors` (and keeps the existing
-  `ui: render failed:` log). Counters are updated on the UI task inside a
-  `portMUX` critical section so any task may snapshot them (STARK-0109 reads them from
-  the `esp_timer` task). Each overrun logs `ui: overrun <us> us` at DEBUG.
+  `ui: render failed:` log). The UI task is the counters' only writer; each is a C11
+  atomic, so any task may snapshot them (STARK-0109 reads them from the `esp_timer`
+  task) — an individual counter is always consistent, a snapshot may straddle one
+  frame. (Atomics rather than a `portMUX` keep `stark_ui` buildable on the host UI test
+  port.) Each overrun logs `ui: overrun <us> us` at DEBUG.
 * Replace the single `ui: render x,y wxh` DEBUG line with one per rect.
 
 **Host tests.** `test_ui_damage.c`: disjoint rects stay separate; overlap and shared
@@ -808,22 +810,22 @@ the least-growth merge (and its tie rule); empty/negative rects ignored; a seede
 property test (≥ 1 000 random sequences on a 64×48 canvas) checks after every add that
 stored rects never overlap and cover every added pixel. 100 % lines of `ui_damage.c`.
 
-**Wokwi/runtime.**
-* A throwaway build with the `ui` tag at DEBUG: in the launcher (four apps, list fits),
-  UP from the first item wraps to the last and logs exactly two `ui: render` rects of
-  height 24, not one spanning rect.
-* The same build: while Display Test runs its continuous refresh, `stark_ui_stats()`'s
-  `overruns` grows (logged once per second by the throwaway build); at the idle root
-  menu it does not. Value informational (ADR-0011) — the check is that counting works.
-* A throwaway fault injection (`stark_display_render()` forced to fail once) increments
-  `render_errors` by one.
-* The three V0 scenarios pass unchanged.
+**Host UI test port / emulator** (ADR-0017; docs/VALIDATION.md §3.3).
+* `test_ui_launcher.c`: in the launcher (four apps, list fits), UP from the first item
+  wraps to the last and renders exactly two 24 px row rects, not one spanning rect; the
+  launcher golden is unchanged.
+* Frame statistics on the port's fake clock: an app screen whose render advances the
+  clock past the 33 333 µs budget counts one overrun (and `max_frame_us` records it); a
+  frame inside the budget counts none; an idle tick counts no frame; a render forced to
+  fail increments `render_errors` by one; `frames`/`renders` match the render calls
+  seen. Deterministic, host-only — overrun *values* stay informational (ADR-0011).
+* The three emulator scenarios pass unchanged.
 
 **AC.**
 1. Host tests pass; `ui_damage.c` at 100 % line coverage.
-2. The wrap move repaints two rows (two rects), shown by the DEBUG log.
-3. `overruns` and `render_errors` count as specified (throwaway evidence in the PR).
-4. `stark_ui_stats()` is callable from any task (critical section; documented in the
+2. The wrap move repaints two rows (two rects), shown by the host UI port's render log.
+3. `overruns` and `render_errors` count as specified (host UI port assertions).
+4. `stark_ui_stats()` is callable from any task (atomic counters; documented in the
    header); STARK_ERR_INVALID_ARG for NULL.
 5. No allocation in the render path; V0 scenarios green; ARCHITECTURE §6.7 updated.
 
