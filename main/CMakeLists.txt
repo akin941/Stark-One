@@ -41,4 +41,5 @@ idf_component_register(
         stark_event
         stark_gfx
         stark_input
+        stark_ui
 )

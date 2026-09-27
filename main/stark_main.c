@@ -8,6 +8,7 @@
 #include "stark_event.h"
 #include "stark_gfx.h"
 #include "stark_input.h"
+#include "stark_ui.h"
 #include "stark_version.h"
 #include "esp_heap_caps.h"
 #include "esp_idf_version.h"
@@ -17,29 +18,16 @@
 #include "freertos/task.h"
 
 /*
- * NOTE: bring-up pattern (STARK-0015), now drawn through the band renderer
- * (STARK-0016) until stark_ui (STARK-0017) owns the screen: eight colour
- * bars (red, green, blue, yellow, cyan, magenta, white, black), a 1 px white
- * border and a white top-left orientation marker.
+ * NOTE: temporary root screen until the launcher menu (STARK-0019) takes
+ * the root: it only fills its area; the status bar shows its name.
  */
-static void draw_test_pattern(gfx_surface_t *s, void *ctx)
+static void root_render(stark_screen_t *self, gfx_surface_t *s)
 {
-    (void)ctx;
-    static const uint16_t bars[8] = {
-        GFX_RGB565(255, 0, 0),     GFX_RGB565(0, 255, 0),   GFX_RGB565(0, 0, 255),
-        GFX_RGB565(255, 255, 0),   GFX_RGB565(0, 255, 255), GFX_RGB565(255, 0, 255),
-        GFX_RGB565(255, 255, 255), GFX_RGB565(0, 0, 0),
-    };
-    const int16_t w = stark_display_width();
-    const int16_t h = stark_display_height();
-    const int16_t bar_w = (int16_t)(w / 8);
-    for (int16_t i = 0; i < 8; i++) {
-        gfx_fill(s, (gfx_rect_t){(int16_t)(i * bar_w), 0, bar_w, h}, bars[i]);
-    }
-    const uint16_t white = GFX_RGB565(255, 255, 255);
-    gfx_rect(s, (gfx_rect_t){0, 0, w, h}, white);
-    gfx_fill(s, (gfx_rect_t){2, 2, 12, 12}, white);
+    (void)self;
+    gfx_fill(s, s->clip, GFX_RGB565(0, 0, 0));
 }
+
+static stark_screen_t s_root = {.name = "STARK ONE", .on_render = root_render};
 
 void app_main(void)
 {
@@ -90,12 +78,6 @@ void app_main(void)
     if (err != STARK_OK) {
         stark_panic("display init", err);
     }
-    err = stark_display_render((gfx_rect_t){0, 0, stark_display_width(), stark_display_height()},
-                               draw_test_pattern, NULL);
-    if (err != STARK_OK) {
-        STARK_LOGE("display", "test pattern failed: %s", stark_err_str(err));
-    }
-
     /* `key:` lines are DEBUG by contract (TESTING.md §4) and scenarios assert
      * on them, so the one tag is enabled in every build — the same on
      * hardware and in Wokwi (ADR-0010). CONFIG_LOG_MAXIMUM_LEVEL_DEBUG in
@@ -106,15 +88,15 @@ void app_main(void)
         STARK_LOGE("boot", "input start failed: %s", stark_err_str(err));
     }
 
-    /*
-     * NOTE: interim bus consumer. The UI task (STARK-0017) becomes the one
-     * consumer of the event bus; until it exists, app_main drains the bus
-     * here so producers see an empty ring instead of a permanently full one
-     * dropping every event (STARK-0012 AC #4). Nothing subscribes yet.
-     */
-    for (;;) {
-        if (stark_event_wait(1000) == STARK_OK) {
-            (void)stark_event_dispatch(UINT32_MAX);
-        }
+    /* The UI task is the event bus's one consumer from here on (ARCHITECTURE §7). */
+    err = stark_ui_init();
+    if (err == STARK_OK) {
+        err = stark_ui_push(&s_root);
+    }
+    if (err != STARK_OK) {
+        stark_panic("ui init", err);
+    }
+    if (xTaskCreatePinnedToCore(stark_ui_task, "stark_ui", 6 * 1024, NULL, 5, NULL, 1) != pdPASS) {
+        stark_panic("ui task", STARK_ERR_NO_MEM);
     }
 }

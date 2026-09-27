@@ -444,7 +444,16 @@ void        stark_ui_invalidate(stark_screen_t *s, gfx_rect_t area);
 void        stark_ui_tick(void);   /* called by the UI loop: dispatch + render */
 ```
 
-Widgets in V0: **status bar** (title, battery/SD placeholders, clock placeholder) and
+STARK-0017 specifics: `stark_ui_init()` subscribes the UI to every event type on the
+global bus and `stark_ui_tick()` dispatches it, so screens receive events through
+`on_event`; an unconsumed BACK **short** press pops (a no-op at the root). A push or pop
+redraws the new top screen and the status bar in full; otherwise each tick renders the
+union of the top screen's damage and the status bar's, cleared before rendering. Screens
+draw with their clip limited to the area below the 16 px status bar. The loop body is
+`stark_ui_task()` (created by `main`, §7); colours and layout live in `ui_theme.h`.
+
+Widgets in V0: **status bar** (title; battery/SD/clock arrive with their tasks — V0 draws
+nothing there rather than placeholders) and
 **list menu** (`stark_ui_menu_t`: items, icons optional, scroll window, selection,
 wrap-around). The menu *model* (selection movement, scroll window arithmetic, paging)
 lives in `stark_ui_model.c` as pure code with host tests; the rendering lives beside it
@@ -538,9 +547,8 @@ app_main()
         loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
 ```
 
-Until `stark_ui` exists (STARK-0017), `app_main` itself is the bus consumer: after
-`stark_input_start()` it loops on `stark_event_wait()` → `stark_event_dispatch()`, so
-producers never see a permanently full ring. The UI task replaces that loop. `main` also
+Since STARK-0017 the UI task (`stark_ui_task`, created by `main`) is the event bus's one
+consumer; before that, `app_main` drained the bus itself. `main` also
 enables the `key` log tag at DEBUG (with `CONFIG_LOG_MAXIMUM_LEVEL_DEBUG` compiled in),
 because `key:` lines are DEBUG by contract yet asserted by scenarios (TESTING.md §4).
 
