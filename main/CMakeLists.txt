@@ -36,10 +36,10 @@ idf_component_register(
     REQUIRES
         stark_err
         stark_log
+        stark_app
         stark_board
         stark_display
         stark_event
-        stark_gfx
         stark_input
         stark_ui
 )

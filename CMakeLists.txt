@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 
+# Apps are components too: apps/app_<name>/ (ARCHITECTURE.md §3, §11).
+set(EXTRA_COMPONENT_DIRS apps)
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(stark-one)

@@ -516,6 +516,15 @@ Link-time section registration remains a *documented future option* — the
 is not V0's problem (ADR-0009 revisit trigger: ~15 apps, or apps living outside this
 repository).
 
+STARK-0019 specifics: `stark_app_init()` logs `app: registry n=<N> <id>,…` (registry
+order), builds the launcher — the root `ui_menu_t`, "STARK ONE", apps sorted by category
+then title (a stable, host-tested pure function) — and pushes it. `stark_app_launch()`
+runs `on_start`, pushes the app's screen and logs `app: start <id>`; popping that screen
+(BACK) calls `on_stop` and logs `app: stop <id>` — the manager chains onto the screen's
+`on_exit` for the duration. A failing `on_start` (or a NULL screen) logs
+`app: start <id> failed: <err>` and the launcher stays; it never panics. One app at a
+time, one screen per app in V0.
+
 **Capability gating is not part of V0.** `caps_required`, capability bits and
 disabled-because-hardware-is-absent menu items arrive at V0.5 together with
 `stark_module` and the hardware they describe. V0 lists the apps that exist and
@@ -618,7 +627,10 @@ to set differently (ADR-0010).
 
 ## 11. Extension recipe: adding a new app
 
-1. `apps/app_<name>/` with `CMakeLists.txt` (`REQUIRES stark_app stark_ui stark_gfx …`).
+1. `apps/app_<name>/` with `CMakeLists.txt` (`REQUIRES stark_app stark_ui stark_gfx …`,
+   registered `WHOLE_ARCHIVE` so the registry's reference links without any core
+   build edit — `apps/README.md`). The root `CMakeLists.txt` lists `apps` in
+   `EXTRA_COMPONENT_DIRS` once.
 2. Implement `stark_screen_t` callbacks and a `const stark_app_t app_<name>` descriptor.
 3. Declare it in `components/stark_app/app_list.h` and add one line to the
    `stark_apps[]` array in `app_registry.c`.

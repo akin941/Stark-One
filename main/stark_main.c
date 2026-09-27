@@ -6,8 +6,8 @@
 #include "stark_board.h"
 #include "stark_display.h"
 #include "stark_event.h"
-#include "stark_gfx.h"
 #include "stark_input.h"
+#include "stark_app.h"
 #include "stark_ui.h"
 #include "stark_version.h"
 #include "esp_heap_caps.h"
@@ -16,18 +16,6 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
-/*
- * NOTE: temporary root screen until the launcher menu (STARK-0019) takes
- * the root: it only fills its area; the status bar shows its name.
- */
-static void root_render(stark_screen_t *self, gfx_surface_t *s)
-{
-    (void)self;
-    gfx_fill(s, s->clip, GFX_RGB565(0, 0, 0));
-}
-
-static stark_screen_t s_root = {.name = "STARK ONE", .on_render = root_render};
 
 void app_main(void)
 {
@@ -91,7 +79,7 @@ void app_main(void)
     /* The UI task is the event bus's one consumer from here on (ARCHITECTURE §7). */
     err = stark_ui_init();
     if (err == STARK_OK) {
-        err = stark_ui_push(&s_root);
+        err = stark_app_init(); /* logs the registry, pushes the launcher */
     }
     if (err != STARK_OK) {
         stark_panic("ui init", err);
