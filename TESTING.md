@@ -99,9 +99,9 @@ Run in CI on every commit, and locally via `scripts/check.sh`:
 
 | Gate | Tool | Policy |
 | --- | --- | --- |
-| Clean build | `idf.py build` in `espressif/idf:v6.1` | Zero warnings. ESP-IDF v6 treats warnings as errors by default; we additionally enable `-Wshadow -Wconversion -Wundef -Wdouble-promotion` on `stark_*` components only (not on vendor components) |
+| Clean build | `idf.py build` in `espressif/idf:v6.1` | Zero warnings. ESP-IDF v6 treats warnings as errors by default; we additionally enable `-Wshadow -Wconversion -Wdouble-promotion` on our own components only — everything under `components/`, `apps/`, `main/`, never a vendor component (root `CMakeLists.txt`, STARK-0100). `-Wundef` runs in the host build over every pure core but not in the firmware build: ESP-IDF's public headers test unset `CONFIG_` symbols with `#if`, and enabling it produced 1 026 diagnostics, all inside vendor headers (e.g. `esp_common/include/esp_compiler.h:19: 'CONFIG_COMPILER_OPTIMIZATION_PERF' is not defined`), none in our sources (STARK-0100 evidence) |
 | Formatting | `clang-format` (config committed) | `scripts/fmt.sh --check` must produce no diff |
-| Layer rules | `scripts/check_layers.py` | Component `REQUIRES` must respect ARCHITECTURE §2 — *created by STARK-0100* |
+| Layer rules | `scripts/check_layers.py` | Component `REQUIRES` must respect the layer table and allowlist in ARCHITECTURE §10 (STARK-0100) |
 | Pin-map consistency | `scripts/check_pins.py` | `diagram.json` connections must match `stark_board` pins |
 | Static analysis | `clang-tidy` (bugprone-*, cert-*, readability-* subset) over `stark_*` sources | Findings fail CI; suppressions require an inline reason comment — **not yet active** (TASKS.md infrastructure debt register) |
 | Secrets | `gitleaks` | Any hit fails; no exceptions |
@@ -239,7 +239,7 @@ named task or the TASKS.md infrastructure debt register):
 ```
 lint      (ubuntu-latest, ~30 s)
   ├─ clang-format --check        (scripts/fmt.sh --check)
-  ├─ check_layers.py             (planned: STARK-0100)
+  ├─ check_layers.py
   ├─ check_pins.py
   ├─ wokwi_gate.py unit tests
   └─ gitleaks

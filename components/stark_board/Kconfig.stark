@@ -1,0 +1,20 @@
+# stark_board options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). ESP-IDF does not pick up a
+# `Kconfig.stark` on its own, so the menu is assembled in one place.
+
+choice STARK_BOARD
+    prompt "Board variant"
+    default STARK_BOARD_DEVKITC1
+    help
+        Selects the pin map and stark_board_init() implementation from
+        components/stark_board. Pin values are normative in
+        HARDWARE.md §2 and must not be duplicated elsewhere in the
+        firmware (AGENTS.md).
+
+    config STARK_BOARD_DEVKITC1
+        bool "ESP32-S3-DevKitC-1 (development target, also the simulated board)"
+endchoice
+
+# STARK_DISPLAY_BAND_H / STARK_DISPLAY_SPI_HZ, which stark_board_init()
+# uses to size and clock SPI2, now live in components/stark_display/Kconfig.stark
+# (moved there by STARK-0015, as planned when they were introduced).

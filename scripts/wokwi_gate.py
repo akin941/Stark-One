@@ -19,7 +19,7 @@ simulator:
   * docs/, licence files;
   * test/host/ — the standalone host test project, never part of idf.py build;
   * repository lint tooling (formatting config, check.sh, fmt.sh,
-    check_pins.py, test_host.sh) and this gate with its tests;
+    check_pins.py, check_layers.py, test_host.sh) and this gate with its tests;
   * .github/ — CI orchestration. It changes how validation is invoked, not
     what the firmware does; actionlint and the gate's unit tests (lint job)
     cover it, and the next runtime-relevant change runs the Wokwi path.
@@ -58,6 +58,7 @@ NOT_RUNTIME = (
     "scripts/check.sh",
     "scripts/fmt.sh",
     "scripts/check_pins.py",
+    "scripts/check_layers.py",
     "scripts/test_host.sh",
     "scripts/wokwi_gate.py",
     "scripts/test_wokwi_gate.py",

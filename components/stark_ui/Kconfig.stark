@@ -1,0 +1,11 @@
+# stark_ui options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). ESP-IDF does not pick up a
+# `Kconfig.stark` on its own, so the menu is assembled in one place.
+
+config STARK_UI_TARGET_FPS
+    int "UI frame cap (frames per second)"
+    default 30
+    help
+        The UI task renders at most once per tick and, after a tick,
+        sleeps on stark_event_wait() for the rest of the 1/FPS frame
+        unless an event arrives first. ARCHITECTURE.md §9.

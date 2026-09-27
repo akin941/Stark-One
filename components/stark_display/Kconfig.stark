@@ -1,0 +1,51 @@
+# stark_display options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). ESP-IDF does not pick up a
+# `Kconfig.stark` on its own, so the menu is assembled in one place.
+
+config STARK_DISPLAY_BAND_H
+    int "Display render band height (lines)"
+    default 40
+    help
+        Height of one DMA render band, in scanlines. Sizes the band buffer
+        and the SPI2 max transfer (320 * STARK_DISPLAY_BAND_H * 2 bytes,
+        default 25600, set by stark_board_init()). ARCHITECTURE.md §6.5, §9.
+
+config STARK_DISPLAY_SPI_HZ
+    int "Display SPI clock (Hz)"
+    default 40000000
+    help
+        SPI2 clock for the panel. 40 MHz is the target for the production
+        PCB (ARCHITECTURE.md §9, HARDWARE.md §2.3). On a breadboard set
+        20000000 (20 MHz): long jumper wires will not survive 40 MHz. The
+        simulator runs at either.
+
+config STARK_DISPLAY_SWAP_XY
+    bool "Swap X/Y (landscape)"
+    default y
+    help
+        With the two mirror settings this selects the rotation. The
+        defaults (swap only, no mirror: MADCTL MV, the usual ILI9341
+        "rotation 1") give an upright 320x240 landscape image on a
+        standard 2.8" module and on the simulated ILI9341, whose part is
+        rotated 90 degrees in diagram.json for that reason. A mirror
+        setting that does not match produces a transposed image, which no
+        physical rotation of the panel can correct.
+
+config STARK_DISPLAY_MIRROR_X
+    bool "Mirror X"
+    default n
+
+config STARK_DISPLAY_MIRROR_Y
+    bool "Mirror Y"
+    default n
+
+config STARK_DISPLAY_BGR
+    bool "Panel colour order is BGR"
+    default y
+    help
+        If the red test bar shows up blue, this default is wrong for the
+        panel: fix it here, never by swapping colours in stark_gfx.
+
+config STARK_DISPLAY_INVERT
+    bool "Invert colours"
+    default n

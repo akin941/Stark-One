@@ -1,0 +1,13 @@
+# The one STARK menu (ARCHITECTURE.md §9). Each component owns its options in
+# its own Kconfig.stark; this file only assembles them, one explicit line per
+# component (like the app registry, no globbing). A new component with options
+# adds its line here in the same change.
+menu "STARK"
+
+    rsource "../components/stark_board/Kconfig.stark"
+    rsource "../components/stark_display/Kconfig.stark"
+    rsource "../components/stark_event/Kconfig.stark"
+    rsource "../components/stark_input/Kconfig.stark"
+    rsource "../components/stark_ui/Kconfig.stark"
+
+endmenu

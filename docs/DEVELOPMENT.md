@@ -262,7 +262,8 @@ All scripts use `set -euo pipefail` and return non-zero on errors.
 | `scripts/setup.sh`   | Verify ESP-IDF version matches `.idf-version` |
 | `scripts/build.sh`   | Build locally or via `--docker` |
 | `scripts/fmt.sh`     | Format sources with clang-format (`--check` for CI) |
-| `scripts/check.sh`   | Repository structure, shell syntax, ADR-0010 compliance |
+| `scripts/check.sh`   | Repository structure, shell syntax, ADR-0010 compliance, layer rules, script unit tests |
+| `scripts/check_layers.py` | Component dependency layer rules (ARCHITECTURE §10, STARK-0100) |
 | `scripts/test_host.sh` | Host unit tests (added by STARK-0005) |
 | `scripts/test_emu.sh` | Emulator scenarios (`test/emu/*.toml`) on the production image — mandatory, free (docs/VALIDATION.md) |
 | `scripts/install_esp_emu.sh` | Fetch the pinned esp-emulator and verify its SHA-256 |

@@ -25,8 +25,9 @@ class Classify(unittest.TestCase):
     def test_ci_and_lint_tooling_not_required(self):
         self.assertFalse(self.required(".github/workflows/ci.yml", "scripts/check.sh",
                                        "scripts/fmt.sh", "scripts/check_pins.py",
-                                       "scripts/test_host.sh", "scripts/wokwi_gate.py",
-                                       "scripts/test_wokwi_gate.py", ".clang-format"))
+                                       "scripts/check_layers.py", "scripts/test_host.sh",
+                                       "scripts/wokwi_gate.py", "scripts/test_wokwi_gate.py",
+                                       ".clang-format"))
         self.assertFalse(self.required("test/host/test_gfx.c", "test/host/CMakeLists.txt"))
 
     def test_firmware_sources_required(self):

@@ -615,7 +615,11 @@ asserts on the **presence and ordering** of that line, never on the number in it
 
 ## 9. Configuration (Kconfig)
 
-`components/*/Kconfig` entries under a single `STARK` menu:
+Each component owns its options in `components/<name>/Kconfig.stark`; `main/Kconfig.projbuild`
+assembles them into the single top-level `STARK` menu with one explicit `rsource` line per
+component (STARK-0100 — ESP-IDF renders every component `Kconfig` as a menu of its own, so
+per-component `menu "STARK"` blocks would give one STARK menu each). A component that
+gains options adds its line there in the same change:
 
 | Symbol | Default | Purpose |
 | --- | --- | --- |
@@ -636,8 +640,30 @@ to set differently (ADR-0010).
 
 * Each component's `CMakeLists.txt` lists `REQUIRES` explicitly; nothing relies on
   transitive visibility.
-* `scripts/check_layers.py` parses the `REQUIRES` lists against the layer table in §2
-  and fails CI on an upward or sideways-forbidden dependency.
+* `scripts/check_layers.py` (STARK-0100; `lint` job and `scripts/check.sh`) parses every
+  `REQUIRES`/`PRIV_REQUIRES` list against the component layer table below and fails on
+  an upward dependency, a same-layer dependency not on the allowlist, a platform
+  dependency of a pure component, any component but `main` requiring an app, or an
+  unclassified `stark_*` component.
+
+  | Layer | Components |
+  | --- | --- |
+  | universal | `stark_err` (any layer may require it; it requires nothing) |
+  | L0 | `stark_board` |
+  | L1 | `stark_hal`, `stark_log` |
+  | L2 | `stark_gfx` (the only all-pure component) |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer` |
+  | L4 | `stark_ui`, `stark_app` |
+  | L5 | every `apps/app_*` |
+  | root | `main` — the composition root, may require anything |
+
+  Same-layer allowlist: `stark_input → stark_event` (the input service publishes key
+  events) and `stark_app → stark_ui` (the launcher is a `stark_ui` menu). Pure
+  components (`stark_err`, `stark_gfx`) require no platform component. A new component,
+  or a new sideways edge, updates the script and this table in the same change.
+* Our own components (everything under `components/`, `apps/`, `main/`) build with
+  `-Wshadow -Wconversion -Wdouble-promotion` on top of ESP-IDF's warnings-as-errors,
+  applied by the root `CMakeLists.txt` and never to vendor components (TESTING.md §3).
 * L2 cores additionally build in the host test project *without* ESP-IDF on the include
   path — so an accidental `#include "esp_log.h"` in a core fails the host build. That
   is the cheapest possible enforcement and it is why cores are host-built at all.

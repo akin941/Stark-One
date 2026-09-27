@@ -731,7 +731,10 @@ TESTING.md §3/§7, docs/DEVELOPMENT.md §7.
 
 **Host tests.** Whole suite green (unchanged).
 
-**Wokwi/runtime.** The three V0 scenarios pass unchanged (behaviour must not move).
+**Emulator/runtime.** The three emulator scenarios (`test/emu/v0-*.toml`) pass unchanged
+(behaviour must not move). Evidence also accepted: the runtime artifact rebuilt
+byte-identical to the pre-task `main` under the same pinned toolchain and inputs, which
+carries the earlier runtime evidence over (ADR-0017).
 
 **AC.**
 1. `python3 scripts/check_layers.py` passes on the tree and runs in `scripts/check.sh`
@@ -742,8 +745,10 @@ TESTING.md §3/§7, docs/DEVELOPMENT.md §7.
    `stark_gfx`.
 3. After `rm -rf build sdkconfig`, `grep -c '^# STARK$' sdkconfig` is `1`, and the
    `CONFIG_STARK_*` lines of `build/config/sdkconfig.h` are identical to STARK-0021's.
-4. The four flags reach every `stark_*`, `app_*` and `main` compile command in
-   `build/compile_commands.json` and no vendor component's; the build has 0 warnings.
+4. The flags enabled under the Notes rule reach every `stark_*`, `app_*` and `main` compile
+   command in `build/compile_commands.json` and no vendor component's; the build has 0
+   warnings. (Outcome: `-Wshadow -Wconversion -Wdouble-promotion` enabled; `-Wundef` left
+   off with its vendor-header evidence in TESTING §3.)
 5. `grep -rn "Wno-\|diagnostic ignored" components/ apps/ main/` returns nothing new.
 6. ARCHITECTURE §9/§10, TESTING §3/§7 and docs/DEVELOPMENT.md describe the checker, the
    sideways allowlist and the flags as they now are.
