@@ -22,12 +22,15 @@ typedef struct {
 } stark_app_t;
 
 /*
- * Logs the registry (`app: registry n=<N> <id>,<id>,…`, registry order),
+ * Takes the registry — the explicit static array the composition root
+ * defines (main/app_registry.c, ADR-0009/ADR-0016); it must outlive the
+ * firmware — logs it (`app: registry n=<N> <id>,<id>,…`, registry order),
  * builds the launcher — the root menu, apps sorted by category then title —
  * and pushes it. Call after stark_ui_init(). STARK_ERR_STATE if already
- * initialised.
+ * initialised; STARK_ERR_INVALID_ARG for a NULL array with count > 0 or an
+ * entry (or its id) that is NULL.
  */
-stark_err_t stark_app_init(void);
+stark_err_t stark_app_init(const stark_app_t *const *apps, size_t count);
 
 /* The registered app with this id, or NULL. */
 const stark_app_t *stark_app_find(const char *id);
