@@ -213,8 +213,12 @@ target SKU **ESP32-S3-WROOM-1-N16R8**:
 
 Plus a status LED on GPIO 18, driven by the STARK-0008 heartbeat (1 Hz, 10 % duty —
 a 100 ms blink once a second).
-The panel, buttons, and buzzer are **not** modelled yet — each is added by the task
-that brings it up (STARK-0015, STARK-0012, STARK-0013 respectively).
+Plus the six keys (STARK-0012): `btn_up`/`btn_down`/`btn_left`/`btn_right`/`btn_ok`/`btn_back`
+push buttons, D-pad layout, `bounce: "1"`, each wired from its GPIO to GND. Pressing
+one logs `key: <NAME> press`, then `release` and `short`/`long` (plus `repeat` while a
+direction key is held).
+The panel and buzzer are **not** modelled yet — each is added by the task that brings
+it up (STARK-0015, STARK-0013 respectively).
 
 ### 6.5 PSRAM Note
 

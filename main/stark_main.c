@@ -4,6 +4,8 @@
 #include "stark_log.h"
 #include "stark_err.h"
 #include "stark_board.h"
+#include "stark_event.h"
+#include "stark_input.h"
 #include "stark_version.h"
 #include "esp_heap_caps.h"
 #include "esp_idf_version.h"
@@ -52,5 +54,33 @@ void app_main(void)
     err = stark_board_heartbeat_start();
     if (err != STARK_OK) {
         STARK_LOGE("board", "led heartbeat failed: %s", stark_err_str(err));
+    }
+
+    err = stark_event_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "event bus init failed: %s — no input", stark_err_str(err));
+        return;
+    }
+
+    /* `key:` lines are DEBUG by contract (TESTING.md §4) and scenarios assert
+     * on them, so the one tag is enabled in every build — the same on
+     * hardware and in Wokwi (ADR-0010). CONFIG_LOG_MAXIMUM_LEVEL_DEBUG in
+     * sdkconfig.defaults keeps DEBUG compiled in; everything else stays INFO. */
+    stark_log_set_level("key", ESP_LOG_DEBUG);
+    err = stark_input_start();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "input start failed: %s", stark_err_str(err));
+    }
+
+    /*
+     * NOTE: interim bus consumer. The UI task (STARK-0017) becomes the one
+     * consumer of the event bus; until it exists, app_main drains the bus
+     * here so producers see an empty ring instead of a permanently full one
+     * dropping every event (STARK-0012 AC #4). Nothing subscribes yet.
+     */
+    for (;;) {
+        if (stark_event_wait(1000) == STARK_OK) {
+            (void)stark_event_dispatch(UINT32_MAX);
+        }
     }
 }

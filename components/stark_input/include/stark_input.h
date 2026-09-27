@@ -1,9 +1,10 @@
 /*
  * stark_input.h — key identities and key actions (ARCHITECTURE.md §6.6).
  *
- * Pure types, host-includable. The debounce/repeat state machine that
+ * Host-includable (no ESP-IDF types). The debounce/repeat state machine that
  * produces these actions is input_core.h (STARK-0011); the service that
- * samples the GPIOs and publishes STARK_EVT_KEY is STARK-0012's.
+ * samples the GPIOs and publishes STARK_EVT_KEY is stark_input_start()
+ * below (input_service.c, STARK-0012, target-only).
  */
 #pragma once
 
@@ -31,3 +32,15 @@ typedef enum {
     STARK_KEY_LONG,    /* held 500 ms: emitted once per press */
     STARK_KEY_SHORT,   /* released before LONG was emitted */
 } stark_key_action_t;
+
+/*
+ * Starts the input service: a CONFIG_STARK_INPUT_POLL_MS (5 ms) periodic
+ * esp_timer, in the esp_timer task, that reads the six key GPIOs through
+ * stark_hal (active-low, pull-ups from stark_board_init()), runs the core
+ * and publishes one STARK_EVT_KEY per action, logging `key: <NAME>
+ * <action>` at DEBUG. A full bus drops its oldest event (stats.dropped);
+ * the callback never retries. Needs stark_board_init() and
+ * stark_event_init() first. STARK_ERR_STATE if already started; an
+ * esp_timer failure is translated with stark_err_from_esp().
+ */
+stark_err_t stark_input_start(void);

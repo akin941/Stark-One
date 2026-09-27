@@ -37,4 +37,6 @@ idf_component_register(
         stark_err
         stark_log
         stark_board
+        stark_event
+        stark_input
 )

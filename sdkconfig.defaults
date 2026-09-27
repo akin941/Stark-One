@@ -20,6 +20,9 @@ CONFIG_FREERTOS_HZ=1000
 
 # --- Logging ------------------------------------------------------------
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+# DEBUG compiled in but off by default: main enables it for the `key` tag only
+# (STARK-0012 — `key:` lines are DEBUG by contract, TESTING.md §4).
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
 
 # --- Partition table ----------------------------------------------------
 CONFIG_PARTITION_TABLE_CUSTOM=y

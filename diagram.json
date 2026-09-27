@@ -19,12 +19,66 @@
       "type": "wokwi-resistor",
       "id": "r1",
       "attrs": { "value": "330" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_up",
+      "top": -40,
+      "left": 300,
+      "attrs": { "color": "grey", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_left",
+      "top": 30,
+      "left": 240,
+      "attrs": { "color": "grey", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_ok",
+      "top": 30,
+      "left": 300,
+      "attrs": { "color": "grey", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_right",
+      "top": 30,
+      "left": 360,
+      "attrs": { "color": "grey", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_down",
+      "top": 100,
+      "left": 300,
+      "attrs": { "color": "grey", "bounce": "1" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_back",
+      "top": 30,
+      "left": 450,
+      "attrs": { "color": "grey", "bounce": "1" }
     }
   ],
   "connections": [
     [ "esp:18", "r1:1", "", [] ],
     [ "r1:2", "led:A", "", [] ],
     [ "led:C", "esp:GND.1", "", [] ],
+    [ "esp:4", "btn_up:1.l", "", [] ],
+    [ "btn_up:2.l", "esp:GND.2", "", [] ],
+    [ "esp:5", "btn_down:1.l", "", [] ],
+    [ "btn_down:2.l", "esp:GND.2", "", [] ],
+    [ "esp:6", "btn_left:1.l", "", [] ],
+    [ "btn_left:2.l", "esp:GND.2", "", [] ],
+    [ "esp:7", "btn_right:1.l", "", [] ],
+    [ "btn_right:2.l", "esp:GND.2", "", [] ],
+    [ "esp:15", "btn_ok:1.l", "", [] ],
+    [ "btn_ok:2.l", "esp:GND.2", "", [] ],
+    [ "esp:16", "btn_back:1.l", "", [] ],
+    [ "btn_back:2.l", "esp:GND.2", "", [] ],
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ]
   ],
