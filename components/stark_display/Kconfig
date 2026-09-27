@@ -14,8 +14,8 @@ menu "STARK"
         help
             SPI2 clock for the panel. 40 MHz is the target for the production
             PCB (ARCHITECTURE.md §9, HARDWARE.md §2.3). On a breadboard set
-            20000000 (20 MHz): long jumper wires will not survive 40 MHz. Wokwi
-            runs at either.
+            20000000 (20 MHz): long jumper wires will not survive 40 MHz. The
+            simulator runs at either.
 
     config STARK_DISPLAY_SWAP_XY
         bool "Swap X/Y (landscape)"
@@ -24,7 +24,7 @@ menu "STARK"
             With the two mirror settings this selects the rotation. The
             defaults (swap only, no mirror: MADCTL MV, the usual ILI9341
             "rotation 1") give an upright 320x240 landscape image on a
-            standard 2.8" module and on the Wokwi ILI9341, whose part is
+            standard 2.8" module and on the simulated ILI9341, whose part is
             rotated 90 degrees in diagram.json for that reason. A mirror
             setting that does not match produces a transposed image, which no
             physical rotation of the panel can correct.

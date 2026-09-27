@@ -1,0 +1,13 @@
+# STARK-0021 — V0 boot: the boot lines appear, in this order. Presence and
+# ordering only — never the numbers in them (ADR-0011, TESTING.md §1.1, §4).
+# scripts/test_wokwi.sh additionally checks `diag: heap=` >= 200 kB.
+name: v0-boot
+version: 1
+author: STARK ONE
+steps:
+  - wait-serial: "board: devkitc1 pins ok spi2 ready"
+  - wait-serial: "display: init 320x240 band=40 bufs=2x25600"
+  - wait-serial: "app: registry n=4 about,inputtest,displaytest,buzzertest"
+  - wait-serial: "boot: ui_ready in "
+  - wait-serial: "diag: heap="
+  - delay: 500ms

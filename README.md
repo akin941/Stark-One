@@ -8,8 +8,14 @@ built on a clean, extensible firmware architecture. It is inspired by the class 
 portable multi-tools such as the Flipper Zero, but it is **not a clone**: own firmware
 architecture, own module standard, own PCB, own enclosure.
 
-> **Status: planning / pre-implementation.** No firmware code exists yet.
-> This repository currently contains the engineering plan only.
+> **Status: V0 complete** (STARK-0001 … STARK-0021). The firmware boots on the
+> simulated ESP32-S3 N16R8 in Wokwi: status LED heartbeat, event bus, debounced
+> six-key input, ILI9341 band rendering, screen stack + list menu, app registry and
+> launcher, buzzer, and four apps (About, Input Test, Display Test, Buzzer Test).
+> CI builds it, runs the host test suite and the Wokwi scenarios. Evidence for every
+> V0 exit criterion: [docs/measurements.md](docs/measurements.md). Next: V0.1
+> (architecture hardening), then the V1 hardware prototype, where the performance
+> gates live.
 
 ## Documents
 
@@ -37,8 +43,9 @@ architecture, own module standard, own PCB, own enclosure.
 
 ## Where to start
 
-Read [PROJECT.md](PROJECT.md), then [ARCHITECTURE.md](ARCHITECTURE.md), then pick up
-**STARK-0001** from [TASKS.md](TASKS.md).
+Read [PROJECT.md](PROJECT.md), then [ARCHITECTURE.md](ARCHITECTURE.md), then
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) to build, test and simulate. New work starts
+from the next unfinished task in [TASKS.md](TASKS.md) (V0.1).
 
 ## Use policy
 

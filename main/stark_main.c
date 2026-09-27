@@ -15,6 +15,7 @@
 #include "esp_idf_version.h"
 #include "esp_chip_info.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -75,7 +76,7 @@ void app_main(void)
 
     /* `key:` lines are DEBUG by contract (TESTING.md §4) and scenarios assert
      * on them, so the one tag is enabled in every build — the same on
-     * hardware and in Wokwi (ADR-0010). CONFIG_LOG_MAXIMUM_LEVEL_DEBUG in
+     * hardware and in the simulator (ADR-0010). CONFIG_LOG_MAXIMUM_LEVEL_DEBUG in
      * sdkconfig.defaults keeps DEBUG compiled in; everything else stays INFO. */
     stark_log_set_level("key", ESP_LOG_DEBUG);
     err = stark_input_start();
@@ -94,4 +95,12 @@ void app_main(void)
     if (xTaskCreatePinnedToCore(stark_ui_task, "stark_ui", 6 * 1024, NULL, 5, NULL, 1) != pdPASS) {
         stark_panic("ui task", STARK_ERR_NO_MEM);
     }
+
+    /* Scenarios assert that these lines appear, and in this order — never on
+     * the numbers (ADR-0011; TESTING.md §1.1, §4). The heap figure is the
+     * boot-time diagnostic STARK-0021 asks for (the full stark_diag is
+     * V0.1); the scenario runner checks it against the >= 200 kB target. */
+    STARK_LOGI("boot", "ui_ready in %u ms", (unsigned)(esp_timer_get_time() / 1000));
+    STARK_LOGI("diag", "heap=%u",
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 }

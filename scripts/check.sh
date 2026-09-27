@@ -35,6 +35,8 @@ check "shell-syntax-setup"  bash -n scripts/setup.sh
 check "shell-syntax-build"  bash -n scripts/build.sh
 check "shell-syntax-fmt"    bash -n scripts/fmt.sh
 check "shell-syntax-check"  bash -n scripts/check.sh
+check "shell-syntax-test-host"  bash -n scripts/test_host.sh
+check "shell-syntax-test-wokwi" bash -n scripts/test_wokwi.sh
 
 # --- Required files ------------------------------------------------------
 for f in CMakeLists.txt sdkconfig.defaults partitions.csv .idf-version \
@@ -49,6 +51,10 @@ check "idf-version-set" bash -c '[[ -s .idf-version ]]'
 # grep for #ifdef / #ifdef WOKWI / #ifdef SIM in source files only.
 check "no-wokwi-ifdef" \
     bash -c '! grep -rnE "#if.*(WOKWI|SIM)" main/ components/ apps/ 2>/dev/null'
+
+# --- No simulator references in firmware code (AGENTS.md, STARK-0021 AC 3) --
+check "no-wokwi-mention" \
+    bash -c '! grep -rqi wokwi main/ components/ apps/ 2>/dev/null'
 
 # --- GPIO centralization (STARK-0006 AC 1, STARK-0007) --------------------
 # Nothing outside components/stark_board or components/stark_hal may name a

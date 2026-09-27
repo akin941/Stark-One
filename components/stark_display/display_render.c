@@ -87,7 +87,7 @@ stark_err_t stark_display_render(gfx_rect_t area, stark_render_fn fn, void *ctx)
     }
 
     if (err == STARK_OK && is_full_screen(bands, n)) {
-        /* Informational only (ADR-0011): never a gate in Wokwi. */
+        /* Informational only (ADR-0011): never a gate in simulation. */
         STARK_LOGI("display", "full refresh %u ms",
                    (unsigned)((stark_hal_now_us() - start_us) / 1000u));
     }
