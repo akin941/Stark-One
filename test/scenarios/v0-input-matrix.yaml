@@ -1,0 +1,70 @@
+# STARK-0021 — all six keys produce the expected `key:` lines (TESTING.md §4),
+# exercised inside Input Test so no key launches anything; BACK last, which
+# also leaves the app. A line that arrives during a `delay` step is not seen by
+# the next wait-serial, so every expected line is waited for right away.
+name: v0-input-matrix
+version: 1
+author: STARK ONE
+steps:
+  - wait-serial: "boot: ui_ready in "
+  - delay: 400ms
+  - set-control: { part-id: btn_down, control: pressed, value: 1 }
+  - delay: 60ms
+  - set-control: { part-id: btn_down, control: pressed, value: 0 }
+  - delay: 150ms
+  - set-control: { part-id: btn_down, control: pressed, value: 1 }
+  - delay: 60ms
+  - set-control: { part-id: btn_down, control: pressed, value: 0 }
+  - delay: 150ms
+  - set-control: { part-id: btn_down, control: pressed, value: 1 }
+  - delay: 60ms
+  - set-control: { part-id: btn_down, control: pressed, value: 0 }
+  - delay: 150ms
+  - set-control: { part-id: btn_ok, control: pressed, value: 1 }
+  - delay: 60ms
+  - set-control: { part-id: btn_ok, control: pressed, value: 0 }
+  - wait-serial: "app: start inputtest"
+  - delay: 300ms
+  - set-control: { part-id: btn_up, control: pressed, value: 1 }
+  - wait-serial: "key: UP press"
+  - delay: 80ms
+  - set-control: { part-id: btn_up, control: pressed, value: 0 }
+  - wait-serial: "key: UP release"
+  - wait-serial: "key: UP short"
+  - delay: 150ms
+  - set-control: { part-id: btn_down, control: pressed, value: 1 }
+  - wait-serial: "key: DOWN press"
+  - delay: 80ms
+  - set-control: { part-id: btn_down, control: pressed, value: 0 }
+  - wait-serial: "key: DOWN release"
+  - wait-serial: "key: DOWN short"
+  - delay: 150ms
+  - set-control: { part-id: btn_left, control: pressed, value: 1 }
+  - wait-serial: "key: LEFT press"
+  - delay: 80ms
+  - set-control: { part-id: btn_left, control: pressed, value: 0 }
+  - wait-serial: "key: LEFT release"
+  - wait-serial: "key: LEFT short"
+  - delay: 150ms
+  - set-control: { part-id: btn_right, control: pressed, value: 1 }
+  - wait-serial: "key: RIGHT press"
+  - delay: 80ms
+  - set-control: { part-id: btn_right, control: pressed, value: 0 }
+  - wait-serial: "key: RIGHT release"
+  - wait-serial: "key: RIGHT short"
+  - delay: 150ms
+  - set-control: { part-id: btn_ok, control: pressed, value: 1 }
+  - wait-serial: "key: OK press"
+  - delay: 80ms
+  - set-control: { part-id: btn_ok, control: pressed, value: 0 }
+  - wait-serial: "key: OK release"
+  - wait-serial: "key: OK short"
+  - delay: 150ms
+  - set-control: { part-id: btn_back, control: pressed, value: 1 }
+  - wait-serial: "key: BACK press"
+  - delay: 80ms
+  - set-control: { part-id: btn_back, control: pressed, value: 0 }
+  - wait-serial: "key: BACK release"
+  - wait-serial: "key: BACK short"
+  - wait-serial: "app: stop inputtest"
+  - delay: 300ms

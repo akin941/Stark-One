@@ -227,17 +227,22 @@ listed in each task's acceptance criteria.
 Invocation:
 
 ```bash
-# local headless
-wokwi-cli . --timeout 20000 --scenario test/scenarios/v0-boot-and-menu.yaml
-
-# CI (GitHub Actions)
-- uses: wokwi/wokwi-ci-action@v1
-  with:
-    token: ${{ secrets.WOKWI_CLI_TOKEN }}
-    path: /
-    timeout: 20000
-    scenario: test/scenarios/v0-boot-and-menu.yaml
+# local headless (after scripts/build.sh): every scenario, or the ones named
+WOKWI_CLI_TOKEN=… scripts/test_wokwi.sh
+WOKWI_CLI_TOKEN=… scripts/test_wokwi.sh test/scenarios/v0-boot.yaml
 ```
+
+`scripts/test_wokwi.sh` (STARK-0021) runs `wokwi-cli` per scenario, keeps each serial
+log in `build/wokwi/<scenario>.log`, and adds the checks a scenario cannot express:
+`diag: heap=` ≥ 200 kB, and no `panic:` / `Guru Meditation` / `ui: render failed`.
+CI's `wokwi` job installs `wokwi-cli` v0.27.1 (sha256-pinned) and runs it on the
+firmware job's build — the full set on pull requests, `v0-boot` only on push — with the
+`WOKWI_CLI_TOKEN` repository secret.
+
+Two `wait-serial` facts learned writing the V0 scenarios: a line that arrives while a
+`delay` step runs is not seen by the next `wait-serial` (wait for it immediately after
+the step that triggers it); and in the CLI's saved serial log, a line a scenario waited
+for verbatim loses its line ending (a CLI artifact — the firmware emits `\r\n`).
 
 Screenshots: Wokwi can capture the framebuffer in CI (`--screenshot-part lcd
 --screenshot-time`), which we use for a coarse visual regression on the root menu. Treat

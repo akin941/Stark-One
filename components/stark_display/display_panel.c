@@ -4,7 +4,7 @@
  * Target-only. Rendering is display_render.c (STARK-0016).
  *
  * The panel's RST and backlight (LEDC channel 1) are driven even though
- * Wokwi models neither (ADR-0010). All pins come from stark_board.
+ * the simulator models neither (ADR-0010). All pins come from stark_board.
  */
 #include "stark_display.h"
 #include <stdbool.h>

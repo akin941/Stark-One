@@ -10,7 +10,7 @@ menu "STARK"
             firmware (AGENTS.md).
 
         config STARK_BOARD_DEVKITC1
-            bool "ESP32-S3-DevKitC-1 (development target, also used by Wokwi)"
+            bool "ESP32-S3-DevKitC-1 (development target, also the simulated board)"
     endchoice
 
     # STARK_DISPLAY_BAND_H / STARK_DISPLAY_SPI_HZ, which stark_board_init()

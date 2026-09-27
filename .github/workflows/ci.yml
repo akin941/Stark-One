@@ -3,8 +3,10 @@
 #   lint      — clang-format --check + check_pins.py + gitleaks (STARK-0004/0006)
 #   firmware  — idf.py build (pinned espressif/idf image) + idf.py size (STARK-0004)
 #   host      — scripts/test_host.sh on ubuntu-latest + macos-latest (STARK-0005)
-#
-# Wokwi scenarios (STARK-0021) are added by a later task, not stubbed here.
+#   wokwi     — scripts/test_wokwi.sh on the firmware job's build (STARK-0021):
+#               the full scenario set on pull requests, v0-boot only on push
+#               (Wokwi CI minutes are quota-limited, TESTING.md §4). Needs the
+#               repository secret WOKWI_CLI_TOKEN.
 name: CI
 
 on:
@@ -66,6 +68,18 @@ jobs:
             exit 1
           fi
 
+      - name: Upload firmware for the Wokwi job
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-firmware
+          path: |
+            build/flasher_args.json
+            build/stark-one.bin
+            build/stark-one.elf
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+          if-no-files-found: error
+
       - name: Upload size report
         uses: actions/upload-artifact@v7
         with:
@@ -112,3 +126,46 @@ jobs:
           name: stark-one-host-coverage
           path: build-host/coverage.xml
           if-no-files-found: error
+
+  wokwi:
+    name: wokwi
+    needs: firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download firmware
+        uses: actions/download-artifact@v8
+        with:
+          name: stark-one-firmware
+          path: build
+
+      - name: Install wokwi-cli (pinned v0.27.1, sha256-verified)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/wokwi-cli" \
+            https://github.com/wokwi/wokwi-cli/releases/download/v0.27.1/wokwi-cli-linuxstatic-x64
+          echo "c3faa32b752c63762a9e4852288f0ce26952475ade16c95ebb8f61a272425633  $HOME/.local/bin/wokwi-cli" \
+            | sha256sum -c -
+          chmod +x "$HOME/.local/bin/wokwi-cli"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: scripts/test_wokwi.sh
+        env:
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            scripts/test_wokwi.sh
+          else
+            scripts/test_wokwi.sh test/scenarios/v0-boot.yaml
+          fi
+
+      - name: Upload serial logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-wokwi-logs
+          path: build/wokwi/*.log
+          if-no-files-found: ignore
