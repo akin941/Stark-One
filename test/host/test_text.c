@@ -1,7 +1,8 @@
 /*
  * test_text.c — host unit tests for stark_gfx text (STARK-0014,
  * TESTING.md §2 "text"): width vs rendered extent, UTF-8 decoding, the
- * fallback glyph, and clipping mid-glyph.
+ * fallback glyph, and clipping mid-glyph; Latin-1/Turkish coverage and the
+ * 6x10 font (STARK-0102).
  */
 #include <stdio.h>
 #include <string.h>
@@ -129,13 +130,99 @@ void test_unmapped_code_points_render_the_fallback_glyph(void)
 {
     uint16_t q[16 * 8], cell[16 * 8];
     render_cell("?", q);
-    static const char *const unmapped[] = {"é", "€", "😀", "\x01", "\x7F", "\xFF"};
+    /* Outside U+0020..U+017F, or inside it without a source glyph (DEL and
+     * the C1 controls hold the fallback bitmap), or malformed UTF-8. */
+    static const char *const unmapped[] = {"€",        "😀",       "\x01", "\x7F",
+                                           "\xC2\x80", "\xC2\x9F", "ƀ",    "\xFF"};
     for (size_t i = 0; i < sizeof unmapped / sizeof unmapped[0]; i++) {
         render_cell(unmapped[i], cell);
         TEST_ASSERT_EQUAL_HEX16_ARRAY(q, cell, 16 * 8);
     }
     render_cell("A", cell); /* and a mapped glyph is not the fallback */
     TEST_ASSERT_FALSE(memcmp(q, cell, sizeof q) == 0);
+}
+
+/* ---- Latin-1 / Turkish coverage (STARK-0102) ------------------------------- */
+
+static void render_cell_font(const gfx_font_t *f, const char *s, uint16_t *out)
+{
+    setUp();
+    gfx_text(&s_surf, f, 0, 0, s, FG, BGTEXT, false);
+    for (int y = 0; y < f->h; y++) {
+        memcpy(&out[y * f->w], &s_px[y * SW], (size_t)f->w * sizeof(uint16_t));
+    }
+}
+
+static size_t ink(const uint16_t *cell, size_t n)
+{
+    size_t k = 0;
+    for (size_t i = 0; i < n; i++) {
+        k += cell[i] == FG ? 1u : 0u;
+    }
+    return k;
+}
+
+static const char *const k_turkish[] = {"Ç", "ç", "Ğ", "ğ", "İ", "ı", "Ö", "ö", "Ş", "ş", "Ü", "ü"};
+static const char *const k_latin1[] = {"ä", "é", "ñ", "ß", "Å", "ø", "¿", "©", "°", "½"};
+
+static void assert_own_glyphs(const gfx_font_t *f, const char *const *s, size_t n)
+{
+    uint16_t q[16 * 8], cell[16 * 8];
+    size_t cells = (size_t)f->w * f->h;
+    render_cell_font(f, "?", q);
+    for (size_t i = 0; i < n; i++) {
+        render_cell_font(f, s[i], cell);
+        TEST_ASSERT_FALSE_MESSAGE(memcmp(q, cell, cells * sizeof(uint16_t)) == 0, s[i]);
+        TEST_ASSERT_TRUE_MESSAGE(ink(cell, cells) > 0, s[i]);
+        TEST_ASSERT_EQUAL_INT16_MESSAGE(f->w, gfx_text_width(f, s[i]), s[i]);
+    }
+}
+
+void test_turkish_and_latin1_letters_have_their_own_glyphs(void)
+{
+    assert_own_glyphs(&gfx_font_mono16, k_turkish, sizeof k_turkish / sizeof k_turkish[0]);
+    assert_own_glyphs(&gfx_font_mono16, k_latin1, sizeof k_latin1 / sizeof k_latin1[0]);
+    assert_own_glyphs(&gfx_font_mono10, k_turkish, sizeof k_turkish / sizeof k_turkish[0]);
+    assert_own_glyphs(&gfx_font_mono10, k_latin1, sizeof k_latin1 / sizeof k_latin1[0]);
+}
+
+void test_dotted_and_dotless_i_differ(void)
+{
+    uint16_t a[16 * 8], b[16 * 8];
+    render_cell_font(F, "I", a);
+    render_cell_font(F, "İ", b);
+    TEST_ASSERT_FALSE(memcmp(a, b, sizeof a) == 0);
+    render_cell_font(F, "i", a);
+    render_cell_font(F, "ı", b);
+    TEST_ASSERT_FALSE(memcmp(a, b, sizeof a) == 0);
+}
+
+void test_mono10_is_6x10_with_the_same_range_and_fallback(void)
+{
+    const gfx_font_t *m = &gfx_font_mono10;
+    TEST_ASSERT_EQUAL_UINT8(6, m->w);
+    TEST_ASSERT_EQUAL_UINT8(10, m->h);
+    TEST_ASSERT_EQUAL_UINT32(0x20, m->first);
+    TEST_ASSERT_EQUAL_UINT32(0x17F, m->last);
+    TEST_ASSERT_EQUAL_UINT32('?', m->fallback);
+    TEST_ASSERT_EQUAL_UINT32(gfx_font_mono16.first, m->first);
+    TEST_ASSERT_EQUAL_UINT32(gfx_font_mono16.last, m->last);
+    TEST_ASSERT_EQUAL_INT16(6 * 7, gfx_text_width(m, "Ğüzel ş")); /* 7 code points */
+
+    uint16_t q[10 * 6], cell[10 * 6];
+    render_cell_font(m, "?", q);
+    render_cell_font(m, "€", cell);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(q, cell, 10 * 6);
+    render_cell_font(m, "\xC2\x85", cell); /* a C1 control: fallback bitmap */
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(q, cell, 10 * 6);
+    /* a mono10 glyph paints nothing below row 10 */
+    setUp();
+    gfx_text(&s_surf, m, 0, 0, "Ş", FG, BGTEXT, false);
+    for (int y = 10; y < SH; y++) {
+        for (int x = 0; x < 6; x++) {
+            TEST_ASSERT_EQUAL_HEX16(CLEAR, s_px[y * SW + x]);
+        }
+    }
 }
 
 void test_every_printable_ascii_glyph_has_ink_and_space_has_none(void)
@@ -261,6 +348,9 @@ int main(void)
     RUN_TEST(test_multibyte_sequences_are_one_cell_each);
     RUN_TEST(test_malformed_utf8_is_one_fallback_cell_per_byte);
     RUN_TEST(test_unmapped_code_points_render_the_fallback_glyph);
+    RUN_TEST(test_turkish_and_latin1_letters_have_their_own_glyphs);
+    RUN_TEST(test_dotted_and_dotless_i_differ);
+    RUN_TEST(test_mono10_is_6x10_with_the_same_range_and_fallback);
     RUN_TEST(test_every_printable_ascii_glyph_has_ink_and_space_has_none);
     RUN_TEST(test_transparent_text_leaves_background);
     RUN_TEST(test_text_clipped_mid_glyph_at_the_left_edge);

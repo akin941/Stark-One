@@ -1,6 +1,7 @@
 /*
  * app_displaytest.c — Display Test (TASKS.md STARK-0020): colour bars, a
- * gradient, a 1 px grid, a text sample and a live FPS figure. It redraws
+ * gradient, a 1 px grid, text samples (ASCII; Latin-1/Turkish in both fonts,
+ * STARK-0102) and a live FPS figure. It redraws
  * its whole area every frame and reports frames per second — displayed and
  * logged, informational only (the FPS gate is a hardware criterion,
  * ADR-0011).
@@ -11,7 +12,13 @@
 #include "stark_hal.h"
 #include "stark_log.h"
 
-#define CONTENT ((gfx_rect_t){0, 16, 320, 224})
+#define CONTENT        ((gfx_rect_t){0, 16, 320, 224})
+
+/* The Latin-1/Turkish sample (STARK-0102), drawn in both fonts. */
+#define DT_SAMPLE_UTF8 "ÇĞİÖŞÜ çğıöşü äéñß"
+#define DT_SAMPLE_X    8
+#define DT_SAMPLE16_Y  180
+#define DT_SAMPLE10_Y  200
 
 static unsigned s_frames;
 static uint64_t s_window_start_us;
@@ -45,15 +52,19 @@ static void display_render(stark_screen_t *self, gfx_surface_t *s)
         uint8_t v = (uint8_t)(x * 255 / 319);
         gfx_vline(s, x, 64, 32, GFX_RGB565(v, v, v));
     }
-    gfx_fill(s, (gfx_rect_t){0, 96, 320, 96}, GFX_RGB565(0, 0, 0));
+    gfx_fill(s, (gfx_rect_t){0, 96, 320, 64}, GFX_RGB565(0, 0, 0));
     for (int16_t x = 0; x < 320; x += 16) { /* 1 px grid */
-        gfx_vline(s, x, 96, 96, GFX_RGB565(0, 160, 0));
+        gfx_vline(s, x, 96, 64, GFX_RGB565(0, 160, 0));
     }
-    for (int16_t y = 96; y < 192; y += 16) {
+    for (int16_t y = 96; y < 160; y += 16) {
         gfx_hline(s, 0, y, 320, GFX_RGB565(0, 160, 0));
     }
-    gfx_fill(s, (gfx_rect_t){0, 192, 320, 48}, GFX_RGB565(0, 0, 0));
-    (void)gfx_text(s, &gfx_font_mono16, 8, 196, "The quick brown fox 0123456789", 0xFFFF, 0, true);
+    gfx_fill(s, (gfx_rect_t){0, 160, 320, 80}, GFX_RGB565(0, 0, 0));
+    (void)gfx_text(s, &gfx_font_mono16, 8, 162, "The quick brown fox 0123456789", 0xFFFF, 0, true);
+    (void)gfx_text(s, &gfx_font_mono16, DT_SAMPLE_X, DT_SAMPLE16_Y, DT_SAMPLE_UTF8, 0xFFFF, 0,
+                   true);
+    (void)gfx_text(s, &gfx_font_mono10, DT_SAMPLE_X, DT_SAMPLE10_Y, DT_SAMPLE_UTF8, 0xFFFF, 0,
+                   true);
     char fps[24];
     snprintf(fps, sizeof fps, "FPS %u.%u", s_fps_x10 / 10, s_fps_x10 % 10);
     (void)gfx_text(s, &gfx_font_mono16, 8, 218, fps, GFX_RGB565(255, 255, 0), 0, true);

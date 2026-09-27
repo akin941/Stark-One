@@ -6,15 +6,20 @@ Deterministic by construction: no timestamps, no environment-dependent
 output, glyphs in code-point order. Re-running it on the same input
 regenerates a byte-identical file (scripts/check.sh verifies this).
 
-  fontconv.py subset   SRC.bdf OUT.bdf --first 0x20 --last 0x7E
+  fontconv.py subset   SRC.bdf OUT.bdf --first 0x20 --last 0x7E [--allow-missing]
       Copy SRC's header (properties included — COPYRIGHT stays with the
       glyphs) and only the glyphs in [first, last], sorted, with CHARS fixed.
+      A code point SRC lacks is an error unless --allow-missing (then it is
+      simply absent from OUT — e.g. the C1 controls U+0080..U+009F).
 
   fontconv.py generate SRC.bdf OUT.c --name gfx_font_mono16 \
           --cell 8x16 --baseline 13 --first 0x20 --last 0x7E --fallback 0x3F
       Place every glyph in a cell of the given size with its baseline on the
       given row (counted from the cell top) and emit the gfx_font_t table:
       row-major rows of ceil(w/8) bytes, most significant bit = leftmost.
+      With --fill-missing, a code point in range that SRC lacks gets the
+      fallback glyph's bitmap, so gfx_font_t stays one contiguous range and
+      "unmapped draws the fallback" still holds (STARK-0102).
 """
 import argparse
 import sys
@@ -55,7 +60,7 @@ def cmd_subset(a):
     header, glyphs = parse_bdf(Path(a.src).read_text())
     keep = [e for e in sorted(glyphs) if a.first <= e <= a.last]
     missing = [e for e in range(a.first, a.last + 1) if e not in glyphs]
-    if missing:
+    if missing and not a.allow_missing:
         sys.exit(f"source lacks glyphs: {', '.join(f'U+{e:04X}' for e in missing)}")
     out = header + [f"CHARS {len(keep)}"]
     for e in keep:
@@ -66,7 +71,11 @@ def cmd_subset(a):
 
 def c_char(e):
     c = chr(e)
-    return "' '" if c == " " else f"'{c}'"
+    if c == " ":
+        return "' '"
+    if not c.isprintable():
+        return "(non-printing)"
+    return f"'{c}'"
 
 
 def cmd_generate(a):
@@ -75,12 +84,17 @@ def cmd_generate(a):
     header, glyphs = parse_bdf(Path(a.src).read_text())
     if not a.first <= a.fallback <= a.last:
         sys.exit("fallback must be inside [first, last]")
+    if a.fallback not in glyphs:
+        sys.exit(f"source lacks the fallback glyph U+{a.fallback:04X}")
 
     table = []
+    filled = []
     for e in range(a.first, a.last + 1):
         if e not in glyphs:
-            sys.exit(f"source lacks glyph U+{e:04X}")
-        w, h, xoff, yoff, rows = glyph_rows(glyphs[e])
+            if not a.fill_missing:
+                sys.exit(f"source lacks glyph U+{e:04X}")
+            filled.append(e)
+        w, h, xoff, yoff, rows = glyph_rows(glyphs.get(e, glyphs[a.fallback]))
         top = a.baseline - (yoff + h)
         if xoff < 0 or xoff + w > cell_w or top < 0 or top + h > cell_h:
             sys.exit(f"U+{e:04X} ({w}x{h}{xoff:+}{yoff:+}) does not fit the {a.cell} cell")
@@ -102,6 +116,12 @@ def cmd_generate(a):
         " * (provenance and licence: components/stark_gfx/fonts/README.md).",
         f" * U+{a.first:04X}..U+{a.last:04X} in {cell_w}x{cell_h} cells, baseline on row"
         f" {a.baseline}, fallback U+{a.fallback:04X}.",
+    ]
+    if filled:
+        out.append(f" * {len(filled)} code point(s) the source lacks hold the fallback glyph:"
+                   f" U+{filled[0]:04X}..U+{filled[-1]:04X}." if filled == list(range(filled[0], filled[-1] + 1))
+                   else f" * Code points holding the fallback glyph: {', '.join(f'U+{e:04X}' for e in filled)}.")
+    out += [
         " */",
         '#include "gfx_font.h"',
         "",
@@ -110,7 +130,8 @@ def cmd_generate(a):
         "static const uint8_t k_bits[] = {",
     ]
     for e, data in table:
-        out.append("    " + ", ".join(f"0x{b:02X}" for b in data) + f", /* U+{e:04X} {c_char(e)} */")
+        note = " (fallback)" if e in filled else ""
+        out.append("    " + ", ".join(f"0x{b:02X}" for b in data) + f", /* U+{e:04X} {c_char(e)}{note} */")
     out += [
         "};",
         "/* clang-format on */",
@@ -137,6 +158,7 @@ def main():
     s.add_argument("out")
     s.add_argument("--first", type=num, required=True)
     s.add_argument("--last", type=num, required=True)
+    s.add_argument("--allow-missing", action="store_true")
     s.set_defaults(fn=cmd_subset)
 
     g = sub.add_parser("generate")
@@ -148,6 +170,7 @@ def main():
     g.add_argument("--first", type=num, required=True)
     g.add_argument("--last", type=num, required=True)
     g.add_argument("--fallback", type=num, required=True)
+    g.add_argument("--fill-missing", action="store_true")
     g.set_defaults(fn=cmd_generate)
 
     a = p.parse_args()

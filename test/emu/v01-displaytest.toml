@@ -1,0 +1,20 @@
+# STARK-0102: the production image launches Display Test — now drawing the
+# Latin-1/Turkish sample in both fonts every frame — keeps refreshing, and
+# leaves cleanly. The pixels are checked on the host UI test port
+# (test/host/test_ui_displaytest.c); here the point is that the new font
+# tables run on the target without faults.
+name = "emu-v01-displaytest"
+end_ms = 3400
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 610, hold_ms = 60 },
+    { key = "OK", at_ms = 820, hold_ms = 60 },
+    { key = "BACK", at_ms = 3000, hold_ms = 60 },
+]
+expect = [
+    'menu: sel=2 "Display Test"',
+    "app: start displaytest",
+    "displaytest: fps=",
+    "app: stop displaytest",
+]
