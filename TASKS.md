@@ -1245,7 +1245,7 @@ before `on_stop`, and a failing app unwinds to the launcher instead of panicking
 
 **Files.** `components/stark_app/{app_worker.c,app_fault.c,app_manager.c,app_internal.h,include/stark_app.h,Kconfig.stark,CMakeLists.txt}`,
 `main/Kconfig.projbuild`, `apps/app_apptest/**`, `test/host/{test_app_fault.c,CMakeLists.txt}`,
-`test/scenarios/v01-app-lifecycle.yaml`, ARCHITECTURE.md §6.8/§8.
+`test/emu/v01-app-lifecycle.toml`, ARCHITECTURE.md §6.8/§8.
 
 **Deps.** STARK-0107.
 
@@ -1285,16 +1285,19 @@ before `on_stop`, and a failing app unwinds to the launcher instead of panicking
 **Host tests.** `test_app_fault.c`: current-generation fault accepted; stale generation,
 no running app and generation wrap rejected. 100 % lines of `app_fault.c`.
 
-**Wokwi/runtime.** `v01-app-lifecycle.yaml` (≤ 20 s): Worker demo → `apptest: worker
-n=3` → BACK → `app: worker apptest joined` before `app: stop apptest`; relaunch → Fail
-→ `app: fault apptest: IO error`, `app: stop apptest`, `dialog: open "App stopped"` → OK
-→ launcher navigation still works; Fail from worker → same sequence; Worker ignores stop →
-BACK → `app: worker apptest join timeout` then `app: stop apptest`. A throwaway leak run:
-20 worker start/stop cycles, heap at the root unchanged (Δ ≤ 0 B beyond noise; report
-the figures).
+**Emulator / host UI port** (ADR-0017). `test/emu/v01-app-lifecycle.toml` on the
+production image (the real FreeRTOS worker): Worker demo → `apptest: worker n=1..3` →
+BACK → `app: worker apptest joined` before `app: stop apptest`; relaunch → Fail →
+`app: fault apptest: I/O error`, `app: stop apptest`, `dialog: open "App stopped"` → OK;
+Fail from worker → `app: fault apptest: Timeout`, the worker joined, the same unwinding;
+Worker ignores stop → BACK → `app: worker apptest join timeout` then `app: stop apptest`.
+`test_ui_fault.c` on the host UI port (a no-worker stand-in for `app_worker.c`): the
+fault unwinding and alert, a stray report with no app, a stale-generation report, and
+the worker items degrading to `Not supported`. A throwaway emulator leak run: 20 worker
+start/stop cycles, About's free heap before and after identical.
 
 **AC.**
-1. `v01-app-lifecycle.yaml` passes in CI; the log order proves join-before-`on_stop`.
+1. `v01-app-lifecycle.toml` passes in CI; the log order proves join-before-`on_stop`.
 2. No `panic:` or Guru Meditation across the fault paths (runner check).
 3. Leak run shows no heap growth; the worker uses no heap.
 4. Host tests pass at 100 % of `app_fault.c`.

@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "stark_err.h"
@@ -54,3 +55,40 @@ stark_err_t stark_app_launch(const char *id);
 
 /* Pops the running app's screen (-> on_stop); nothing if none runs. */
 void stark_app_stop_current(void);
+
+/* ---- worker, join contract, fault containment (STARK-0108) ------------- */
+
+/* app.id values of STARK_EVT_APP_REQUEST events. */
+#define STARK_APP_REQ_NOTIFY 1u /* worker -> its app; arg is app-defined */
+#define STARK_APP_REQ_FAIL   2u /* stark_app_fail(); arg is the launch generation */
+
+typedef void (*stark_app_worker_fn)(void *ctx);
+
+/*
+ * Starts the running app's one background worker: a FreeRTOS task in a
+ * static slot (CONFIG_STARK_APP_WORKER_STACK bytes, priority
+ * CONFIG_STARK_APP_WORKER_PRIO — below the UI task — pinned to core 0), no
+ * allocation. It talks to its app through the bus (STARK_APP_REQ_NOTIFY) and
+ * polls stark_app_worker_should_stop(). Stopping the app — BACK, long-BACK
+ * or a fault — joins it BEFORE on_stop: the manager sets the stop flag and
+ * waits up to CONFIG_STARK_APP_WORKER_JOIN_MS for fn to return (`app: worker
+ * <id> joined`); past that the task is deleted anyway (`app: worker <id>
+ * join timeout`, counted), and on_stop still runs. UI task only.
+ * STARK_ERR_STATE without a running app, STARK_ERR_BUSY while its worker
+ * runs, STARK_ERR_INVALID_ARG for a NULL fn.
+ */
+stark_err_t stark_app_worker_start(stark_app_worker_fn fn, void *ctx);
+
+/* For the worker: true once its app is stopping — return promptly. */
+bool stark_app_worker_should_stop(void);
+
+/*
+ * Reports that the running app cannot go on (callable from the UI task or
+ * its worker). The manager, on the UI task, logs `app: fault <id>: <err>`,
+ * unwinds to the launcher (stark_ui_pop_to_root(): worker joined, on_stop,
+ * `app: stop <id>`) and shows an "App stopped" alert — never a panic. A
+ * report that arrives after that app has already stopped is ignored.
+ * Containment covers reported errors, not memory corruption: a CPU
+ * exception is still a reboot.
+ */
+void stark_app_fail(stark_err_t err);
