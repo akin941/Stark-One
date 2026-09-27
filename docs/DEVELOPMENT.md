@@ -8,7 +8,7 @@ firmware, flash it to hardware, and use the Docker-based reproducible build path
 | Component          | Version / Tag    | Notes |
 |--------------------|------------------|-------|
 | ESP-IDF            | **v6.1**         | Latest stable minor release; Docker image `espressif/idf:v6.1` |
-| ILI9341 component  | **==2.1.0**      | Pinned in `idf_component.yml` (fallback `==2.0.2`, ADR-0004) |
+| ILI9341 component  | **==2.1.0**      | Pinned in `components/stark_display/idf_component.yml` (fallback `==2.0.2`, ADR-0004); 2.1.0 builds and runs on v6.1 (STARK-0015), no fallback needed |
 | Unity (host tests) | **2.5.2**        | Vendored in `test/host/unity/` |
 | clang-format       | **17+**          | Matches `.clang-format` style |
 
@@ -217,8 +217,18 @@ Plus the six keys (STARK-0012): `btn_up`/`btn_down`/`btn_left`/`btn_right`/`btn_
 push buttons, D-pad layout, `bounce: "1"`, each wired from its GPIO to GND. Pressing
 one logs `key: <NAME> press`, then `release` and `short`/`long` (plus `repeat` while a
 direction key is held).
-The panel and buzzer are **not** modelled yet — each is added by the task that brings
-it up (STARK-0015, STARK-0013 respectively).
+Plus the ILI9341 panel (STARK-0015): `lcd`, `wokwi-ili9341`, rotated 90° so the 320×240
+landscape image reads upright; SCK/MOSI/MISO/CS/D-C/VCC/GND wired, RST and LED left
+unconnected (Wokwi models neither; firmware still drives them). Boot draws the colour-bar
+test pattern: red, green, blue, yellow, cyan, magenta, white, black left to right, a 1 px
+white border and a white marker top-left.
+
+> **Display SPI clock:** `CONFIG_STARK_DISPLAY_SPI_HZ` defaults to 40 MHz (production
+> PCB, ARCHITECTURE §9). On a **breadboard, set it to 20 MHz**
+> (`idf.py menuconfig` → STARK → Display SPI clock = `20000000`): long jumper wires do
+> not survive 40 MHz. Wokwi runs at either.
+
+The buzzer is **not** modelled yet — it is added by the task that brings it up.
 
 ### 6.5 PSRAM Note
 

@@ -3,6 +3,9 @@
  */
 #include "stark_log.h"
 #include "esp_log.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 void stark_log_init(void)
 {
@@ -15,4 +18,11 @@ void stark_log_init(void)
 void stark_log_set_level(const char *tag, int level)
 {
     esp_log_level_set(tag, level);
+}
+
+void stark_panic(const char *what, stark_err_t err)
+{
+    STARK_LOGE("panic", "%s failed: %s - rebooting in 5 s", what, stark_err_str(err));
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    esp_restart();
 }

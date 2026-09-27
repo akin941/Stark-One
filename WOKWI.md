@@ -111,7 +111,7 @@ Connections (matching [HARDWARE.md §2](HARDWARE.md)):
 
 ```
 esp:12  → lcd:SCK      esp:11  → lcd:MOSI     esp:13  → lcd:MISO
-esp:10  → lcd:CS       esp:9   → lcd:DC       esp:3V3 → lcd:VCC     esp:GND → lcd:GND
+esp:10  → lcd:CS       esp:9   → lcd:D/C      esp:3V3.1 → lcd:VCC   esp:GND.3 → lcd:GND
 esp:4   → btn_up:1.l       btn_up:2.l    → esp:GND
 esp:5   → btn_down:1.l     btn_down:2.l  → esp:GND
 esp:6   → btn_left:1.l     btn_left:2.l  → esp:GND
@@ -124,6 +124,10 @@ esp:18  → r1:1             r1:2 → led:A  led:C → esp:GND
 
 Notes for the implementer:
 
+* The `wokwi-ili9341` pin labels are `VCC GND CS RST D/C MOSI SCK LED MISO` (verified
+  with `wokwi-cli lint`, STARK-0015); the board's supply pins are `3V3.1`/`3V3.2`. The
+  part carries `"rotate": 90` so the default landscape orientation (MADCTL MV only —
+  `STARK_DISPLAY_SWAP_XY`) reads upright.
 * `lcd:RST` and `lcd:LED` are **not simulated** — leave them unconnected in the diagram
   while firmware still drives GPIO 14 and 21. This is intentional (§1.2).
 * Wokwi pin labels on the S3 DevKitC-1 board part are the bare GPIO numbers plus
