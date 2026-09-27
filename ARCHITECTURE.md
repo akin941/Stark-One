@@ -370,14 +370,25 @@ outcome we want.
 
 ```c
 typedef enum { STARK_KEY_UP, STARK_KEY_DOWN, STARK_KEY_LEFT, STARK_KEY_RIGHT,
-               STARK_KEY_OK, STARK_KEY_BACK, STARK_KEY_COUNT } stark_key_t;
+               STARK_KEY_OK, STARK_KEY_BACK } stark_key_t;
+/* The key count is stark_board.h's STARK_KEY_COUNT (a board fact), not an enum
+   member: stark_input.h asserts STARK_KEY_COUNT == STARK_KEY_BACK + 1. */
 
 typedef enum { STARK_KEY_PRESS, STARK_KEY_RELEASE, STARK_KEY_REPEAT,
                STARK_KEY_LONG,  STARK_KEY_SHORT } stark_key_action_t;
+
+/* input_core.h (STARK-0011) */
+typedef struct { stark_key_t key; stark_key_action_t action; uint8_t repeat; } input_action_t;
+void   input_core_init(input_core_t *c);
+size_t input_core_update(input_core_t *c, uint8_t raw_bitmap, uint32_t now_ms,
+                         input_action_t *out, size_t max_out);   /* INPUT_CORE_MAX_ACTIONS */
 ```
 
 Core: a per-key state machine fed by `(raw_bitmap, now_ms)`, emitting actions into a
-caller-supplied output array. Fully deterministic, fully host-tested:
+caller-supplied output array. Fully deterministic, fully host-tested. Timings are
+measured from the debounced edge (when `PRESS` is emitted); a gap between updates never
+bursts missed repeats, and a release seen after 500 ms without `LONG` yields `LONG` then
+`RELEASE`, never `SHORT`:
 
 * debounce: 20 ms stable-state filter
 * `SHORT` on release before 500 ms; `LONG` at 500 ms held (emitted once)
