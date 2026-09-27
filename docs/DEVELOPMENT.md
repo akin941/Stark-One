@@ -211,7 +211,8 @@ target SKU **ESP32-S3-WROOM-1-N16R8**:
 }
 ```
 
-Plus a status LED on GPIO 18 (STARK-0008 will drive it).
+Plus a status LED on GPIO 18, driven by the STARK-0008 heartbeat (1 Hz, 10 % duty —
+a 100 ms blink once a second).
 The panel, buttons, and buzzer are **not** modelled yet — each is added by the task
 that brings it up (STARK-0015, STARK-0012, STARK-0013 respectively).
 

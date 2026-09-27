@@ -174,6 +174,7 @@ typedef struct {
 const stark_board_pins_t *stark_board_pins(void);
 const char               *stark_board_name(void);
 stark_err_t               stark_board_init(void);   /* clocks, bus, common GPIO */
+stark_err_t               stark_board_heartbeat_start(void); /* status LED, 1 Hz 10 % */
 ```
 
 A board *capability* structure (`has_sdcard`, `has_ir`, `has_nfc`, …) is deliberately
