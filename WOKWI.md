@@ -239,6 +239,21 @@ CI's `wokwi` job installs `wokwi-cli` v0.27.1 (sha256-pinned) and runs it on the
 firmware job's build — the full set on pull requests, `v0-boot` only on push — with the
 `WOKWI_CLI_TOKEN` repository secret.
 
+**Quota-aware gating.** The `wokwi` job always runs and always reports, but first asks
+`scripts/wokwi_gate.py` whether the change set can affect the firmware or the
+simulation (PR: merge-base of base and head; push: `before`..`sha`, falling back to
+`origin/main` for a new branch's all-zero `before`). A change touching only Markdown,
+`docs/`, `test/host/`, CI orchestration or repository lint tooling logs
+`Wokwi: not applicable for this change set` and succeeds without contacting Wokwi.
+Anything else — `components/`, `apps/`, `main/`, CMake, `sdkconfig.defaults*`,
+`partitions.csv`, `dependencies.lock`, `diagram.json`, `wokwi.toml`,
+`test/scenarios/`, `tools/`, the build and Wokwi scripts, and any path the gate does not
+recognise — runs the scenarios exactly as before, and a missing token, an exhausted
+quota or a failing scenario fails the job. `workflow_dispatch` and an undeterminable
+change set always run. The classifier is unit-tested in the `lint` job
+(`scripts/test_wokwi_gate.py`); widen its not-applicable list only for inputs that
+provably never reach the firmware image or the simulator.
+
 Two `wait-serial` facts learned writing the V0 scenarios: a line that arrives while a
 `delay` step runs is not seen by the next `wait-serial` (wait for it immediately after
 the step that triggers it); and in the CLI's saved serial log, a line a scenario waited

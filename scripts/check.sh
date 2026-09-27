@@ -38,6 +38,9 @@ check "shell-syntax-check"  bash -n scripts/check.sh
 check "shell-syntax-test-host"  bash -n scripts/test_host.sh
 check "shell-syntax-test-wokwi" bash -n scripts/test_wokwi.sh
 
+# --- Wokwi gate classifier (scripts/wokwi_gate.py) -----------------------
+check "wokwi-gate-tests" python3 -m unittest discover -s scripts -p 'test_*.py' -q
+
 # --- Required files ------------------------------------------------------
 for f in CMakeLists.txt sdkconfig.defaults partitions.csv .idf-version \
          main/CMakeLists.txt main/stark_main.c; do
