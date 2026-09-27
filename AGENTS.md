@@ -42,7 +42,7 @@ primary implementer) and to humans.
 [ ] idf.py build clean, zero warnings
 [ ] scripts/fmt.sh --check clean
 [ ] scripts/test_host.sh green (if the task defines host tests)
-[ ] scripts/test_wokwi.sh green (if the task defines scenarios)
+[ ] scripts/test_emu.sh green (emulator scenarios; Wokwi is optional — ADR-0017)
 [ ] Every acceptance criterion in TASKS.md demonstrably met
 [ ] Docs updated in the same commit
 [ ] PR names the task ID and lists the ACs as a checklist

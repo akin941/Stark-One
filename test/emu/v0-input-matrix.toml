@@ -1,0 +1,45 @@
+# Tier 3 replacement for test/scenarios/v0-input-matrix.yaml: every one of
+# the six keys produces its press/release/short lines, exercised inside Input
+# Test so no key launches anything; BACK last, which also leaves the app.
+# The GPIO pad -> key bit step is host-tested (test/host/test_input_sample.c).
+name = "emu-v0-input-matrix"
+end_ms = 3070
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 610, hold_ms = 60 },
+    { key = "DOWN", at_ms = 820, hold_ms = 60 },
+    { key = "OK", at_ms = 1030, hold_ms = 60 },
+    { key = "UP", at_ms = 1390, hold_ms = 80 },
+    { key = "DOWN", at_ms = 1620, hold_ms = 80 },
+    { key = "LEFT", at_ms = 1850, hold_ms = 80 },
+    { key = "RIGHT", at_ms = 2080, hold_ms = 80 },
+    { key = "OK", at_ms = 2310, hold_ms = 80 },
+    { key = "BACK", at_ms = 2540, hold_ms = 80 },
+]
+expect = [
+    "boot: ui_ready in ",
+    'menu: sel=1 "Buzzer Test"',
+    'menu: sel=2 "Display Test"',
+    'menu: sel=3 "Input Test"',
+    "app: start inputtest",
+    "key: UP press",
+    "key: UP release",
+    "key: UP short",
+    "key: DOWN press",
+    "key: DOWN release",
+    "key: DOWN short",
+    "key: LEFT press",
+    "key: LEFT release",
+    "key: LEFT short",
+    "key: RIGHT press",
+    "key: RIGHT release",
+    "key: RIGHT short",
+    "key: OK press",
+    "key: OK release",
+    "key: OK short",
+    "key: BACK press",
+    "key: BACK release",
+    "key: BACK short",
+    "app: stop inputtest",
+]

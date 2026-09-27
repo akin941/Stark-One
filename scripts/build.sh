@@ -2,6 +2,9 @@
 #
 # scripts/build.sh — build the STARK ONE firmware.
 #
+# Also writes build/merged-binary.bin (idf.py merge-bin): the single flash
+# image the esp-emulator tier runs (scripts/test_emu.sh, docs/VALIDATION.md).
+#
 # Usage:  scripts/build.sh [--docker]
 #
 #   --docker   Build inside the pinned espressif/idf Docker image.
@@ -48,14 +51,14 @@ if [[ "$USE_DOCKER" == "true" ]]; then
         -e "HOST_UID=$(id -u)" \
         -e "HOST_GID=$(id -g)" \
         "espressif/idf:${IDF_TAG}" \
-        idf.py build
+        idf.py build merge-bin
 else
     echo "Building with local ESP-IDF (IDF_TAG=${IDF_TAG})"
     if ! command -v idf.py >/dev/null 2>&1; then
         echo "ERROR: idf.py not found.  Run scripts/setup.sh first or use --docker." >&2
         exit 1
     fi
-    idf.py build
+    idf.py build merge-bin
 fi
 
-echo "Build complete: build/stark-one.elf"
+echo "Build complete: build/stark-one.elf, build/merged-binary.bin"

@@ -36,3 +36,6 @@ secrets/
 __pycache__/
 *.pyc
 .venv/
+
+# Pinned tool downloads (scripts/install_esp_emu.sh)
+.cache/

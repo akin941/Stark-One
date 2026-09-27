@@ -264,7 +264,9 @@ All scripts use `set -euo pipefail` and return non-zero on errors.
 | `scripts/fmt.sh`     | Format sources with clang-format (`--check` for CI) |
 | `scripts/check.sh`   | Repository structure, shell syntax, ADR-0010 compliance |
 | `scripts/test_host.sh` | Host unit tests (added by STARK-0005) |
-| `scripts/test_wokwi.sh` | Headless Wokwi scenarios (added by STARK-0021) |
+| `scripts/test_emu.sh` | Emulator scenarios (`test/emu/*.toml`) on the production image — mandatory, free (docs/VALIDATION.md) |
+| `scripts/install_esp_emu.sh` | Fetch the pinned esp-emulator and verify its SHA-256 |
+| `scripts/test_wokwi.sh` | Headless Wokwi scenarios — optional (ADR-0017) |
 
 Run locally before pushing:
 ```bash
@@ -330,7 +332,10 @@ idf.py reconfigure
 # Run only host tests (when available)
 scripts/test_host.sh
 
-# Run Wokwi smoke test (when available)
+# Run the emulator scenarios (mandatory, free)
+scripts/test_emu.sh
+
+# Optional: Wokwi, only while free quota lasts
 scripts/test_wokwi.sh
 ```
 

@@ -1,8 +1,10 @@
 # TESTING & QUALITY GATES — STARK ONE
 
 Testing is structured so that the **fastest loop catches the most bugs**: pure logic on
-the host in milliseconds, integration in Wokwi in seconds, hardware reality on a
-checklist.
+the host in milliseconds, the production firmware in Espressif's free emulator in
+seconds, hardware reality on a checklist. Every mandatory tier is free and local
+(ADR-0017); the tier model, emulator limits and the coverage matrix are in
+[docs/VALIDATION.md](docs/VALIDATION.md).
 
 ---
 
@@ -12,26 +14,31 @@ checklist.
 | --- | --- | --- | --- | --- |
 | L1 Host unit | Pure cores: event bus, gfx primitives/text, input FSM, menu model, protocol codecs, parsers | Host (macOS/Linux), CMake + Unity | < 2 s | Every commit |
 | L2 Build | Compilation of the whole firmware, warnings-as-errors, layer rules | Docker `espressif/idf:v6.1` | ~2 min | Every commit |
-| L3 Simulation | Boot, rendering, input→UI→app flow, storage, I²C/UART apps | Wokwi CI | ~20 s/scenario | Every PR |
+| L3 Emulator | The production image: boot, FreeRTOS, timers, input→event→UI→app flow, logs, heap, panics | esp-emulator (pinned), local + CI | ~15–50 s/scenario | Every commit |
+| (optional) Wokwi | Extra confidence, e.g. a simulated ILI9341 | Wokwi, free quota only | ~20 s/scenario | Never required (ADR-0017) |
 | L4 Hardware | Panel config, SPI integrity, bounce, SD reliability, RF/IR/NFC behaviour, **all performance gates**, power | Bench, checklist | manual | Per hardware milestone |
 
 Nothing is tested twice at two levels without reason: if a behaviour is host-testable,
-it does not get a Wokwi scenario.
+it does not get an emulator scenario.
 
 ## 1.1 What each level is allowed to assert
 
 This split is normative (ADR-0011) and exists because the most common way to get a
 false green is to gate on a number the environment cannot produce honestly.
 
-| Property | Host | Wokwi | Hardware |
+| Property | Host | Emulator | Hardware |
 | --- | --- | --- | --- |
 | Logic correctness, ordering, state transitions | ✅ gate | ✅ gate | ✅ |
-| Output values, log lines, pin levels | ✅ gate | ✅ gate | ✅ |
+| Output values, log lines | ✅ gate | ✅ gate | ✅ |
+| External pin levels (LED, buzzer, CS) | ✅ gate on a test port | ❌ not observable (docs/VALIDATION.md §2) | ✅ gate |
 | Memory: free heap, leak deltas, buffer sizes | ✅ gate | ✅ gate | ✅ gate |
 | Counters: dropped events, error counts, retries | ✅ gate | ✅ gate | ✅ gate |
-| Rendering correctness (clipping, seams, regions) | ✅ gate | ✅ gate | ✅ |
+| Rendering correctness (clipping, seams, regions, screen pixels) | ✅ gate | ❌ no panel model | ✅ glass |
 | **Boot time (ms), FPS, refresh duration, latency, throughput** | ❌ | 📊 **log only, never a gate** | ✅ **gate** |
 | RF/IR/NFC physical behaviour | ❌ | ❌ | ✅ gate |
+
+Optional Wokwi runs may assert the same functional properties as the emulator (and pin
+levels, screenshots); they never gate and never stand alone as evidence.
 
 📊 = recorded in `docs/measurements.md` as informational trend data. A simulated
 figure moving is worth a look; it is never a build failure.
@@ -107,15 +114,21 @@ around. No `-Wno-*` added to our own components.
 
 ---
 
-## 4. L3 — Wokwi simulation tests
+## 4. L3 — emulator scenarios (and optional Wokwi)
 
-Scenarios live in `test/scenarios/*.yaml` (format and invocation in
-[WOKWI.md §6](WOKWI.md)). They assert on:
+Mandatory scenarios live in `test/emu/*.toml` and run the production merged image in
+the pinned esp-emulator (`scripts/test_emu.sh`; harness `scripts/test_emu.py`, format
+in its docstring and [docs/VALIDATION.md §2](docs/VALIDATION.md)). They assert on:
 
-* **serial output** — the primary surface. UI and app state transitions log terse,
-  stable lines at INFO level specifically so CI can assert on them;
-* **pin state** — `expect-pin` for the status LED, buzzer activity, CS lines;
-* **screenshots** — coarse smoke check of the root menu only.
+* **serial output** — the primary surface, in order. UI and app state transitions log
+  terse, stable lines at INFO level specifically so CI can assert on them;
+* **heap** — the first `diag: heap=` against a scenario's `heap_min`;
+* **forbidden output** — `panic:`, Guru Meditation, `ui: render failed`, aborts.
+
+Key presses enter at the input core's sampling boundary (GDB, emulated milliseconds);
+pixels and pin levels are not observable in the emulator and are covered on the host
+or deferred to HIL. The Wokwi YAML scenarios in `test/scenarios/` remain for optional
+runs ([WOKWI.md §6](WOKWI.md)).
 
 **Timing rule:** a scenario may assert that `boot: ui_ready in 412 ms` *appeared*, and
 that it appeared after `display: init` and before the first `menu:` line. It may not
@@ -135,29 +148,33 @@ commit. Reserved prefixes:
 | `diag:` | `stark_diag` | `diag: heap=228412 min=224000 fps=30.0 drops=0 overruns=0` (STARK-0109; `heap=` stays first) |
 | `dialog:` | `stark_ui` dialogs | `dialog: open "Confirm"` / `dialog: ok` / `dialog: cancel` (STARK-0105) |
 
-**Scenario budget:** ≤ 20 s simulated time each. The full set runs on pull requests;
-a single smoke scenario runs on every push, because Wokwi CI minutes are quota-limited
-(free tier ≈ 50 min/month). The one exception is the V0.1 soak (60 s simulated, ROADMAP
+**Scenario budget:** ≤ 20 s of emulated time each. Emulator scenarios are free and
+all run on every push and pull request. (Wokwi's quota once forced a push-only smoke
+subset; with Wokwi optional that constraint is gone.) The one exception is the V0.1 soak (60 s simulated, ROADMAP
 V0.1 exit 3): it lives in `test/scenarios/soak/`, outside the default set, and runs in a
 `workflow_dispatch`-only CI job so it costs minutes only when a milestone close-out asks
 for it.
 
 **Planned scenarios by milestone**
 
+Emulator scenarios are `test/emu/<name>.toml`; the V0 Wokwi YAML files remain for
+optional runs. Planned emulator capabilities for later milestones are confirmed at
+that milestone before a scenario depends on them.
+
 | Milestone | Scenario | Asserts |
 | --- | --- | --- |
-| V0 | `v0-boot.yaml` | Boot lines appear in order, `boot: ui_ready` present, `diag: heap=` above the threshold |
-| V0 | `v0-boot-and-menu.yaml` | Navigate, launch an app, BACK returns to menu |
-| V0 | `v0-input-matrix.yaml` | All six keys produce the expected `key:` lines |
-| V0.1 | `v01-dialog.yaml` | Modal confirm opens, OK/BACK behave, a key pressed before opening cannot confirm (overruns are reported, never asserted — ADR-0011) |
-| V0.1 | `v01-navigation.yaml` | Long-BACK unwinds dialog + app to the root; OK+BACK chord is reserved |
-| V0.1 | `v01-app-lifecycle.yaml` | Worker joined before `on_stop`; faults unwind to the launcher with an alert |
-| V0.1 | `v01-diag.yaml` | Diagnostics app shows live heap and FPS |
-| V0.1 | `soak/v01-soak.yaml` | 60 s of use: `drops=0` throughout, root heap delta ≤ 1 kB (dispatch-only — see budget) |
-| V0.2 | `v02-settings-persist.yaml` | Change a setting, reboot, value survives |
-| V0.2 | `v02-sd-write.yaml` | 100 kB write/read-back while UI renders |
-| V0.7 | `v07-i2c-scan.yaml` | Scanner finds the simulated devices' addresses |
-| V0.7 | `v07-uart-loopback.yaml` | UART bridge round-trips at 115200 |
+| V0 | `v0-boot.toml` | Boot lines appear in order, `boot: ui_ready` present, `diag: heap=` above the threshold, first full refresh completes |
+| V0 | `v0-boot-and-menu.toml` | Navigate, launch an app, BACK returns to menu |
+| V0 | `v0-input-matrix.toml` | All six keys produce the expected `key:` lines |
+| V0.1 | `v01-dialog.toml` | Modal confirm opens, OK/BACK behave, a key pressed before opening cannot confirm (overruns are reported, never asserted — ADR-0011) |
+| V0.1 | `v01-navigation.toml` | Long-BACK unwinds dialog + app to the root; OK+BACK chord is reserved |
+| V0.1 | `v01-app-lifecycle.toml` | Worker joined before `on_stop`; faults unwind to the launcher with an alert |
+| V0.1 | `v01-diag.toml` | Diagnostics logs live heap and FPS (the screen's pixels: host render check) |
+| V0.1 | `soak/v01-soak.toml` | 60 s of emulated use: `drops=0` throughout, root heap delta ≤ 1 kB |
+| V0.2 | `v02-settings-persist.toml` | Change a setting, reset via the emulator control channel, value survives (NVS in emulated flash) |
+| V0.2 | (host test port + HIL) | 100 kB SD write/read-back while the UI renders — esp-emu models no SD card on GP-SPI |
+| V0.7 | `v07-i2c-scan.toml` | Scanner finds esp-emu's built-in I²C EEPROM (and nothing else) |
+| V0.7 | `v07-uart-loopback.toml` | UART bridge round-trips via esp-emu's `--uart1-tcp` side channel |
 
 ---
 
@@ -236,18 +253,20 @@ firmware  (ubuntu-latest, espressif/idf:v6.1, ~2-3 min)
   ├─ verify dependencies.lock unchanged
   └─ upload firmware artifact for the wokwi job
 
-wokwi     (needs firmware; always reports)
-  ├─ scripts/wokwi_gate.py       (runtime-relevant change set? else "not applicable")
-  └─ scripts/test_wokwi.sh       (all scenarios on pull requests, v0-boot on push)
+esp-emulator (needs firmware)
+  ├─ scripts/install_esp_emu.sh  (pinned esp-emu, SHA-256 verified)
+  └─ scripts/test_emu.sh         (every test/emu/*.toml on the production image)
 
-wokwi-soak (workflow_dispatch only; planned: STARK-0110)
-  └─ scripts/test_wokwi.sh --soak
+wokwi.yml — OPTIONAL, never required (ADR-0017): manual dispatch or `wokwi` PR label
+  ├─ scripts/wokwi_gate.py       (runtime-relevant change set? else "not applicable")
+  └─ scripts/test_wokwi.sh
 
 clang-tidy on stark_*            (planned: debt register)
 ```
 
-Merge rule: every job above that ran — `lint`, `host`, `firmware` and `wokwi` — must be
-green before merge. `main` has no GitHub branch protection configured; the rule is
+Merge rule: the mandatory, free jobs — `lint`, `firmware`, `host` (both OSes) and
+`esp-emulator` — must be green before merge. The optional Wokwi workflow never gates a
+merge; a red optional run is reported, not hidden. `main` has no GitHub branch protection configured; the rule is
 enforced by the working agreement (AGENTS.md), not by the repository settings.
 `main` is always releasable — if a milestone is mid-flight, it lives on a branch.
 

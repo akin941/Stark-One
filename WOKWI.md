@@ -1,8 +1,13 @@
 # WOKWI — simulation as a first-class development environment
 
-Wokwi is where V0 is developed, demonstrated and regression-tested. It is not a
-sandbox for throwaway sketches: the simulator runs **the same build artifact** that we
-flash to hardware.
+> **Optional since ADR-0017.** The project never depends on a paid Wokwi plan. Mandatory
+> validation is free: host tests, the pinned build and Espressif's esp-emulator
+> ([docs/VALIDATION.md](docs/VALIDATION.md)). Wokwi runs on demand — the manual
+> `Wokwi (optional)` workflow or the `wokwi` PR label — while free quota lasts, and is
+> never a required check.
+
+Wokwi is where V0 was developed and demonstrated. It is not a sandbox for throwaway
+sketches: the simulator runs **the same build artifact** that we flash to hardware.
 
 ---
 
@@ -235,11 +240,12 @@ WOKWI_CLI_TOKEN=… scripts/test_wokwi.sh test/scenarios/v0-boot.yaml
 `scripts/test_wokwi.sh` (STARK-0021) runs `wokwi-cli` per scenario, keeps each serial
 log in `build/wokwi/<scenario>.log`, and adds the checks a scenario cannot express:
 `diag: heap=` ≥ 200 kB, and no `panic:` / `Guru Meditation` / `ui: render failed`.
-CI's `wokwi` job installs `wokwi-cli` v0.27.1 (sha256-pinned) and runs it on the
-firmware job's build — the full set on pull requests, `v0-boot` only on push — with the
-`WOKWI_CLI_TOKEN` repository secret.
+The optional `Wokwi (optional)` workflow (`.github/workflows/wokwi.yml`) installs
+`wokwi-cli` v0.27.1 (sha256-pinned), builds the firmware and runs the full set, with the
+`WOKWI_CLI_TOKEN` repository secret — on manual dispatch or for a pull request labelled
+`wokwi`. It is never a required check (ADR-0017).
 
-**Quota-aware gating.** The `wokwi` job always runs and always reports, but first asks
+**Quota-aware gating.** The optional Wokwi job first asks
 `scripts/wokwi_gate.py` whether the change set can affect the firmware or the
 simulation (PR: merge-base of base and head; push: `before`..`sha`, falling back to
 `origin/main` for a new branch's all-zero `before`). A change touching only Markdown,

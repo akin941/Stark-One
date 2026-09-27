@@ -8,6 +8,11 @@ when the code "mostly works".
 Ordering rationale is at the end (§sequencing notes); two deviations from the
 originally proposed order are argued there.
 
+Since ADR-0017 no milestone depends on Wokwi: where a milestone below names a Wokwi
+scenario as its evidence, it reads as the free mapping in
+[docs/VALIDATION.md](docs/VALIDATION.md) — an emulator scenario, a host test or test
+port, or physical HIL — decided when that milestone is specified.
+
 ---
 
 ## V0 — Wokwi core prototype
@@ -93,7 +98,8 @@ build-time timing configuration (runtime adjustment arrives with settings at V0.
 1. A new "hello" app can be added in a single new component directory, < 120 lines,
    with no edits to `components/` (the registry line lives at the composition root,
    ADR-0016).
-2. Modal confirm dialog works and is covered by a Wokwi scenario.
+2. Modal confirm dialog works and is covered by an emulator scenario (ADR-0017; the
+   criterion originally named Wokwi).
 3. Event-drop counters are zero over a 60 s scenario. Frame-overrun counts are
    *reported* from simulation but gated only on hardware (ADR-0011).
 4. Diagnostics app displays live heap and FPS.

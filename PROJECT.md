@@ -112,7 +112,7 @@ extensible, but leave the extension points empty until a milestone needs them.
 | --- | --- |
 | Architecture, planning, review | Claude Code |
 | Implementation | OpenCode (primary coding agent) |
-| Virtual hardware validation | Wokwi (interactive + CI) |
+| Virtual hardware validation | Espressif esp-emulator (mandatory, free, local + CI); Wokwi optional (ADR-0017) |
 | Physical validation | Breadboard, then custom PCB |
 | PCB / mechanical design | KiCad, later |
 
@@ -124,7 +124,8 @@ A task is done when **all** of the following hold:
 
 1. `idf.py build` is clean with warnings-as-errors.
 2. Host unit tests pass (`scripts/test_host.sh`) where the task defines any.
-3. The Wokwi scenario for the task passes (`scripts/test_wokwi.sh`) where defined.
+3. The emulator scenarios pass (`scripts/test_emu.sh`), including any the task defines
+   (Wokwi is optional, never required — ADR-0017).
 4. `clang-format` reports no diff.
 5. The task's acceptance criteria in [TASKS.md](TASKS.md) are each demonstrably met.
 6. Documentation touched by the change is updated in the same change.
@@ -140,4 +141,4 @@ A task is done when **all** of the following hold:
 | **Screen** | A UI view pushed onto the screen stack; owns rendering for its region |
 | **Surface** | A drawable RGB565 buffer (full screen on host, a band on target) |
 | **Band** | A horizontal slice of the display rendered and flushed in one DMA transfer |
-| **Scenario** | A Wokwi CI automation YAML that drives inputs and asserts serial output |
+| **Scenario** | An emulator scenario (`test/emu/*.toml`) that drives inputs and asserts serial output; Wokwi YAML scenarios are optional |
