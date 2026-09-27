@@ -18,7 +18,7 @@
 #include "stark_hal_host_control.h"
 #include "stark_ui.h"
 #include "ui_port.h"
-#include "ui_theme.h"
+#include "stark_theme.h"
 #include "unity.h"
 
 /* ---- the registry: four apps shaped like V0's ------------------------- */
@@ -79,7 +79,7 @@ const stark_app_t *const *app_registry(size_t *count)
 
 /* ---- helpers ---------------------------------------------------------- */
 
-#define ROW_Y(i) (UI_STATUSBAR_H + (i) * UI_MENU_ROW_H)
+#define ROW_Y(i) (STARK_THEME_STATUSBAR_H + (i) * STARK_THEME_ROW_H)
 
 static void frame(void)
 {
@@ -101,7 +101,7 @@ static void assert_selected_row(int row)
 {
     for (int i = 0; i < 4; i++) {
         uint16_t bg = ui_port_pixel(UI_PORT_W - 2, ROW_Y(i) + 1);
-        TEST_ASSERT_EQUAL_HEX16_MESSAGE(i == row ? UI_COLOR_SEL_BG : UI_COLOR_BG, bg,
+        TEST_ASSERT_EQUAL_HEX16_MESSAGE(i == row ? STARK_THEME_SEL_BG : STARK_THEME_BG, bg,
                                         "row background (selection inverted)");
     }
 }
@@ -146,8 +146,9 @@ static void test_launcher_story(void)
     TEST_ASSERT_EQUAL_UINT(1, ui_port_render_count());
     assert_area(0, 0, 0, UI_PORT_W, UI_PORT_H);
     assert_no_poison();
-    TEST_ASSERT_EQUAL_HEX16(UI_COLOR_STATUS_BG, ui_port_pixel(UI_PORT_W - 1, 0));
-    TEST_ASSERT_EQUAL_HEX16(UI_COLOR_STATUS_BG, ui_port_pixel(UI_PORT_W - 1, UI_STATUSBAR_H - 1));
+    TEST_ASSERT_EQUAL_HEX16(STARK_THEME_STATUS_BG, ui_port_pixel(UI_PORT_W - 1, 0));
+    TEST_ASSERT_EQUAL_HEX16(STARK_THEME_STATUS_BG,
+                            ui_port_pixel(UI_PORT_W - 1, STARK_THEME_STATUSBAR_H - 1));
     assert_selected_row(0);
     (void)ui_port_dump_ppm("ui_launcher.ppm"); /* uploaded by CI on failure */
     uint64_t first = ui_port_fb_hash();
@@ -167,7 +168,7 @@ static void test_launcher_story(void)
     TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=1 \"Buzzer Test\""));
     TEST_ASSERT_EQUAL_INT(1, ui_port_buzzer_clicks());
     TEST_ASSERT_EQUAL_UINT(1, ui_port_render_count());
-    assert_area(0, 0, ROW_Y(0), UI_PORT_W, 2 * UI_MENU_ROW_H);
+    assert_area(0, 0, ROW_Y(0), UI_PORT_W, 2 * STARK_THEME_ROW_H);
     assert_selected_row(1);
 
     /* UP twice: back to 0, then wrap to the last row. The wrap repaints the
@@ -181,8 +182,8 @@ static void test_launcher_story(void)
     frame();
     TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=3 \"Input Test\""));
     TEST_ASSERT_EQUAL_UINT(2, ui_port_render_count());
-    assert_area(0, 0, ROW_Y(0), UI_PORT_W, UI_MENU_ROW_H);
-    assert_area(1, 0, ROW_Y(3), UI_PORT_W, UI_MENU_ROW_H);
+    assert_area(0, 0, ROW_Y(0), UI_PORT_W, STARK_THEME_ROW_H);
+    assert_area(1, 0, ROW_Y(3), UI_PORT_W, STARK_THEME_ROW_H);
     assert_selected_row(3);
 
     /* OK (short) launches the selected app; its screen and title redraw. */

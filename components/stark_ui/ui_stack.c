@@ -16,7 +16,7 @@
 #include "stark_input.h"
 #include "stark_log.h"
 #include "ui_internal.h"
-#include "ui_theme.h"
+#include "stark_theme.h"
 
 #define UI_STACK_DEPTH 8
 
@@ -75,10 +75,10 @@ static gfx_rect_t screen_rect(void)
     return (gfx_rect_t){0, 0, stark_display_width(), stark_display_height()};
 }
 
-static gfx_rect_t content_rect(void)
+gfx_rect_t stark_ui_content_rect(void)
 {
-    return (gfx_rect_t){0, UI_STATUSBAR_H, stark_display_width(),
-                        (int16_t)(stark_display_height() - UI_STATUSBAR_H)};
+    return (gfx_rect_t){0, STARK_THEME_STATUSBAR_H, stark_display_width(),
+                        (int16_t)(stark_display_height() - STARK_THEME_STATUSBAR_H)};
 }
 
 /* ---- stack ------------------------------------------------------------ */
@@ -92,7 +92,7 @@ static stark_screen_t *top(void)
 static void redraw_all(stark_screen_t *s)
 {
     ui_damage_clear(&s->damage);
-    ui_damage_add(&s->damage, content_rect());
+    ui_damage_add(&s->damage, stark_ui_content_rect());
     s_status_damage = ui_statusbar_rect();
 }
 
@@ -178,7 +178,7 @@ static void render_band(gfx_surface_t *s, void *ctx)
 
     /* The screen draws below the status bar only. */
     gfx_rect_t full_clip = s->clip;
-    s->clip = rect_intersect(full_clip, content_rect());
+    s->clip = rect_intersect(full_clip, stark_ui_content_rect());
     if (!rect_empty(s->clip)) {
         screen->on_render(screen, s);
     }

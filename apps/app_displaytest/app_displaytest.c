@@ -11,14 +11,18 @@
 #include "stark_app.h"
 #include "stark_hal.h"
 #include "stark_log.h"
+#include "stark_theme.h"
 
-#define CONTENT        ((gfx_rect_t){0, 16, 320, 224})
-
-/* The Latin-1/Turkish sample (STARK-0102), drawn in both fonts. */
+/* The Latin-1/Turkish sample (STARK-0102), drawn in both fonts. Rows are
+ * offsets from the top of the content area (stark_ui_content_rect()). */
 #define DT_SAMPLE_UTF8 "ÇĞİÖŞÜ çğıöşü äéñß"
-#define DT_SAMPLE_X    8
-#define DT_SAMPLE16_Y  180
-#define DT_SAMPLE10_Y  200
+#define DT_ASCII_DY    146
+#define DT_SAMPLE16_DY 164
+#define DT_SAMPLE10_DY 184
+#define DT_FPS_DY      202
+
+/* The test pattern is this app's subject, so its colours are its own. */
+#define DT_GRID_GREEN  GFX_RGB565(0, 160, 0)
 
 static unsigned s_frames;
 static uint64_t s_window_start_us;
@@ -45,35 +49,41 @@ static void display_render(stark_screen_t *self, gfx_surface_t *s)
         GFX_RGB565(255, 255, 0),   GFX_RGB565(0, 255, 255), GFX_RGB565(255, 0, 255),
         GFX_RGB565(255, 255, 255), GFX_RGB565(0, 0, 0),
     };
+    const gfx_rect_t c = stark_ui_content_rect();
+    const int16_t bar_w = (int16_t)(c.w / 8);
     for (int16_t i = 0; i < 8; i++) {
-        gfx_fill(s, (gfx_rect_t){(int16_t)(i * 40), 16, 40, 48}, bars[i]);
+        gfx_fill(s, (gfx_rect_t){(int16_t)(i * bar_w), c.y, bar_w, 48}, bars[i]);
     }
-    for (int16_t x = 0; x < 320; x++) { /* grey ramp */
-        uint8_t v = (uint8_t)(x * 255 / 319);
-        gfx_vline(s, x, 64, 32, GFX_RGB565(v, v, v));
+    for (int16_t x = 0; x < c.w; x++) { /* grey ramp */
+        uint8_t v = (uint8_t)(x * 255 / (c.w - 1));
+        gfx_vline(s, x, (int16_t)(c.y + 48), 32, GFX_RGB565(v, v, v));
     }
-    gfx_fill(s, (gfx_rect_t){0, 96, 320, 64}, GFX_RGB565(0, 0, 0));
-    for (int16_t x = 0; x < 320; x += 16) { /* 1 px grid */
-        gfx_vline(s, x, 96, 64, GFX_RGB565(0, 160, 0));
+    const int16_t grid_y = (int16_t)(c.y + 80);
+    gfx_fill(s, (gfx_rect_t){0, grid_y, c.w, 64}, STARK_THEME_BG);
+    for (int16_t x = 0; x < c.w; x += 16) { /* 1 px grid */
+        gfx_vline(s, x, grid_y, 64, DT_GRID_GREEN);
     }
-    for (int16_t y = 96; y < 160; y += 16) {
-        gfx_hline(s, 0, y, 320, GFX_RGB565(0, 160, 0));
+    for (int16_t y = grid_y; y < grid_y + 64; y += 16) {
+        gfx_hline(s, 0, y, c.w, DT_GRID_GREEN);
     }
-    gfx_fill(s, (gfx_rect_t){0, 160, 320, 80}, GFX_RGB565(0, 0, 0));
-    (void)gfx_text(s, &gfx_font_mono16, 8, 162, "The quick brown fox 0123456789", 0xFFFF, 0, true);
-    (void)gfx_text(s, &gfx_font_mono16, DT_SAMPLE_X, DT_SAMPLE16_Y, DT_SAMPLE_UTF8, 0xFFFF, 0,
-                   true);
-    (void)gfx_text(s, &gfx_font_mono10, DT_SAMPLE_X, DT_SAMPLE10_Y, DT_SAMPLE_UTF8, 0xFFFF, 0,
-                   true);
+    gfx_fill(s, (gfx_rect_t){0, (int16_t)(c.y + 144), c.w, (int16_t)(c.h - 144)}, STARK_THEME_BG);
+    const int16_t tx = STARK_THEME_TEXT_X;
+    (void)gfx_text(s, &gfx_font_mono16, tx, (int16_t)(c.y + DT_ASCII_DY),
+                   "The quick brown fox 0123456789", STARK_THEME_FG, STARK_THEME_BG, true);
+    (void)gfx_text(s, &gfx_font_mono16, tx, (int16_t)(c.y + DT_SAMPLE16_DY), DT_SAMPLE_UTF8,
+                   STARK_THEME_FG, STARK_THEME_BG, true);
+    (void)gfx_text(s, &gfx_font_mono10, tx, (int16_t)(c.y + DT_SAMPLE10_DY), DT_SAMPLE_UTF8,
+                   STARK_THEME_FG, STARK_THEME_BG, true);
     char fps[24];
     snprintf(fps, sizeof fps, "FPS %u.%u", s_fps_x10 / 10, s_fps_x10 % 10);
-    (void)gfx_text(s, &gfx_font_mono16, 8, 218, fps, GFX_RGB565(255, 255, 0), 0, true);
+    (void)gfx_text(s, &gfx_font_mono16, tx, (int16_t)(c.y + DT_FPS_DY), fps, STARK_THEME_ACTIVE,
+                   STARK_THEME_BG, true);
 
     /* The frame is done once its last band (the bottom row) is drawn; then
      * ask for the next one: a continuous full-area refresh. */
-    if (s->origin_y + s->h >= 240) {
+    if (s->origin_y + s->h >= c.y + c.h) {
         count_frame();
-        stark_ui_invalidate(self, CONTENT);
+        stark_ui_invalidate(self, c);
     }
 }
 

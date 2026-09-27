@@ -940,19 +940,24 @@ private `ui_theme.h`), `components/stark_ui/{ui_stack.c,ui_menu.c,ui_statusbar.c
 
 **Host tests.** None (constants); the suite stays green.
 
-**Wokwi/runtime.** Screenshots of the launcher and each V0 app before and after are
-pixel-identical (decode both PNGs; zero differing pixels).
+**Host UI test port** (ADR-0017). Frame goldens recorded **before** the change —
+launcher, Input Test (idle and with a key held), Buzzer Test, Display Test — are
+unchanged after it (`test_ui_launcher.c`, `test_ui_apps.c`). About needs ESP-IDF
+chip/flash/heap APIs and cannot run on the host: `_Static_assert`s pin the theme values
+it now uses to its former literals, and the emulator scenarios still launch it.
 
 **AC.**
 1. No app contains a literal colour, display dimension or status-bar height other than
    Display Test's named pattern colours (review grep for `GFX_RGB565`, `320`, `240`,
    `16 +` in `apps/` attached to the PR).
 2. No UI colour or layout literal remains in `components/stark_ui/*.c`.
-3. Before/after screenshots identical for the launcher and the four apps.
+3. The before/after frames are identical for the launcher and the four apps (host
+   goldens + About's pinned values).
 4. V0 scenarios green; ARCHITECTURE §6.7 names `stark_theme.h` as the palette contract.
 
 **Out of scope.** Runtime theme switching, dark/light themes, new colours beyond what
-STARK-0105/0107 need (they add theirs to this header when they arrive).
+STARK-0105/0107 need (they add theirs to this header when they arrive — so `_ACCENT`
+and `_WARN` from the notes land with their first user, not here).
 
 **Integration.** Every later V0.1 widget and app uses `stark_theme.h`.
 

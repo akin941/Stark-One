@@ -15,9 +15,10 @@
 #include "stark_app.h"
 #include "stark_board.h"
 #include "stark_log.h"
+#include "stark_theme.h"
 #include "ui_format.h"
 
-#define ROW_Y(i) (int16_t)(16 + 8 + (i) * 22)
+#define ROW_Y(i) (int16_t)(stark_ui_content_rect().y + 8 + (i) * 22)
 #define ROW_H    22
 #define ROW_HEAP 5
 #define ROW_UP   6
@@ -50,17 +51,18 @@ static bool about_event(stark_screen_t *self, const stark_event_t *e)
         return false; /* BACK and the rest belong to stark_ui */
     }
     refresh_dynamic();
-    stark_ui_invalidate(self, (gfx_rect_t){0, ROW_Y(ROW_HEAP), 320, 2 * ROW_H});
+    stark_ui_invalidate(self,
+                        (gfx_rect_t){0, ROW_Y(ROW_HEAP), stark_ui_content_rect().w, 2 * ROW_H});
     return true;
 }
 
 static void about_render(stark_screen_t *self, gfx_surface_t *s)
 {
     (void)self;
-    gfx_fill(s, s->clip, GFX_RGB565(0, 0, 0));
+    gfx_fill(s, s->clip, STARK_THEME_BG);
     for (int i = 0; i < N_ROWS; i++) {
-        (void)gfx_text(s, &gfx_font_mono16, 8, ROW_Y(i), s_rows[i], GFX_RGB565(255, 255, 255),
-                       GFX_RGB565(0, 0, 0), true);
+        (void)gfx_text(s, &gfx_font_mono16, STARK_THEME_TEXT_X, ROW_Y(i), s_rows[i], STARK_THEME_FG,
+                       STARK_THEME_BG, true);
     }
 }
 

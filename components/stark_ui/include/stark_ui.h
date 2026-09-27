@@ -46,6 +46,9 @@ stark_err_t stark_ui_push(stark_screen_t *screen);
  */
 stark_err_t stark_ui_pop(void);
 
+/* The area below the status bar: where a screen draws (STARK-0103). */
+gfx_rect_t stark_ui_content_rect(void);
+
 /* Adds `area` (logical coordinates) to s->damage (ui_damage_add()); empty
  * areas are ignored. */
 void stark_ui_invalidate(stark_screen_t *s, gfx_rect_t area);

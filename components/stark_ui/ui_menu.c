@@ -8,7 +8,7 @@
 #include "stark_display.h"
 #include "stark_input.h"
 #include "stark_log.h"
-#include "ui_theme.h"
+#include "stark_theme.h"
 
 static bool item_enabled(size_t index, void *ctx)
 {
@@ -18,7 +18,7 @@ static bool item_enabled(size_t index, void *ctx)
 
 static size_t visible_rows(void)
 {
-    return (size_t)((stark_display_height() - UI_STATUSBAR_H) / UI_MENU_ROW_H);
+    return (size_t)((stark_display_height() - STARK_THEME_STATUSBAR_H) / STARK_THEME_ROW_H);
 }
 
 static bool overflows(const ui_menu_t *m)
@@ -28,39 +28,42 @@ static bool overflows(const ui_menu_t *m)
 
 static gfx_rect_t list_rect(void)
 {
-    return (gfx_rect_t){0, UI_STATUSBAR_H, stark_display_width(),
-                        (int16_t)(stark_display_height() - UI_STATUSBAR_H)};
+    return (gfx_rect_t){0, STARK_THEME_STATUSBAR_H, stark_display_width(),
+                        (int16_t)(stark_display_height() - STARK_THEME_STATUSBAR_H)};
 }
 
 /* The screen row an item occupies (only valid while it is in the window). */
 static gfx_rect_t row_rect(const ui_menu_t *m, size_t index)
 {
     size_t row = index - ui_menu_model_top(&m->model);
-    int16_t w = (int16_t)(stark_display_width() - (overflows(m) ? UI_SCROLLBAR_W : 0));
-    return (gfx_rect_t){0, (int16_t)(UI_STATUSBAR_H + (int)row * UI_MENU_ROW_H), w, UI_MENU_ROW_H};
+    int16_t w = (int16_t)(stark_display_width() - (overflows(m) ? STARK_THEME_SCROLLBAR_W : 0));
+    return (gfx_rect_t){0, (int16_t)(STARK_THEME_STATUSBAR_H + (int)row * STARK_THEME_ROW_H), w,
+                        STARK_THEME_ROW_H};
 }
 
 static void draw_scrollbar(const ui_menu_t *m, gfx_surface_t *s)
 {
     gfx_rect_t list = list_rect();
-    gfx_rect_t track = {(int16_t)(list.w - UI_SCROLLBAR_W), list.y, UI_SCROLLBAR_W, list.h};
-    gfx_fill(s, track, UI_COLOR_SCROLL_BAR);
+    gfx_rect_t track = {(int16_t)(list.w - STARK_THEME_SCROLLBAR_W), list.y,
+                        STARK_THEME_SCROLLBAR_W, list.h};
+    gfx_fill(s, track, STARK_THEME_SCROLL_BAR);
     size_t rows = visible_rows();
     int32_t thumb_h = (int32_t)list.h * (int32_t)rows / (int32_t)m->count;
     int32_t thumb_y = (int32_t)list.h * (int32_t)ui_menu_model_top(&m->model) / (int32_t)m->count;
     gfx_fill(s,
-             (gfx_rect_t){track.x, (int16_t)(list.y + thumb_y), UI_SCROLLBAR_W,
+             (gfx_rect_t){track.x, (int16_t)(list.y + thumb_y), STARK_THEME_SCROLLBAR_W,
                           (int16_t)(thumb_h < 4 ? 4 : thumb_h)},
-             UI_COLOR_SCROLL_THUMB);
+             STARK_THEME_SCROLL_THUMB);
 }
 
 static void menu_render(stark_screen_t *self, gfx_surface_t *s)
 {
     ui_menu_t *m = self->state;
-    gfx_fill(s, list_rect(), UI_COLOR_BG);
+    gfx_fill(s, list_rect(), STARK_THEME_BG);
     if (m->count == 0) {
-        (void)gfx_text(s, &gfx_font_mono16, UI_MENU_TEXT_X, UI_STATUSBAR_H + UI_MENU_TEXT_Y,
-                       "(empty)", UI_COLOR_DISABLED, UI_COLOR_BG, true);
+        (void)gfx_text(s, &gfx_font_mono16, STARK_THEME_TEXT_X,
+                       STARK_THEME_STATUSBAR_H + STARK_THEME_ROW_TEXT_Y, "(empty)",
+                       STARK_THEME_DISABLED, STARK_THEME_BG, true);
         return;
     }
     size_t top = ui_menu_model_top(&m->model);
@@ -69,14 +72,14 @@ static void menu_render(stark_screen_t *self, gfx_surface_t *s)
         gfx_rect_t r = row_rect(m, i);
         bool selected =
             ui_menu_model_has_selection(&m->model) && ui_menu_model_selected(&m->model) == i;
-        uint16_t bg = selected ? UI_COLOR_SEL_BG : UI_COLOR_BG;
-        uint16_t fg =
-            selected ? UI_COLOR_SEL_FG : (m->items[i].disabled ? UI_COLOR_DISABLED : UI_COLOR_FG);
+        uint16_t bg = selected ? STARK_THEME_SEL_BG : STARK_THEME_BG;
+        uint16_t fg = selected ? STARK_THEME_SEL_FG
+                               : (m->items[i].disabled ? STARK_THEME_DISABLED : STARK_THEME_FG);
         if (selected) {
             gfx_fill(s, r, bg);
         }
-        (void)gfx_text(s, &gfx_font_mono16, UI_MENU_TEXT_X, (int16_t)(r.y + UI_MENU_TEXT_Y),
-                       m->items[i].label, fg, bg, true);
+        (void)gfx_text(s, &gfx_font_mono16, STARK_THEME_TEXT_X,
+                       (int16_t)(r.y + STARK_THEME_ROW_TEXT_Y), m->items[i].label, fg, bg, true);
     }
     if (overflows(m)) {
         draw_scrollbar(m, s);
