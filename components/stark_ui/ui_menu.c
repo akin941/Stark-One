@@ -4,6 +4,7 @@
  */
 #include "ui_menu.h"
 #include "gfx_font.h"
+#include "stark_buzzer.h"
 #include "stark_display.h"
 #include "stark_input.h"
 #include "stark_log.h"
@@ -94,6 +95,7 @@ static void selection_changed(ui_menu_t *m, size_t old_sel, size_t old_top)
         stark_ui_invalidate(&m->screen, row_rect(m, sel));
     }
     STARK_LOGI("menu", "sel=%u \"%s\"", (unsigned)sel, m->items[sel].label);
+    stark_buzzer_click();
 }
 
 static bool menu_event(stark_screen_t *self, const stark_event_t *e)
@@ -123,8 +125,12 @@ static bool menu_event(stark_screen_t *self, const stark_event_t *e)
             moved = ui_menu_model_page(&m->model, e->key.key == STARK_KEY_LEFT ? -1 : +1);
             break;
         case STARK_KEY_OK:
-            if (e->key.action == STARK_KEY_SHORT && ui_menu_model_has_selection(&m->model) &&
-                m->on_activate != NULL) {
+            if (e->key.action != STARK_KEY_SHORT) {
+                return true;
+            }
+            if (!ui_menu_model_has_selection(&m->model)) {
+                stark_buzzer_reject(); /* nothing selectable */
+            } else if (m->on_activate != NULL) {
                 m->on_activate(ui_menu_model_selected(&m->model), m->ctx);
             }
             return true;

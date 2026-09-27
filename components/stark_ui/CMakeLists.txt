@@ -6,6 +6,7 @@ idf_component_register(
         "ui_statusbar.c"
         "ui_menu.c"
         "ui_menu_model.c"
+        "ui_format.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
@@ -13,6 +14,7 @@ idf_component_register(
         stark_event
         stark_gfx
     PRIV_REQUIRES
+        stark_buzzer
         stark_display
         stark_hal
         stark_input

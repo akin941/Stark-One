@@ -4,6 +4,7 @@
 #include "stark_log.h"
 #include "stark_err.h"
 #include "stark_board.h"
+#include "stark_buzzer.h"
 #include "stark_display.h"
 #include "stark_event.h"
 #include "stark_input.h"
@@ -66,6 +67,12 @@ void app_main(void)
     if (err != STARK_OK) {
         stark_panic("display init", err);
     }
+    /* Not boot-critical: without it the UI is merely silent. */
+    err = stark_buzzer_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "buzzer init failed: %s", stark_err_str(err));
+    }
+
     /* `key:` lines are DEBUG by contract (TESTING.md §4) and scenarios assert
      * on them, so the one tag is enabled in every build — the same on
      * hardware and in Wokwi (ADR-0010). CONFIG_LOG_MAXIMUM_LEVEL_DEBUG in

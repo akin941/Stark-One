@@ -21,6 +21,13 @@
       "attrs": { "value": "330" }
     },
     {
+      "type": "wokwi-buzzer",
+      "id": "bz",
+      "top": 60,
+      "left": 540,
+      "attrs": { "volume": "0.1" }
+    },
+    {
       "type": "wokwi-ili9341",
       "id": "lcd",
       "top": -240,
@@ -94,6 +101,8 @@
     [ "btn_ok:2.l", "esp:GND.2", "", [] ],
     [ "esp:16", "btn_back:1.l", "", [] ],
     [ "btn_back:2.l", "esp:GND.2", "", [] ],
+    [ "esp:17", "bz:1", "", [] ],
+    [ "bz:2", "esp:GND.2", "", [] ],
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ]
   ],

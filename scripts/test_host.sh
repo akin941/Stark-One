@@ -77,6 +77,7 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
             --filter "$PROJECT_ROOT/components/stark_display/display_bands" \
             --filter "$PROJECT_ROOT/components/stark_ui/ui_menu_model" \
             --filter "$PROJECT_ROOT/components/stark_app/app_catalog" \
+            --filter "$PROJECT_ROOT/components/stark_ui/ui_format" \
             --gcov-executable "$GCOV_EXECUTABLE" \
             --xml --xml-pretty -o "$BUILD_DIR/coverage.xml"
         echo "Coverage report: $BUILD_DIR/coverage.xml"

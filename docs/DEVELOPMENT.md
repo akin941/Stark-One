@@ -228,7 +228,12 @@ white border and a white marker top-left.
 > (`idf.py menuconfig` → STARK → Display SPI clock = `20000000`): long jumper wires do
 > not survive 40 MHz. Wokwi runs at either.
 
-The buzzer is **not** modelled yet — it is added by the task that brings it up.
+Plus the passive buzzer (STARK-0020): `bz`, `wokwi-buzzer` (`volume: "0.1"`) from GPIO 17
+to GND, driven by `stark_buzzer` on LEDC channel 0 — a 20 ms click on each menu
+selection change, a 60 ms low buzz on BACK at the root.
+
+The launcher ("STARK ONE") lists the V0 apps: About, Buzzer Test, Display Test,
+Input Test — OK launches, BACK returns.
 
 ### 6.5 PSRAM Note
 
