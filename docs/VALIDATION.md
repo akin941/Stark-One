@@ -95,7 +95,7 @@ peripheral, deferred to HIL.
 | --- | --- | --- | --- |
 | 1 | `board: devkitc1 pins ok spi2 ready` | 2 | emu `expect[0]`, production artifact |
 | 2 | `display: init 320x240 band=40 bufs=2x25600` after it | 2 | emu `expect[1]` — the driver's init sequence and both DMA buffers; the ILI9341 accepting it is **4** (HIL, V1) |
-| 3 | `app: registry n=4 about,inputtest,displaytest,buzzertest` | 2 | emu `expect[2]` |
+| 3 | `app: registry n=<N> <ids>` (n=5 with Hello since STARK-0104) | 2 | emu `expect[2]` |
 | 4 | `boot: ui_ready in <N> ms` after the above (value not asserted) | 2 | emu `expect[3]` |
 | 5 | `diag: heap=` after it | 2 | emu `expect[4]` |
 | 6 | runner: first `diag: heap=` ≥ 200 000 | 2 | emu `heap_min = 200000` (315 352 B) |
@@ -107,8 +107,8 @@ peripheral, deferred to HIL.
 | # | Wokwi assertion | Cat. | Replacement evidence |
 | --- | --- | --- | --- |
 | 1 | `boot: ui_ready in ` | 2 | emu `expect` |
-| 2 | DOWN → `menu: sel=1 "Buzzer Test"` | 3 | emu (injected at `input_core_update`, then core → bus → menu) + host `test_input_sample.c` (GPIO 5 low → DOWN bit) + `check_pins.py` (diagram ↔ pin map) |
-| 3 | UP → `menu: sel=0 "About"` | 3 | as #2 (GPIO 4) |
+| 2 | DOWN → the next launcher row (`menu: sel=1 "About"` since Hello leads the list, STARK-0104) | 3 | emu (injected at `input_core_update`, then core → bus → menu) + host `test_input_sample.c` (GPIO 5 low → DOWN bit) + `check_pins.py` (diagram ↔ pin map) |
+| 3 | UP → back one row | 3 | as #2 (GPIO 4) |
 | 4 | OK short → `app: start about` | 3 | as #2 (GPIO 15); the SHORT semantics are also host-tested (`test_input_core.c`) |
 | 5 | BACK short → `app: stop about` | 3 | as #2 (GPIO 16) |
 | 6 | runner: heap, no panic | 2 | emu `heap_min`, default `forbid` |
@@ -118,7 +118,7 @@ peripheral, deferred to HIL.
 
 | # | Wokwi assertion | Cat. | Replacement evidence |
 | --- | --- | --- | --- |
-| 1 | three DOWN presses, OK → `app: start inputtest` | 3 | emu `expect` (`menu: sel=1/2/3`, `app: start inputtest`) + host pad test |
+| 1 | DOWN presses to Input Test (four since STARK-0104), OK → `app: start inputtest` | 3 | emu `expect` (`menu: sel=1/2/3`, `app: start inputtest`) + host pad test |
 | 2–19 | for UP, DOWN, LEFT, RIGHT, OK, BACK: `key: <K> press`, `key: <K> release`, `key: <K> short` in order | 3 | emu `expect` (all 18 lines, in order, logged by the production input service) + host `test_input_sample.c` (each of GPIO 4/5/6/7/15/16 maps to its bit, active-low, pull-up idle) + host `test_input_core.c` (press/release/short semantics, 100 % lines) |
 | 20 | `app: stop inputtest` after BACK | 3 | emu `expect` |
 | 21 | runner: heap, no panic | 2 | emu `heap_min`, default `forbid` |

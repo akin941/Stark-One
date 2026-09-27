@@ -540,7 +540,7 @@ single array, which `app_main()` hands to `stark_app_init(stark_apps, stark_apps
 
 ```c
 const stark_app_t *const stark_apps[] = {
-    &app_about, &app_inputtest, &app_displaytest, &app_buzzertest,
+    &app_about, &app_inputtest, &app_displaytest, &app_buzzertest, &app_hello,
 };
 ```
 
@@ -703,8 +703,10 @@ to set differently (ADR-0010).
 5. Add a Wokwi scenario if the app is reachable in simulation.
 6. From V0.5 onward: declare `caps_required` if it depends on a hardware module.
 
-Step 3 touches the composition root, never `components/`. If a new app forces any core
-edit, the abstraction is wrong — fix the abstraction in a separate task.
+Step 3 touches the composition root, never `components/`; `apps/app_hello` (STARK-0104,
+96 lines) is the reference, added in a commit that touched nothing else. If a new app
+forces any core edit, the abstraction is wrong — fix the abstraction in a separate
+task.
 
 ## 12. Extension recipe: adding a hardware module (V0.5+)
 

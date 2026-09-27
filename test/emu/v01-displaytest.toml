@@ -9,11 +9,12 @@ heap_min = 200000
 presses = [
     { key = "DOWN", at_ms = 400, hold_ms = 60 },
     { key = "DOWN", at_ms = 610, hold_ms = 60 },
-    { key = "OK", at_ms = 820, hold_ms = 60 },
+    { key = "DOWN", at_ms = 820, hold_ms = 60 },
+    { key = "OK", at_ms = 1030, hold_ms = 60 },
     { key = "BACK", at_ms = 3000, hold_ms = 60 },
 ]
 expect = [
-    'menu: sel=2 "Display Test"',
+    'menu: sel=3 "Display Test"',
     "app: start displaytest",
     "displaytest: fps=",
     "app: stop displaytest",
