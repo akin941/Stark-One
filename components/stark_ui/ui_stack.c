@@ -114,6 +114,12 @@ stark_err_t stark_ui_push(stark_screen_t *screen)
     if (s_depth == UI_STACK_DEPTH) {
         return STARK_ERR_NO_MEM;
     }
+    if (screen->overlay && s_depth == 0) {
+        return STARK_ERR_STATE; /* an overlay needs a screen beneath it */
+    }
+    if (screen->overlay && top()->overlay) {
+        return STARK_ERR_BUSY; /* one overlay level only */
+    }
     s_stack[s_depth++] = screen;
     if (screen->on_enter != NULL) {
         screen->on_enter(screen);
@@ -174,12 +180,19 @@ stark_err_t stark_ui_init(void)
 static void render_band(gfx_surface_t *s, void *ctx)
 {
     stark_screen_t *screen = ctx;
-    ui_statusbar_draw(s, screen->name); /* clipped away unless this band holds it */
+    /* Under an overlay, the screen beneath owns the title and is drawn first. */
+    stark_screen_t *beneath = screen->overlay && s_depth >= 2 ? s_stack[s_depth - 2] : NULL;
+    ui_statusbar_draw(s, beneath != NULL ? beneath->name : screen->name); /* clipped away
+                                                                           * unless this band
+                                                                           * holds it */
 
-    /* The screen draws below the status bar only. */
+    /* Screens draw below the status bar only. */
     gfx_rect_t full_clip = s->clip;
     s->clip = rect_intersect(full_clip, stark_ui_content_rect());
     if (!rect_empty(s->clip)) {
+        if (beneath != NULL) {
+            beneath->on_render(beneath, s);
+        }
         screen->on_render(screen, s);
     }
     s->clip = full_clip;

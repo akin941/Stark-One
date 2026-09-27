@@ -7,7 +7,7 @@ author: STARK ONE
 steps:
   - wait-serial: "board: devkitc1 pins ok spi2 ready"
   - wait-serial: "display: init 320x240 band=40 bufs=2x25600"
-  - wait-serial: "app: registry n=5 about,inputtest,displaytest,buzzertest,hello"
+  - wait-serial: "app: registry n=6 about,inputtest,displaytest,buzzertest,hello,apptest"
   - wait-serial: "boot: ui_ready in "
   - wait-serial: "diag: heap="
   - delay: 500ms

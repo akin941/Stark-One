@@ -5,6 +5,8 @@ idf_component_register(
     SRCS
         "ui_stack.c"
         "ui_damage.c"
+        "ui_dialog.c"
+        "ui_dialog_layout.c"
         "ui_statusbar.c"
         "ui_menu.c"
         "ui_menu_model.c"

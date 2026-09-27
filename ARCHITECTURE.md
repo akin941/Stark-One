@@ -489,6 +489,19 @@ included), render errors and the last/longest frame time; the UI task is the onl
 writer and every counter is a C11 atomic, so any task may read them. Overruns are
 reported in simulation and gated only on hardware (ADR-0011).
 
+STARK-0105 specifics: a screen may be an **overlay** (`stark_screen_t.overlay`): each band
+renders the screen beneath it and then the overlay, both clipped to the content area;
+the status bar keeps the beneath screen's title; events go to the overlay only; an
+overlay is never pushed onto another overlay (BUSY) or as the root. The modal dialog
+(`ui_dialog.h`: `stark_ui_dialog_confirm()` / `stark_ui_dialog_alert()`) is one static
+overlay: a 280 px box centred in the content area (`ui_dialog_layout.c`, pure), title,
+message wrapped to at most four lines, key hint; title and message are copied. OK
+confirms, BACK cancels, other keys are consumed, and an OK/BACK counts only if its PRESS
+arrived while the dialog was open — no timeout, no default-OK. `done` runs after the
+pop, so it may open another dialog; a dialog removed any other way reports CANCEL. Logs
+`dialog: open "<title>"`, `dialog: ok`, `dialog: cancel`. It is the transmit
+confirmation of the radio milestones (docs/SECURITY_SCOPE.md §4.2).
+
 Widgets in V0: **status bar** (title; battery/SD/clock arrive with their tasks — V0 draws
 nothing there rather than placeholders) and
 **list menu** (`ui_menu_t` in `ui_menu.h`: items, scroll window, selection,
