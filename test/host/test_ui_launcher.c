@@ -25,11 +25,15 @@
 
 static int s_started, s_stopped;
 static stark_screen_t s_app_screen;
+static uint64_t s_now_us;
+static uint32_t s_render_cost_us; /* fake-clock time each app render "takes" */
 
 static void app_render(stark_screen_t *self, gfx_surface_t *s)
 {
     (void)self;
     gfx_fill(s, s->clip, GFX_RGB565(0, 0, 255));
+    s_now_us += s_render_cost_us;
+    hal_host_set_now_us(s_now_us);
 }
 
 static stark_err_t app_start(void **state)
@@ -166,8 +170,8 @@ static void test_launcher_story(void)
     assert_area(0, 0, ROW_Y(0), UI_PORT_W, 2 * UI_MENU_ROW_H);
     assert_selected_row(1);
 
-    /* UP twice: back to 0, then wrap to the last row. V0 damage is one
-     * bounding box, so the wrap repaints rows 0..3 (STARK-0101 refines it). */
+    /* UP twice: back to 0, then wrap to the last row. The wrap repaints the
+     * two rows involved, not the list between them (STARK-0101). */
     ui_port_reset_records();
     ui_port_key(STARK_KEY_UP, STARK_KEY_PRESS);
     frame();
@@ -176,8 +180,9 @@ static void test_launcher_story(void)
     ui_port_key(STARK_KEY_UP, STARK_KEY_PRESS);
     frame();
     TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=3 \"Input Test\""));
-    TEST_ASSERT_EQUAL_UINT(1, ui_port_render_count());
-    assert_area(0, 0, ROW_Y(0), UI_PORT_W, 4 * UI_MENU_ROW_H);
+    TEST_ASSERT_EQUAL_UINT(2, ui_port_render_count());
+    assert_area(0, 0, ROW_Y(0), UI_PORT_W, UI_MENU_ROW_H);
+    assert_area(1, 0, ROW_Y(3), UI_PORT_W, UI_MENU_ROW_H);
     assert_selected_row(3);
 
     /* OK (short) launches the selected app; its screen and title redraw. */
@@ -218,17 +223,67 @@ static void test_launcher_story(void)
     TEST_ASSERT_EQUAL_INT(1, ui_port_buzzer_rejects());
     TEST_ASSERT_EQUAL_UINT(0, ui_port_render_count());
 
-    /* A failed render is reported, never fatal. */
+    /* A failed render is reported and counted, never fatal. */
+    stark_ui_stats_t before, after;
+    TEST_ASSERT_EQUAL(STARK_OK, stark_ui_stats(&before));
     ui_port_reset_records();
     ui_port_display_fail_next();
     ui_port_key(STARK_KEY_DOWN, STARK_KEY_PRESS);
     frame();
     TEST_ASSERT_TRUE(ui_port_log_contains("ui: render failed: "));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_ui_stats(&after));
+    TEST_ASSERT_EQUAL_UINT32(before.render_errors + 1, after.render_errors);
+    TEST_ASSERT_EQUAL_UINT32(before.frames + 1, after.frames);
+    TEST_ASSERT_EQUAL_UINT32(before.renders + ui_port_render_count(), after.renders);
+}
+
+/* Frame statistics on the fake clock (STARK-0101). Budget: 1 000 000 / 30 µs. */
+static void test_frame_statistics(void)
+{
+    stark_ui_stats_t s0, s1;
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_ui_stats(NULL));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_ui_stats(&s0));
+
+    /* An idle tick is not a frame. */
+    frame();
+    TEST_ASSERT_EQUAL(STARK_OK, stark_ui_stats(&s1));
+    TEST_ASSERT_EQUAL_UINT32(s0.frames, s1.frames);
+
+    /* Launch: the app's render "takes" 50 ms -> one overrun, recorded as max. */
+    s_render_cost_us = 50000;
+    ui_port_reset_records();
+    ui_port_short(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("app: start "));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_ui_stats(&s1));
+    TEST_ASSERT_EQUAL_UINT32(s0.frames + 1, s1.frames);
+    TEST_ASSERT_EQUAL_UINT32(s0.overruns + 1, s1.overruns);
+    TEST_ASSERT_TRUE(s1.last_frame_us >= 50000);
+    TEST_ASSERT_TRUE(s1.max_frame_us >= 50000);
+    TEST_ASSERT_EQUAL_UINT32(s0.renders + ui_port_render_count(), s1.renders);
+
+    /* Within the budget: 20 ms for a region inside one band (the render
+     * callback runs once per band): a frame, no overrun, max unchanged. */
+    s_render_cost_us = 20000;
+    stark_ui_invalidate(&s_app_screen, (gfx_rect_t){0, 16, 320, 20});
+    stark_ui_stats_t s2;
+    frame();
+    TEST_ASSERT_EQUAL(STARK_OK, stark_ui_stats(&s2));
+    TEST_ASSERT_EQUAL_UINT32(s1.frames + 1, s2.frames);
+    TEST_ASSERT_EQUAL_UINT32(s1.overruns, s2.overruns);
+    TEST_ASSERT_EQUAL_UINT32(s1.max_frame_us, s2.max_frame_us);
+    TEST_ASSERT_TRUE(s2.last_frame_us >= 20000 && s2.last_frame_us <= 33333);
+
+    s_render_cost_us = 0;
+    ui_port_short(STARK_KEY_BACK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("app: stop "));
 }
 
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_launcher_story);
+    RUN_TEST(test_frame_statistics); /* continues the story's state */
     return UNITY_END();
 }

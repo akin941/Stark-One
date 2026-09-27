@@ -6,6 +6,7 @@
  * event handlers, push/pop and rendering never race. No allocation.
  */
 #include "stark_ui.h"
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "sdkconfig.h"
@@ -21,10 +22,20 @@
 
 _Static_assert(CONFIG_STARK_UI_TARGET_FPS >= 1, "STARK_UI_TARGET_FPS must be at least 1");
 
+#define UI_FRAME_BUDGET_US (1000000u / (uint32_t)CONFIG_STARK_UI_TARGET_FPS)
+
 static stark_screen_t *s_stack[UI_STACK_DEPTH];
 static size_t s_depth;
 static gfx_rect_t s_status_damage;
 static bool s_ready;
+
+/* Frame statistics: written only by the UI task, readable from any task. */
+static atomic_uint_least32_t s_frames;
+static atomic_uint_least32_t s_renders;
+static atomic_uint_least32_t s_overruns;
+static atomic_uint_least32_t s_render_errors;
+static atomic_uint_least32_t s_last_frame_us;
+static atomic_uint_least32_t s_max_frame_us;
 
 /* ---- rectangles ------------------------------------------------------ */
 
@@ -52,24 +63,16 @@ static gfx_rect_t rect_make(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
                         (int16_t)min32(y1 - y0, INT16_MAX)};
 }
 
-static gfx_rect_t rect_union(gfx_rect_t a, gfx_rect_t b)
-{
-    if (rect_empty(a)) {
-        return b;
-    }
-    if (rect_empty(b)) {
-        return a;
-    }
-    return rect_make(min32(a.x, b.x), min32(a.y, b.y),
-                     max32((int32_t)a.x + a.w, (int32_t)b.x + b.w),
-                     max32((int32_t)a.y + a.h, (int32_t)b.y + b.h));
-}
-
 static gfx_rect_t rect_intersect(gfx_rect_t a, gfx_rect_t b)
 {
     return rect_make(max32(a.x, b.x), max32(a.y, b.y),
                      min32((int32_t)a.x + a.w, (int32_t)b.x + b.w),
                      min32((int32_t)a.y + a.h, (int32_t)b.y + b.h));
+}
+
+static gfx_rect_t screen_rect(void)
+{
+    return (gfx_rect_t){0, 0, stark_display_width(), stark_display_height()};
 }
 
 static gfx_rect_t content_rect(void)
@@ -88,14 +91,15 @@ static stark_screen_t *top(void)
 /* A screen that just became the top one: redraw all of it, title included. */
 static void redraw_all(stark_screen_t *s)
 {
-    s->damage = content_rect();
+    ui_damage_clear(&s->damage);
+    ui_damage_add(&s->damage, content_rect());
     s_status_damage = ui_statusbar_rect();
 }
 
 void stark_ui_invalidate(stark_screen_t *s, gfx_rect_t area)
 {
-    if (s != NULL && !rect_empty(area)) {
-        s->damage = rect_union(s->damage, area);
+    if (s != NULL) {
+        ui_damage_add(&s->damage, area);
     }
 }
 
@@ -181,30 +185,77 @@ static void render_band(gfx_surface_t *s, void *ctx)
     s->clip = full_clip;
 }
 
+static void count(atomic_uint_least32_t *c)
+{
+    atomic_store_explicit(c, atomic_load_explicit(c, memory_order_relaxed) + 1u,
+                          memory_order_relaxed);
+}
+
+static void note_frame(uint32_t us)
+{
+    count(&s_frames);
+    atomic_store_explicit(&s_last_frame_us, us, memory_order_relaxed);
+    if (us > atomic_load_explicit(&s_max_frame_us, memory_order_relaxed)) {
+        atomic_store_explicit(&s_max_frame_us, us, memory_order_relaxed);
+    }
+    if (us > UI_FRAME_BUDGET_US) {
+        count(&s_overruns);
+        STARK_LOGD("ui", "overrun %u us", (unsigned)us);
+    }
+}
+
 void stark_ui_tick(void)
 {
     if (!s_ready) {
         return;
     }
+    uint64_t start_us = stark_hal_now_us();
     (void)stark_event_dispatch(UINT32_MAX);
 
     stark_screen_t *screen = top();
     if (screen == NULL) {
         return;
     }
-    gfx_rect_t area = rect_union(screen->damage, s_status_damage);
-    if (rect_empty(area)) {
+    ui_damage_t frame = screen->damage;
+    ui_damage_add(&frame, s_status_damage);
+    if (ui_damage_empty(&frame)) {
         return;
     }
     /* Cleared first, so on_render may already invalidate the next frame. */
-    screen->damage = (gfx_rect_t){0, 0, 0, 0};
+    ui_damage_clear(&screen->damage);
     s_status_damage = (gfx_rect_t){0, 0, 0, 0};
 
-    STARK_LOGD("ui", "render %d,%d %dx%d", area.x, area.y, area.w, area.h);
-    stark_err_t err = stark_display_render(area, render_band, screen);
-    if (err != STARK_OK) {
-        STARK_LOGE("ui", "render failed: %s", stark_err_str(err));
+    for (uint8_t i = 0; i < frame.n; i++) {
+        gfx_rect_t area = rect_intersect(frame.r[i], screen_rect());
+        if (rect_empty(area)) {
+            continue;
+        }
+        STARK_LOGD("ui", "render %d,%d %dx%d", area.x, area.y, area.w, area.h);
+        count(&s_renders);
+        stark_err_t err = stark_display_render(area, render_band, screen);
+        if (err != STARK_OK) {
+            count(&s_render_errors);
+            STARK_LOGE("ui", "render failed: %s", stark_err_str(err));
+        }
     }
+    uint64_t spent_us = stark_hal_now_us() - start_us;
+    note_frame(spent_us > UINT32_MAX ? UINT32_MAX : (uint32_t)spent_us);
+}
+
+stark_err_t stark_ui_stats(stark_ui_stats_t *out)
+{
+    if (out == NULL) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    *out = (stark_ui_stats_t){
+        .frames = atomic_load_explicit(&s_frames, memory_order_relaxed),
+        .renders = atomic_load_explicit(&s_renders, memory_order_relaxed),
+        .overruns = atomic_load_explicit(&s_overruns, memory_order_relaxed),
+        .render_errors = atomic_load_explicit(&s_render_errors, memory_order_relaxed),
+        .last_frame_us = atomic_load_explicit(&s_last_frame_us, memory_order_relaxed),
+        .max_frame_us = atomic_load_explicit(&s_max_frame_us, memory_order_relaxed),
+    };
+    return STARK_OK;
 }
 
 void stark_ui_task(void *arg)

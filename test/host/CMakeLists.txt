@@ -224,6 +224,15 @@ target_link_libraries(run_ui_format_tests PRIVATE unity)
 
 # --- Enable testing ---------------------------------------------------------
 enable_testing()
+# --- UI damage set (STARK-0101) ------------------------------------------------
+add_executable(run_ui_damage_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_damage.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../components/stark_ui/ui_damage.c
+)
+target_compile_options(run_ui_damage_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_damage_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_damage_tests PRIVATE unity)
+
 # --- Host UI test port (Tier 4B, docs/VALIDATION.md) -------------------------
 # Production stark_ui / stark_app / stark_gfx sources on test backends of
 # stark_display, stark_event, stark_buzzer and esp_log (test/host/port/). The
@@ -246,6 +255,7 @@ set(UI_PORT_SOURCES
     ${STARK_COMPONENTS}/stark_gfx/fonts/font_mono16.c
     ${STARK_COMPONENTS}/stark_display/display_bands.c
     ${STARK_COMPONENTS}/stark_ui/ui_stack.c
+    ${STARK_COMPONENTS}/stark_ui/ui_damage.c
     ${STARK_COMPONENTS}/stark_ui/ui_statusbar.c
     ${STARK_COMPONENTS}/stark_ui/ui_menu.c
     ${STARK_COMPONENTS}/stark_ui/ui_menu_model.c
@@ -286,6 +296,7 @@ add_test(NAME stark_gfx_tests COMMAND run_gfx_tests)
 add_test(NAME stark_text_tests COMMAND run_text_tests)
 add_test(NAME stark_display_band_tests COMMAND run_display_band_tests)
 add_test(NAME stark_menu_model_tests COMMAND run_menu_model_tests)
+add_test(NAME stark_ui_damage_tests COMMAND run_ui_damage_tests)
 add_test(NAME stark_app_catalog_tests COMMAND run_app_catalog_tests)
 add_test(NAME stark_ui_launcher_tests COMMAND run_ui_launcher_tests)
 add_test(NAME stark_ui_format_tests COMMAND run_ui_format_tests)
