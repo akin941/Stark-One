@@ -96,6 +96,15 @@ jobs:
           export PATH="/tmp/gcovr-venv/bin:$PATH"
           scripts/test_host.sh --coverage
 
+      # STARK-0013: a failing graphics test dumps its surface to <test>.ppm.
+      - name: Upload graphics failure dumps
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-gfx-dumps-${{ matrix.os }}
+          path: build-host/*.ppm
+          if-no-files-found: ignore
+
       - name: Upload coverage report
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v7
