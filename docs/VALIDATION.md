@@ -134,13 +134,38 @@ all fail with a precise message, and a real firmware regression (UP/DOWN swapped
 
 | Evidence (task) | Now |
 | --- | --- |
-| Screenshots decoded against a pattern model: seams, partial = requested region, full ≡ partial (STARK-0016) | Band arithmetic host-tested (`test_display_bands.c`), primitives pixel-exact (`test_gfx.c`); screen-level pixels move to a host display test port (Tier 4B, before STARK-0101). Glass: **4** |
+| Screenshots decoded against a pattern model: seams, partial = requested region, full ≡ partial (STARK-0016) | Band arithmetic host-tested (`test_display_bands.c`), primitives pixel-exact (`test_gfx.c`), and the real launcher on the host UI test port (§3.3): frame golden, every pixel drawn, identical frames at band heights 7 / 40 / 240, exact render area per interaction. Glass: **4** |
 | Panel orientation / mirror / BGR (STARK-0015) | **4** — HIL checklist (TESTING §5 item 3) |
 | Status LED heartbeat on GPIO 18 (STARK-0008 `expect-pin`) | Not observable in the emulator; **4** at V1. Logic is a thin `esp_timer` port |
 | Buzzer notes start and stop (STARK-0020 VCD) | Not observable in the emulator; the deadline logic is a candidate for a host test port; audible output **4** |
 | Heap after 10× launch/exit per app (STARK-0020) | Repeatable as an emulator scenario (heap lines), no longer Wokwi-only |
 
-### 3.3 V0.1 and later
+### 3.3 The host UI test port (Tier 4B)
+
+`test/host/port/` runs the production `stark_ui`, `stark_app` launcher, list menu,
+status bar and `stark_gfx` on the host against test backends: `stark_display` over a
+320×240 RGB565 framebuffer, filled band by band with the production `display_bands()`
+walk into poisoned band buffers (an undrawn pixel shows as magenta); `stark_event` over
+the production core without locks; a `stark_buzzer` recorder; an `esp_log` capture;
+the fake HAL clock. Shim headers (`esp_log.h`, `sdkconfig.h`) are visible only to
+these targets, never to pure-core tests. Tests drive key events and assert on pixels,
+render areas, captured log lines and buzzer calls — exactly what the firmware hands
+to `stark_display_render()`, not what a panel shows.
+
+`test_ui_launcher.c` (the V0 launcher): registry log; first frame is one full-screen
+render with no undrawn pixel and matches its reviewed golden hash; an idle tick renders
+nothing; DOWN repaints rows 0–1 with a click; the UP wrap repaints rows 0–3 (V0's
+bounding-box damage, refined by STARK-0101); OK launches, BACK stops and restores the
+selection; the launcher redrawn at band heights 7 and 240 is pixel-identical; BACK at
+the root rejects with no render; a failed render is logged, not fatal. Building it
+also exposed a latent defect — `ui_statusbar.c` used `NULL` without `<stddef.h>`,
+compiling on target only through an ESP-IDF header — fixed with the port.
+
+A golden is recorded only after the rendered frame (`build-host/*.ppm`) was looked at;
+a deliberate visual change updates it in the same commit. A one-pixel shift of the
+menu text inset fails it.
+
+### 3.4 V0.1 and later
 
 TASKS.md V0.1 reads with this mapping (ADR-0017): a "Wokwi scenario" is an emulator
 scenario `test/emu/<name>.toml` asserting the same log lines; a "screenshot" is a host

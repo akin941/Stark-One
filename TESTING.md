@@ -60,6 +60,14 @@ test/host/
 └── test_event.c  test_gfx.c  test_text.c  test_input_core.c  test_menu_model.c
 ```
 
+**Host UI test port.** Beside the pure-core tests, `test/host/port/` is an integration
+harness (Tier 4B, [docs/VALIDATION.md §3.3](docs/VALIDATION.md)): production
+`stark_ui`/`stark_app`/`stark_gfx` sources on test backends of `stark_display`
+(framebuffer, production band walk), `stark_event`, `stark_buzzer` and `esp_log`.
+It is where screen pixels, render areas and UI log lines are asserted. Its two shim
+headers (`esp_log.h`, `sdkconfig.h`) are not ESP-IDF and are visible only to its
+targets, so rule 1 below still holds for every core.
+
 **Rules**
 
 1. Host tests must compile **without ESP-IDF on the include path**. This is the

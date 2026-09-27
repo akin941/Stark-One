@@ -1,6 +1,7 @@
 /*
  * ui_statusbar.c — the 16 px status bar (TASKS.md STARK-0017).
  */
+#include <stddef.h>
 #include "gfx_font.h"
 #include "stark_display.h"
 #include "ui_internal.h"
