@@ -199,6 +199,7 @@ scripts/test_host.sh            # Tier 1
 scripts/build.sh --docker       # Tier 2 (also writes build/merged-binary.bin)
 scripts/test_emu.sh             # Tier 3 — every test/emu/*.toml, logs in build/emu/
 scripts/test_emu.sh test/emu/v0-boot.toml
+scripts/test_emu.sh test/emu/soak/v01-soak.toml   # the 60 s soak (~8 min wall)
 ```
 
 Optional, only with free Wokwi quota: `WOKWI_CLI_TOKEN=… scripts/test_wokwi.sh`, or

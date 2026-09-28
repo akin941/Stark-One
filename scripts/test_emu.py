@@ -30,6 +30,8 @@ Scenario files (test/emu/*.toml):
                                         # optional; text must not follow the
                                         # first line containing `after`
   heap_min = 200000                     # optional; first `diag: heap=` gate
+  heap_delta_max = 1024                 # optional; first vs last stark_diag heap
+  wall_limit_s = 1500                   # optional; host wall-clock cap (default 600)
   (always: every `diag:` line carrying drops= must read drops=0)
 
 Usage:
@@ -138,6 +140,19 @@ def check_log(scenario, log, gdb_log):
         hit = next((line for line in lines[anchor + 1:] if rule["text"] in line), None)
         if hit is not None:
             failures.append("%r after %r: %s" % (rule["text"], rule["after"], hit.strip()))
+    if "heap_delta_max" in scenario:
+        # stark_diag's periodic lines (they carry min=), not main's boot line
+        heaps = [int(m.group(1)) for m in re.finditer(r"diag: heap=(\d+) min=", log)]
+        if len(heaps) < 2:
+            failures.append("heap_delta_max needs two stark_diag lines, found %d" % len(heaps))
+        else:
+            delta = abs(heaps[-1] - heaps[0])
+            if delta > int(scenario["heap_delta_max"]):
+                failures.append("heap moved %d B (%d -> %d), more than %s" % (
+                    delta, heaps[0], heaps[-1], scenario["heap_delta_max"]))
+            else:
+                print("    heap %d -> %d B (delta %d <= %s)" % (
+                    heaps[0], heaps[-1], delta, scenario["heap_delta_max"]))
     if "heap_min" in scenario:
         m = re.search(r"diag: heap=(\d+)", log)
         if not m:
@@ -163,6 +178,7 @@ def run_scenario(path, args):
     gdb_path = Path(args.log_dir) / (name + ".gdb.log")
     script_path = Path(args.log_dir) / (name + ".gdb")
     port = free_port()
+    wall = int(scenario.get("wall_limit_s", WALL_LIMIT_S))
     script_path.write_text(gdb_script(scenario, port))
     print("=== %s" % name, flush=True)
     started = time.monotonic()
@@ -170,14 +186,14 @@ def run_scenario(path, args):
         emu = subprocess.Popen(
             [args.emu, "--chip", "esp32s3", "--firmware", args.firmware,
              "--log-color", "never", "--gdb", str(port), "--gdb-halt",
-             "--timeout", "%ds" % WALL_LIMIT_S],
+             "--timeout", "%ds" % wall],
             stdout=log_f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
         try:
             time.sleep(0.5)
             with open(gdb_path, "w") as gdb_f:
                 subprocess.run([args.gdb, "-q", "-batch", "-x", str(script_path), args.elf],
                                stdout=gdb_f, stderr=subprocess.STDOUT,
-                               timeout=WALL_LIMIT_S, check=False)
+                               timeout=wall, check=False)
             time.sleep(1.0)  # let the firmware run on briefly: late panics still count
         except subprocess.TimeoutExpired:
             pass

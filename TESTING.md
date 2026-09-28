@@ -158,10 +158,10 @@ commit. Reserved prefixes:
 
 **Scenario budget:** ≤ 20 s of emulated time each. Emulator scenarios are free and
 all run on every push and pull request. (Wokwi's quota once forced a push-only smoke
-subset; with Wokwi optional that constraint is gone.) The one exception is the V0.1 soak (60 s simulated, ROADMAP
-V0.1 exit 3): it lives in `test/scenarios/soak/`, outside the default set, and runs in a
-`workflow_dispatch`-only CI job so it costs minutes only when a milestone close-out asks
-for it.
+subset; with Wokwi optional that constraint is gone.) The one exception is the V0.1 soak
+(60 s emulated, ROADMAP V0.1 exit 3, `test/emu/soak/v01-soak.toml`): outside the default
+set, it runs in its own `esp-emulator-soak` CI job on every pull request (and manual
+dispatch) — about eight minutes of wall time, in parallel, and free.
 
 **Planned scenarios by milestone**
 
@@ -265,6 +265,9 @@ esp-emulator (needs firmware)
   ├─ scripts/install_esp_emu.sh  (pinned esp-emu, SHA-256 verified)
   └─ scripts/test_emu.sh         (every test/emu/*.toml on the production image)
 
+esp-emulator-soak (needs firmware; pull requests + manual dispatch)
+  └─ scripts/test_emu.sh test/emu/soak/v01-soak.toml   (60 s: drops, heap delta)
+
 wokwi.yml — OPTIONAL, never required (ADR-0017): manual dispatch or `wokwi` PR label
   ├─ scripts/wokwi_gate.py       (runtime-relevant change set? else "not applicable")
   └─ scripts/test_wokwi.sh
@@ -272,8 +275,8 @@ wokwi.yml — OPTIONAL, never required (ADR-0017): manual dispatch or `wokwi` PR
 clang-tidy on stark_*            (planned: debt register)
 ```
 
-Merge rule: the mandatory, free jobs — `lint`, `firmware`, `host` (both OSes) and
-`esp-emulator` — must be green before merge. The optional Wokwi workflow never gates a
+Merge rule: the mandatory, free jobs — `lint`, `firmware`, `host` (both OSes),
+`esp-emulator` and, on pull requests, `esp-emulator-soak` — must be green before merge. The optional Wokwi workflow never gates a
 merge; a red optional run is reported, not hidden. `main` has no GitHub branch protection configured; the rule is
 enforced by the working agreement (AGENTS.md), not by the repository settings.
 `main` is always releasable — if a milestone is mid-flight, it lives on a branch.

@@ -27,9 +27,12 @@ static uint64_t s_prev_us;
 static uint32_t s_samples;
 static TaskStatus_t s_status[DIAG_MAX_TASKS];
 
+/* arg != NULL: the silent init sample (taken inside app_main, before the
+ * main task has returned and freed its stack — a heap figure no later sample
+ * could be compared with); the timer passes NULL. */
 static void sample(void *arg)
 {
-    (void)arg;
+    bool quiet = arg != NULL;
     stark_diag_snapshot_t s = {0};
     if (s_ui_source != NULL) {
         s_ui_source(&s.ui);
@@ -53,6 +56,9 @@ static void sample(void *arg)
     s_snap = s;
     portEXIT_CRITICAL(&s_lock);
 
+    if (quiet) {
+        return; /* snapshot only: no log, no sample event */
+    }
     if (CONFIG_STARK_DIAG_LOG_PERIOD_S > 0 && s_samples % CONFIG_STARK_DIAG_LOG_PERIOD_S == 0) {
         char line[96];
         (void)diag_format(&s, line, sizeof line);
@@ -82,7 +88,7 @@ stark_err_t stark_diag_init(stark_diag_ui_fn ui_source)
         s_timer = NULL;
         return err;
     }
-    sample(NULL); /* a valid snapshot from boot on, not only after the first second */
+    sample(&s_samples); /* silent: a valid snapshot from boot on, not only after 1 s */
     err = stark_err_from_esp(esp_timer_start_periodic(s_timer, 1000000u));
     if (err != STARK_OK) {
         (void)esp_timer_delete(s_timer);
