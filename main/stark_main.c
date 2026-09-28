@@ -5,6 +5,7 @@
 #include "stark_err.h"
 #include "stark_board.h"
 #include "stark_buzzer.h"
+#include "stark_diag.h"
 #include "stark_display.h"
 #include "stark_event.h"
 #include "stark_input.h"
@@ -19,6 +20,20 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+/* stark_diag is L3 and cannot read the L4 counters itself: the composition
+ * root adapts them (STARK-0109). Called on the esp_timer task; both sources
+ * are safe to read from any task. */
+static void diag_ui_source(stark_diag_ui_t *out)
+{
+    stark_ui_stats_t st;
+    if (stark_ui_stats(&st) == STARK_OK) {
+        out->frames = st.frames;
+        out->overruns = st.overruns;
+        out->render_errors = st.render_errors;
+    }
+    out->join_timeouts = stark_app_worker_join_timeouts();
+}
 
 void app_main(void)
 {
@@ -100,9 +115,16 @@ void app_main(void)
 
     /* Scenarios assert that these lines appear, and in this order — never on
      * the numbers (ADR-0011; TESTING.md §1.1, §4). The heap figure is the
-     * boot-time diagnostic STARK-0021 asks for (the full stark_diag is
-     * V0.1); the scenario runner checks it against the >= 200 kB target. */
+     * boot-time diagnostic STARK-0021 asks for; the scenario runners check
+     * it against the >= 200 kB target. stark_diag (STARK-0109) then logs
+     * the periodic `diag: heap=… fps=… drops=… overruns=…` line. */
     STARK_LOGI("boot", "ui_ready in %u ms", (unsigned)(esp_timer_get_time() / 1000));
     STARK_LOGI("diag", "heap=%u",
                (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+
+    /* Not boot-critical: without it there is simply no diagnostics. */
+    err = stark_diag_init(diag_ui_source);
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "diag init failed: %s", stark_err_str(err));
+    }
 }

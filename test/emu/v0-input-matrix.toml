@@ -2,29 +2,31 @@
 # the six keys produces its press/release/short lines, exercised inside Input
 # Test so no key launches anything; BACK last, which also leaves the app.
 # The GPIO pad -> key bit step is host-tested (test/host/test_input_sample.c).
-# Four DOWN presses from About (row 1) skip the Tests header to Input Test.
+# Five DOWN presses from About (row 1) reach Input Test, past the Tests header.
 name = "emu-v0-input-matrix"
-end_ms = 3280
+end_ms = 3490
 heap_min = 200000
 presses = [
     { key = "DOWN", at_ms = 400, hold_ms = 60 },
     { key = "DOWN", at_ms = 610, hold_ms = 60 },
     { key = "DOWN", at_ms = 820, hold_ms = 60 },
     { key = "DOWN", at_ms = 1030, hold_ms = 60 },
-    { key = "OK", at_ms = 1240, hold_ms = 60 },
-    { key = "UP", at_ms = 1600, hold_ms = 80 },
-    { key = "DOWN", at_ms = 1830, hold_ms = 80 },
-    { key = "LEFT", at_ms = 2060, hold_ms = 80 },
-    { key = "RIGHT", at_ms = 2290, hold_ms = 80 },
-    { key = "OK", at_ms = 2520, hold_ms = 80 },
-    { key = "BACK", at_ms = 2750, hold_ms = 80 },
+    { key = "DOWN", at_ms = 1240, hold_ms = 60 },
+    { key = "OK", at_ms = 1450, hold_ms = 60 },
+    { key = "UP", at_ms = 1810, hold_ms = 80 },
+    { key = "DOWN", at_ms = 2040, hold_ms = 80 },
+    { key = "LEFT", at_ms = 2270, hold_ms = 80 },
+    { key = "RIGHT", at_ms = 2500, hold_ms = 80 },
+    { key = "OK", at_ms = 2730, hold_ms = 80 },
+    { key = "BACK", at_ms = 2960, hold_ms = 80 },
 ]
 expect = [
     "boot: ui_ready in ",
-    'menu: sel=3 "App Test"',
-    'menu: sel=4 "Buzzer Test"',
-    'menu: sel=5 "Display Test"',
-    'menu: sel=6 "Input Test"',
+    'menu: sel=2 "Diagnostics"',
+    'menu: sel=4 "App Test"',
+    'menu: sel=5 "Buzzer Test"',
+    'menu: sel=6 "Display Test"',
+    'menu: sel=7 "Input Test"',
     "app: start inputtest",
     "key: UP press",
     "key: UP release",

@@ -32,3 +32,7 @@ CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
 # PSRAM is physically present on the N16R8 SKU but deliberately disabled in
 # V0/V0.x firmware.  Explicitly unset to make the intent visible.
 # CONFIG_SPIRAM is not set
+
+# stark_diag (STARK-0109): per-task stack high-water marks via
+# uxTaskGetSystemState() for the Diagnostics app.
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y

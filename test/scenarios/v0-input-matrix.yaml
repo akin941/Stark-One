@@ -24,6 +24,10 @@ steps:
   - delay: 60ms
   - set-control: { part-id: btn_down, control: pressed, value: 0 }
   - delay: 150ms
+  - set-control: { part-id: btn_down, control: pressed, value: 1 }
+  - delay: 60ms
+  - set-control: { part-id: btn_down, control: pressed, value: 0 }
+  - delay: 150ms
   - set-control: { part-id: btn_ok, control: pressed, value: 1 }
   - delay: 60ms
   - set-control: { part-id: btn_ok, control: pressed, value: 0 }

@@ -628,6 +628,26 @@ its own FreeRTOS task in `on_start` and communicates via the event bus; `on_stop
 join it. No preemptive app scheduling, no app sandbox — this is a single-user tool, and
 the complexity is not earned.
 
+### 6.9a `stark_diag` (L3, STARK-0109)
+
+```c
+stark_err_t stark_diag_init(stark_diag_ui_fn ui_source);       /* 1 s esp_timer sampler */
+stark_err_t stark_diag_snapshot(stark_diag_snapshot_t *out);   /* any task */
+size_t      stark_diag_tasks(stark_diag_task_t *out, size_t max);
+```
+
+Heap (free, minimum ever, largest block), FPS × 10 over the last window, the UI's frame
+/ overrun / render-error counts and worker join timeouts, event published / dropped /
+peak depth, uptime, and every task's stack high-water mark
+(`uxTaskGetSystemState`, `CONFIG_FREERTOS_USE_TRACE_FACILITY`). L3 cannot read the L4
+counters, so `main` injects a `ui_source` adapter over `stark_ui_stats()` and
+`stark_app_worker_join_timeouts()`. After each sample it publishes `STARK_EVT_SYSTEM`
+`STARK_SYS_DIAG_SAMPLE` (the Diagnostics app refreshes on it) and, at the first sample and
+then every `STARK_DIAG_LOG_PERIOD_S` (10), logs `diag: heap=<n> min=<n> fps=<n.n>
+drops=<n> overruns=<n>`. The arithmetic and formatting are pure (`diag_core.c`). The
+scenario runners gate `drops=0` on every such line; FPS and overruns are reported, never
+gated in simulation (ADR-0011). Local only.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -636,7 +656,7 @@ the complexity is not earned.
 | `stark_settings` | V0.2 | Typed key/value over NVS with defaults and change notifications |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
-| `stark_diag` | V0.1 / V0.7 | v1 at V0.1 (STARK-0109): heap, task high-water marks, FPS, frame overruns, event drops, surfaced in a Diagnostics app. Self-test routines and log export: V0.7 |
+| `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
 ---
 
@@ -653,8 +673,9 @@ app_main()
  ├─ stark_input_start()                    – 5 ms sampling timer
  ├─ stark_ui_init()                        – status bar + root menu screen
  ├─ stark_app_init(stark_apps, n)          – log the registry, push the launcher
- └─ xTaskCreate(stark_ui_task, prio 5, 6 kB stack, core 1)
-        loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
+ ├─ xTaskCreate(stark_ui_task, prio 5, 6 kB stack, core 1)
+ │      loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
+ └─ stark_diag_init(ui adapter)            – 1 s diagnostics sampler (STARK-0109)
 ```
 
 Since STARK-0017 the UI task (`stark_ui_task`, created by `main`) is the event bus's one
@@ -730,13 +751,14 @@ to set differently (ADR-0010).
   | L0 | `stark_board` |
   | L1 | `stark_hal`, `stark_log` |
   | L2 | `stark_gfx` (the only all-pure component) |
-  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer` |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag` |
   | L4 | `stark_ui`, `stark_app` |
   | L5 | every `apps/app_*` |
   | root | `main` — the composition root, may require anything |
 
   Same-layer allowlist: `stark_input → stark_event` (the input service publishes key
-  events) and `stark_app → stark_ui` (the launcher is a `stark_ui` menu). Pure
+  events), `stark_app → stark_ui` (the launcher is a `stark_ui` menu) and
+  `stark_diag → stark_event` (event-drop counters and the sample event, STARK-0109). Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with

@@ -82,6 +82,10 @@ stark_err_t stark_app_worker_start(stark_app_worker_fn fn, void *ctx);
 /* For the worker: true once its app is stopping — return promptly. */
 bool stark_app_worker_should_stop(void);
 
+/* Workers deleted after ignoring the stop request, since boot (for
+ * stark_diag, STARK-0109). Any task. */
+uint32_t stark_app_worker_join_timeouts(void);
+
 /*
  * Reports that the running app cannot go on (callable from the UI task or
  * its worker). The manager, on the UI task, logs `app: fault <id>: <err>`,

@@ -25,7 +25,7 @@ static TaskHandle_t s_task;
 static atomic_bool s_stop;
 static stark_app_worker_fn s_fn;
 static void *s_ctx;
-static uint32_t s_join_timeouts;
+static atomic_uint_least32_t s_join_timeouts;
 
 static void wrapper(void *arg)
 {
@@ -64,6 +64,11 @@ bool stark_app_worker_should_stop(void)
     return atomic_load(&s_stop);
 }
 
+uint32_t stark_app_worker_join_timeouts(void)
+{
+    return atomic_load(&s_join_timeouts);
+}
+
 /* Waits (bounded) until the task is in `state` or gone. */
 static void wait_state(eTaskState state)
 {
@@ -87,7 +92,7 @@ void app_worker_join(const char *app_id)
         vTaskDelete(s_task);
         STARK_LOGI("app", "worker %s joined", app_id);
     } else {
-        s_join_timeouts++;
+        atomic_fetch_add(&s_join_timeouts, 1u);
         STARK_LOGE("app", "worker %s join timeout", app_id);
         vTaskDelete(s_task); /* a contract violation: the worker ignored should_stop */
         wait_state(eDeleted);

@@ -1,8 +1,8 @@
 # Tier 3 replacement for test/scenarios/v0-boot-and-menu.yaml (ROADMAP V0
 # exit 2): boot -> navigate -> launch an app -> BACK. The launcher (STARK-0107)
-# has a header row per category, in registry order: System (About), Tests
-# (App Test, Buzzer Test, Display Test, Input Test), Examples (Hello); the
-# selection starts on About (row 1) and moves skip the headers.
+# has a header row per category, in registry order: System (About,
+# Diagnostics), Tests (App Test, Buzzer Test, Display Test, Input Test),
+# Examples (Hello); the selection starts on About (row 1).
 name = "emu-v0-boot-and-menu"
 end_ms = 3200
 heap_min = 200000
@@ -15,7 +15,7 @@ presses = [
 expect = [
     "boot: ui_ready in ",
     "key: DOWN press",
-    'menu: sel=3 "App Test"',
+    'menu: sel=2 "Diagnostics"',
     "key: UP press",
     'menu: sel=1 "About"',
     "key: OK short",

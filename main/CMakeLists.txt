@@ -40,6 +40,7 @@ idf_component_register(
         stark_app
         stark_board
         stark_buzzer
+        stark_diag
         stark_display
         stark_event
         stark_input
