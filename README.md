@@ -8,15 +8,18 @@ built on a clean, extensible firmware architecture. It is inspired by the class 
 portable multi-tools such as the Flipper Zero, but it is **not a clone**: own firmware
 architecture, own module standard, own PCB, own enclosure.
 
-> **Status: V0 complete** (STARK-0001 … STARK-0021). The firmware boots on the
-> simulated ESP32-S3 N16R8 in Wokwi: status LED heartbeat, event bus, debounced
-> six-key input, ILI9341 band rendering, screen stack + list menu, app registry and
-> launcher, buzzer, and four apps (About, Input Test, Display Test, Buzzer Test).
-> CI builds it, runs the host test suite and the emulator scenarios (free, local —
-> [docs/VALIDATION.md](docs/VALIDATION.md)). Evidence for every
-> V0 exit criterion: [docs/measurements.md](docs/measurements.md). Next: V0.1
-> (architecture hardening), specified task by task in [TASKS.md](TASKS.md)
-> (STARK-0100 … STARK-0110); the performance gates live at the V1 hardware prototype.
+> **Status: V0.1 complete** (STARK-0100 … STARK-0110, on V0: STARK-0001 … 0021). The
+> firmware boots on the ESP32-S3 N16R8 in Espressif's free esp-emulator: event bus,
+> debounced six-key input with an OK+BACK reservation and long-BACK home, band-rendered
+> UI with multi-rect damage and frame statistics, a modal confirm/alert dialog, a
+> launcher with category headers and icons, Latin-1/Turkish text in two fonts with
+> wrapping, an app worker helper with fault containment, `stark_diag`, and seven apps
+> (About, Diagnostics, App Test, Buzzer Test, Display Test, Input Test, Hello). CI runs
+> the host suite (with a host UI test port), the pinned build and the emulator
+> scenarios including a 60 s soak — all free ([docs/VALIDATION.md](docs/VALIDATION.md)).
+> Evidence: [docs/measurements.md](docs/measurements.md). Next: V0.2 (storage &
+> settings), once it is specified; the performance gates live at the V1 hardware
+> prototype.
 
 ## Documents
 
@@ -47,7 +50,7 @@ architecture, own module standard, own PCB, own enclosure.
 
 Read [PROJECT.md](PROJECT.md), then [ARCHITECTURE.md](ARCHITECTURE.md), then
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) to build, test and simulate. New work starts
-from the next unfinished task in [TASKS.md](TASKS.md) (V0.1).
+from the next unfinished task in [TASKS.md](TASKS.md).
 
 ## Use policy
 

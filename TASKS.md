@@ -1403,38 +1403,38 @@ no telemetry leaves the device.
 
 **Layer.** Tests, CI, docs.
 
-**Files.** `test/scenarios/soak/v01-soak.yaml` (new), `scripts/test_wokwi.sh`,
-`.github/workflows/ci.yml` (`wokwi-soak` job), `docs/measurements.md`, `README.md`,
+**Files.** `test/emu/soak/v01-soak.toml` (new), `scripts/test_emu.py`,
+`.github/workflows/ci.yml` (`esp-emulator-soak` job), `docs/measurements.md`, `README.md`,
 `WOKWI.md` §6, TESTING.md §4.
 
 **Deps.** STARK-0109.
 
 **Notes.**
-* `v01-soak.yaml`: 60 s of simulated use cycling through every app (launch, interact,
-  BACK), a confirm and an alert, a worker demo, a contained fault and a long-BACK home,
-  ending at the root. It lives in `test/scenarios/soak/`, outside the default set, and
-  declares `# stark-timeout-ms: 90000`; the runner honours that header (default 30 000)
-  and accepts `--soak` to run the soak directory.
-* Runner soak checks: `drops=0` on every `diag:` line (already), and the first and last
-  root-menu `diag: heap=` differ by ≤ 1 024 B.
-* CI: a `wokwi-soak` job on `workflow_dispatch` only (Wokwi minutes); the close-out PR
-  triggers it once and links the run. TESTING §4 records the soak as the one budget
-  exception (60 s simulated) and why it is off the per-PR path.
-* `docs/measurements.md` gains V0.1 rows (Simulated, informational unless gated):
-  heap at root, soak heap delta, drops, overruns *reported*, FPS, binary size and the
-  flash cost of the fonts; plus a V0.1 exit-criteria evidence table. Hardware table
-  unchanged.
+* `test/emu/soak/v01-soak.toml` (ADR-0017): 60 s of emulated use on the production image,
+  cycling through every app — About, Diagnostics, App Test (a confirm and an alert, a
+  worker, a contained fault, a long-BACK home), Buzzer Test, Display Test, Input Test,
+  Hello — then idle at the launcher so stark_diag's last line (at ~61 s) is taken at the
+  root menu. It lives outside the default set and declares `wall_limit_s`.
+* Harness checks: `drops=0` on every `diag:` line (always, since STARK-0109) and
+  `heap_delta_max = 1024` — the first and last stark_diag heap readings (the silent init
+  sample, taken before the main task freed its stack, is not logged).
+* CI: an `esp-emulator-soak` job on pull requests and manual dispatch (free; about eight
+  minutes of wall time, in parallel). TESTING §4 records the soak as the one budget
+  exception.
+* `docs/measurements.md` gains V0.1 rows (heap at boot, soak heap delta, drops,
+  overruns *reported*, FPS, binary size, font flash cost, worker slot cost, leak run,
+  coverage) and a V0.1 exit-criteria evidence table. Hardware table unchanged.
 * README status → "V0.1 complete".
 
 **Host tests.** Whole suite green; coverage report attached (pure cores and V0.1
 pure helpers).
 
-**Wokwi/runtime.** Full pull-request set green; one green `wokwi-soak` dispatch run.
+**Emulator/runtime.** Full scenario set and the soak green in CI (ADR-0017).
 
 **AC.**
 1. Every V0.1 exit criterion (ROADMAP) demonstrably met with evidence in
    `docs/measurements.md`.
-2. `v01-soak.yaml` passes in a CI dispatch run: `drops=0` throughout, heap delta ≤ 1 kB.
+2. `soak/v01-soak.toml` passes in CI: `drops=0` throughout, heap delta ≤ 1 kB.
 3. The hello app still satisfies exit 1 (`wc -l`, `grep` from STARK-0104).
 4. `grep -ri wokwi components/ apps/ main/` returns nothing.
 5. No scenario asserts a wall-clock value; overruns appear only as reported figures.

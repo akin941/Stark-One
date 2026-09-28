@@ -641,10 +641,12 @@ Heap (free, minimum ever, largest block), FPS × 10 over the last window, the UI
 peak depth, uptime, and every task's stack high-water mark
 (`uxTaskGetSystemState`, `CONFIG_FREERTOS_USE_TRACE_FACILITY`). L3 cannot read the L4
 counters, so `main` injects a `ui_source` adapter over `stark_ui_stats()` and
-`stark_app_worker_join_timeouts()`. After each sample it publishes `STARK_EVT_SYSTEM`
-`STARK_SYS_DIAG_SAMPLE` (the Diagnostics app refreshes on it) and, at the first sample and
-then every `STARK_DIAG_LOG_PERIOD_S` (10), logs `diag: heap=<n> min=<n> fps=<n.n>
-drops=<n> overruns=<n>`. The arithmetic and formatting are pure (`diag_core.c`). The
+`stark_app_worker_join_timeouts()`. `stark_diag_init()` takes a silent first sample (the
+snapshot is valid at once, but it is taken inside `app_main`, before the main task has
+freed its stack, so its heap figure is not logged). After each timer sample it publishes
+`STARK_EVT_SYSTEM` `STARK_SYS_DIAG_SAMPLE` (the Diagnostics app refreshes on it) and, at
+the first one and then every `STARK_DIAG_LOG_PERIOD_S` (10), logs `diag: heap=<n>
+min=<n> fps=<n.n> drops=<n> overruns=<n>`. The arithmetic and formatting are pure (`diag_core.c`). The
 scenario runners gate `drops=0` on every such line; FPS and overruns are reported, never
 gated in simulation (ADR-0011). Local only.
 

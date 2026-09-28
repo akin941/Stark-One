@@ -80,6 +80,14 @@ class CheckLog(unittest.TestCase):
         bad = self.LOG + "diag: heap=310000 min=300000 fps=1.0 drops=3 overruns=0\n"
         self.assertTrue(self.check(log=bad))
 
+    def test_heap_delta(self):
+        log = ("diag: heap=300000\n" "diag: heap=310000 min=300000 fps=1.0 drops=0 overruns=0\n"
+               "diag: heap=310500 min=300000 fps=1.0 drops=0 overruns=0\n")
+        self.assertEqual(self.check(log=log, heap_delta_max=1024), [])  # boot line ignored
+        self.assertTrue(self.check(log=log, heap_delta_max=100))
+        self.assertTrue(self.check(log="diag: heap=1 min=1 fps=0.0 drops=0 overruns=0\n",
+                                   heap_delta_max=1024))  # needs two lines
+
     def test_forbid_after(self):
         rule = [{"after": "menu: sel=1", "text": "app: start"}]
         self.assertTrue(self.check(forbid_after=rule))  # app: start follows sel=1
@@ -96,7 +104,7 @@ class Scenarios(unittest.TestCase):
     """Every committed scenario parses and names only known keys."""
 
     def test_committed_scenarios(self):
-        files = sorted((emu.ROOT / "test/emu").glob("*.toml"))
+        files = sorted((emu.ROOT / "test/emu").rglob("*.toml"))  # soak/ included
         self.assertTrue(files)
         for f in files:
             s = tomllib.loads(f.read_text())

@@ -43,10 +43,11 @@ typedef struct {
 #define STARK_SYS_DIAG_SAMPLE 1u
 
 /*
- * Takes a first sample at once, then starts the 1 s sampler (an esp_timer).
- * Each sample computes FPS from the frame counter, refreshes the snapshot
- * and publishes STARK_SYS_DIAG_SAMPLE; the first one and then one every
- * CONFIG_STARK_DIAG_LOG_PERIOD_S (10; 0 = never) also log the line
+ * Takes a silent first sample (the snapshot is valid at once), then starts
+ * the 1 s sampler (an esp_timer). Each timer sample computes FPS from the
+ * frame counter, refreshes the snapshot and publishes STARK_SYS_DIAG_SAMPLE;
+ * the first one and then one every CONFIG_STARK_DIAG_LOG_PERIOD_S (10; 0 =
+ * never) also log the line
  *     diag: heap=<n> min=<n> fps=<n.n> drops=<n> overruns=<n>
  * ui_source may be NULL (UI counters stay 0). Needs stark_event_init().
  * STARK_ERR_STATE if already started.

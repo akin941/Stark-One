@@ -7,6 +7,8 @@
 #   esp-emulator — Tier 3: the built firmware runs in Espressif's pinned,
 #               SHA-256-verified esp-emulator (scripts/test_emu.sh,
 #               test/emu/*.toml): free, local, no account, no quota. Mandatory.
+#   esp-emulator-soak — the 60 s soak (test/emu/soak/, ROADMAP V0.1 exit 3):
+#               pull requests and manual dispatch; mandatory on pull requests.
 #
 # Every job above is free and mandatory. Wokwi is optional and lives in
 # .github/workflows/wokwi.yml (manual dispatch or the `wokwi` PR label); it is
@@ -164,5 +166,31 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: stark-one-emu-logs
+          path: build/emu/
+          if-no-files-found: ignore
+
+  esp-emulator-soak:
+    name: esp-emulator-soak
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download firmware
+        uses: actions/download-artifact@v8
+        with:
+          name: stark-one-firmware
+          path: build
+
+      - name: scripts/test_emu.sh (60 s soak, ROADMAP V0.1 exit 3)
+        run: scripts/test_emu.sh test/emu/soak/v01-soak.toml
+
+      - name: Upload soak logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-emu-soak-logs
           path: build/emu/
           if-no-files-found: ignore
