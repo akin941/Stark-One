@@ -64,6 +64,12 @@ for scenario in "${SCENARIOS[@]}"; do
         failed=1
         continue
     fi
+    if grep -a -E 'diag: .*drops=[1-9]' "$log" >/dev/null; then
+        echo "FAIL: $name — event drops reported:" >&2
+        grep -a -E 'diag: .*drops=[1-9]' "$log" >&2
+        failed=1
+        continue
+    fi
     heap="$(grep -a -o -E 'diag: heap=[0-9]+' "$log" | head -n 1 | cut -d= -f2 || true)"
     if [[ -n "$heap" ]]; then
         if (( heap < HEAP_MIN )); then

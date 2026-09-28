@@ -30,6 +30,7 @@ Scenario files (test/emu/*.toml):
                                         # optional; text must not follow the
                                         # first line containing `after`
   heap_min = 200000                     # optional; first `diag: heap=` gate
+  (always: every `diag:` line carrying drops= must read drops=0)
 
 Usage:
   test_emu.py [--emu PATH] [--gdb PATH] [--firmware BIN] [--elf ELF]
@@ -124,6 +125,11 @@ def check_log(scenario, log, gdb_log):
         hit = next((line for line in lines if bad in line), None)
         if hit is not None:
             failures.append("forbidden output %r: %s" % (bad, hit.strip()))
+    # Every stark_diag line reports drops=0 (ROADMAP V0.1 exit 3, STARK-0109).
+    for line in lines:
+        m = re.search(r"diag: .*\bdrops=(\d+)", line)
+        if m and int(m.group(1)) != 0:
+            failures.append("event drops reported: %s" % line.strip())
     for rule in scenario.get("forbid_after", []):
         anchor = next((i for i, line in enumerate(lines) if rule["after"] in line), None)
         if anchor is None:

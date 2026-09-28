@@ -1,0 +1,22 @@
+# STARK-0109 (ROADMAP V0.1 exit 4) on the production image: Diagnostics
+# (row 2) refreshes once a second from stark_diag's sample — two
+# `diagnostics: heap=… fps=…` lines — and stark_diag's periodic line reports
+# drops=0 (every scenario is checked for that). The screen's pixels are
+# asserted on the host UI port (test/host/test_ui_diagnostics.c).
+name = "emu-v01-diag"
+end_ms = 4200
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },
+    { key = "OK", at_ms = 600, hold_ms = 60 },
+    { key = "BACK", at_ms = 3800, hold_ms = 60 },
+]
+expect = [
+    "diag: heap=",
+    'menu: sel=2 "Diagnostics"',
+    "app: start diagnostics",
+    "diagnostics: heap=3",   # a real sample from the first refresh on (not heap=0)
+    "diagnostics: heap=",
+    "diagnostics: heap=",
+    "app: stop diagnostics",
+]

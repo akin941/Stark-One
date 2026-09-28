@@ -24,3 +24,8 @@ void app_worker_join(const char *app_id)
 {
     (void)app_id;
 }
+
+uint32_t stark_app_worker_join_timeouts(void)
+{
+    return 0;
+}

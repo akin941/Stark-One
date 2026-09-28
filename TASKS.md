@@ -1328,7 +1328,7 @@ measured in one place, logged, and shown live in an app.
 `apps/app_diagnostics/**` (new), `components/stark_app/app_manager.c` (expose
 `join_timeouts` via a getter), `scripts/{check_layers.py,test_wokwi.sh}`,
 `sdkconfig.defaults` (`CONFIG_FREERTOS_USE_TRACE_FACILITY=y`),
-`test/host/{test_diag_core.c,CMakeLists.txt}`, `test/scenarios/v01-diag.yaml`,
+`test/host/{test_diag_core.c,CMakeLists.txt}`, `test/emu/v01-diag.toml`,
 ARCHITECTURE.md §2/§6.9/§7/§10, TESTING.md §4.
 
 **Deps.** STARK-0108.
@@ -1366,15 +1366,19 @@ ARCHITECTURE.md §2/§6.9/§7/§10, TESTING.md §4.
 `diag_format()` exact strings including large values and buffer truncation; min-heap
 tracking. `diag_core.c` ≥ 95 % lines.
 
-**Wokwi/runtime.** `v01-diag.yaml` (≤ 20 s): launch Diagnostics → two
-`diagnostics: heap=` lines (live refresh) → screenshot: the heap and FPS rows are
-pixel-identical to a host mono10 render of the strings from the matching log line →
-BACK. The periodic `diag:` line appears with `drops=0`.
+**Host UI port / emulator** (ADR-0017). `test_ui_diagnostics.c` renders the real
+Diagnostics screen on the host UI port with a settable fake `stark_diag`: the heap, FPS,
+overrun, join-timeout, event and task rows are pixel-identical to direct renders of the
+expected text (frame inspected), and a new sample redraws exactly the two rows that
+changed. `test/emu/v01-diag.toml` on the production image: Diagnostics refreshes once a
+second (`diagnostics: heap=…` three times) and stark_diag's `diag:` line reports
+`drops=0` — which the emulator harness now gates in every scenario.
 
 **AC.**
-1. Diagnostics shows live heap and FPS (screenshot matches the logged values; ROADMAP
-   V0.1 exit 4).
-2. `drops=0` gate active in `scripts/test_wokwi.sh`; all scenarios pass under it.
+1. Diagnostics shows live heap and FPS (host UI port: rows match the values; emulator:
+   live refresh; ROADMAP V0.1 exit 4).
+2. `drops=0` gate active in `scripts/test_emu.py` (and the optional `test_wokwi.sh`);
+   all scenarios pass under it.
 3. `check_layers.py` classifies `stark_diag` as L3 with the one new sideways edge; no
    include of an L4 header in `components/stark_diag/`.
 4. Host tests pass at the coverage above.

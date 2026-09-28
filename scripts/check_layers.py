@@ -36,6 +36,7 @@ LAYERS = {
     "stark_input": 3,  # L2 core + L3 service
     "stark_display": 3,
     "stark_buzzer": 3,
+    "stark_diag": 3,
     "stark_ui": 4,
     "stark_app": 4,
 }
@@ -46,6 +47,7 @@ ROOT = "main"
 SIDEWAYS = {
     ("stark_input", "stark_event"),  # the input service publishes key events
     ("stark_app", "stark_ui"),  # the launcher is a stark_ui menu
+    ("stark_diag", "stark_event"),  # event-drop counters + the sample event (STARK-0109)
 }
 
 PURE = {"stark_err", "stark_gfx"}

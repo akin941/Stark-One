@@ -10,6 +10,7 @@
 /* clang-format off */
 const stark_app_t *const stark_apps[] = {
     &app_about,
+    &app_diagnostics,
     &app_inputtest,
     &app_displaytest,
     &app_buzzertest,

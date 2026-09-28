@@ -74,6 +74,12 @@ class CheckLog(unittest.TestCase):
         self.assertTrue(self.check(heap_min=400000))
         self.assertTrue(self.check(log="boot: ui_ready\n", heap_min=1))
 
+    def test_drops_must_be_zero(self):
+        ok = self.LOG + "diag: heap=310000 min=300000 fps=1.0 drops=0 overruns=4\n"
+        self.assertEqual(self.check(log=ok), [])
+        bad = self.LOG + "diag: heap=310000 min=300000 fps=1.0 drops=3 overruns=0\n"
+        self.assertTrue(self.check(log=bad))
+
     def test_forbid_after(self):
         rule = [{"after": "menu: sel=1", "text": "app: start"}]
         self.assertTrue(self.check(forbid_after=rule))  # app: start follows sel=1
