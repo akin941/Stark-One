@@ -59,6 +59,8 @@ bump is a deliberate change with a full emulator run — never "latest".
 | GPIO controller: inputs with pull-ups read released | ✅ `GPIO_IN` reads `0xffd9ffff` with the six keys high; no spurious key events |
 | GDB remote stub (breakpoint, `set var`, continue) on core 0 | ✅ used for key injection (below) |
 | Emulated-time scheduling independent of host speed | ✅ presses land at the same `now_ms` on every run |
+| SPI2 with a second device attached and nothing behind it (STARK-0201) | ✅ `sdmmc_card_init` fails at once: every production boot logs `storage: no card`, retries are silent, the UI stays responsive |
+| Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 
 **Not available, and not faked:**
 
@@ -223,6 +225,9 @@ scripts/build.sh --docker       # Tier 2 (also writes build/merged-binary.bin)
 scripts/test_emu.sh             # Tier 3 — every test/emu/*.toml, logs in build/emu/
 scripts/test_emu.sh test/emu/v0-boot.toml
 scripts/test_emu.sh test/emu/soak/v01-soak.toml   # the 60 s soak (~8 min wall)
+scripts/build.sh --docker --emu-storage            # the storage test image (ADR-0018)
+python3 scripts/check_emu_image.py                 # ... differs only in stark_storage_medium
+scripts/test_emu.sh --image storage                # every test/emu/storage/*.toml
 ```
 
 Optional, only with free Wokwi quota: `WOKWI_CLI_TOKEN=… scripts/test_wokwi.sh`, or

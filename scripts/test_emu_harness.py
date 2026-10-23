@@ -115,6 +115,23 @@ class Scenarios(unittest.TestCase):
                 self.assertIn(p["key"].upper(), emu.KEYS, f)
                 self.assertLess(p["at_ms"] + p.get("hold_ms", 60), s["end_ms"], f)
             emu.gdb_script(s, 1)  # generates without error
+            # storage-image scenarios live in test/emu/storage/, nowhere else
+            in_storage_dir = f.parent.name == "storage"
+            self.assertEqual(s.get("image", "production") == "storage", in_storage_dir, f)
+
+
+class Images(unittest.TestCase):
+    def test_mismatch(self):
+        self.assertIsNone(emu.image_mismatch({}, "production"))
+        self.assertIsNone(emu.image_mismatch({"image": "storage"}, "storage"))
+        self.assertIn("needs the storage image",
+                      emu.image_mismatch({"image": "storage"}, "production"))
+        self.assertIn("needs the production image", emu.image_mismatch({}, "storage"))
+        self.assertIn("unknown image", emu.image_mismatch({"image": "sd"}, "production"))
+
+    def test_default_sets_are_disjoint(self):
+        self.assertEqual(emu.IMAGES["production"][2], "test/emu/*.toml")
+        self.assertEqual(emu.IMAGES["storage"][2], "test/emu/storage/*.toml")
 
 
 if __name__ == "__main__":

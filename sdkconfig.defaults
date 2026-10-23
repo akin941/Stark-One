@@ -36,3 +36,9 @@ CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
 # stark_diag (STARK-0109): per-task stack high-water marks via
 # uxTaskGetSystemState() for the Diagnostics app.
 CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+
+# stark_storage (STARK-0201): long file names (paths use names up to 32
+# characters, TASKS.md STARK-0203), buffered on the heap only while a call
+# needs one, capped at 64 to bound that buffer.
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=64

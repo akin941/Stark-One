@@ -31,12 +31,14 @@ LAYERS = {
     "stark_board": 0,
     "stark_hal": 1,
     "stark_log": 1,
+    "stark_storage_medium": 1,  # hardware port (ADR-0018 §2)
     "stark_gfx": 2,
     "stark_event": 3,  # L2 core + L3 port
     "stark_input": 3,  # L2 core + L3 service
     "stark_display": 3,
     "stark_buzzer": 3,
     "stark_diag": 3,
+    "stark_storage": 3,  # L2 core + L3 task
     "stark_ui": 4,
     "stark_app": 4,
 }
@@ -48,6 +50,7 @@ SIDEWAYS = {
     ("stark_input", "stark_event"),  # the input service publishes key events
     ("stark_app", "stark_ui"),  # the launcher is a stark_ui menu
     ("stark_diag", "stark_event"),  # event-drop counters + the sample event (STARK-0109)
+    ("stark_storage", "stark_event"),  # state-change events (STARK-0201)
 }
 
 PURE = {"stark_err", "stark_gfx"}

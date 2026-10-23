@@ -7,6 +7,10 @@
 #   esp-emulator — Tier 3: the built firmware runs in Espressif's pinned,
 #               SHA-256-verified esp-emulator (scripts/test_emu.sh,
 #               test/emu/*.toml): free, local, no account, no quota. Mandatory.
+#   esp-emulator-storage — the emulator storage test image (ADR-0018): the
+#               same firmware with only stark_storage_medium replaced by
+#               internal-flash FAT; check_emu_image.py proves that against the
+#               production build, then test/emu/storage/*.toml run. Mandatory.
 #   esp-emulator-soak — the 60 s soak (test/emu/soak/, ROADMAP V0.1 exit 3):
 #               pull requests and manual dispatch; mandatory on pull requests.
 #
@@ -86,6 +90,8 @@ jobs:
           name: stark-one-firmware
           path: |
             build/flasher_args.json
+            build/project_description.json
+            build/config/sdkconfig.json
             build/merged-binary.bin
             build/stark-one.bin
             build/stark-one.elf
@@ -166,6 +172,45 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: stark-one-emu-logs
+          path: build/emu/
+          if-no-files-found: ignore
+
+  esp-emulator-storage:
+    name: esp-emulator-storage
+    needs: firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download the production build (for the comparison)
+        uses: actions/download-artifact@v8
+        with:
+          name: stark-one-firmware
+          path: build
+
+      - name: Build the emulator storage test image (pinned espressif/idf Docker image)
+        run: scripts/build.sh --docker --emu-storage
+
+      - name: Verify the test image's dependencies.lock unchanged
+        run: |
+          if git status --porcelain -- test/emu/storage_image/dependencies.lock | grep -q .; then
+            echo "::error::test/emu/storage_image/dependencies.lock changed during the build."
+            git diff -- test/emu/storage_image/dependencies.lock
+            exit 1
+          fi
+
+      - name: check_emu_image.py (only stark_storage_medium differs)
+        run: python3 scripts/check_emu_image.py
+
+      - name: scripts/test_emu.sh --image storage
+        run: scripts/test_emu.sh --image storage
+
+      - name: Upload storage emulator logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-emu-storage-logs
           path: build/emu/
           if-no-files-found: ignore
 

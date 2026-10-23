@@ -9,6 +9,7 @@
 #include "stark_display.h"
 #include "stark_event.h"
 #include "stark_input.h"
+#include "stark_storage.h"
 #include "stark_app.h"
 #include "app_registry.h"
 #include "stark_ui.h"
@@ -126,5 +127,12 @@ void app_main(void)
     err = stark_diag_init(diag_ui_source);
     if (err != STARK_OK) {
         STARK_LOGE("boot", "diag init failed: %s", stark_err_str(err));
+    }
+
+    /* Last, and never boot-critical: the card is mounted in the background,
+     * so a missing or slow one cannot hold up the UI (STARK-0201). */
+    err = stark_storage_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "storage init failed: %s", stark_err_str(err));
     }
 }

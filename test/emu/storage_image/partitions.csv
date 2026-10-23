@@ -1,0 +1,9 @@
+# Emulator storage test image (ADR-0018 §3): the production partition table
+# (partitions.csv at the repository root) plus `emufat`, the FAT volume the
+# test medium mounts at /sd in place of a microSD card.
+#
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     ,        24K,
+phy_init, data, phy,     ,        4K,
+factory,  app,  factory, ,        4M,
+emufat,   data, fat,     ,        1M,

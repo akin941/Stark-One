@@ -265,7 +265,8 @@ All scripts use `set -euo pipefail` and return non-zero on errors.
 | `scripts/check.sh`   | Repository structure, shell syntax, ADR-0010 compliance, layer rules, script unit tests |
 | `scripts/check_layers.py` | Component dependency layer rules (ARCHITECTURE §10, STARK-0100) |
 | `scripts/test_host.sh` | Host unit tests (added by STARK-0005) |
-| `scripts/test_emu.sh` | Emulator scenarios (`test/emu/*.toml`) on the production image — mandatory, free (docs/VALIDATION.md) |
+| `scripts/test_emu.sh` | Emulator scenarios (`test/emu/*.toml`) on the production image — mandatory, free (docs/VALIDATION.md); `--image storage` runs `test/emu/storage/*.toml` on the storage test image (`scripts/build.sh --docker --emu-storage`, ADR-0018) |
+| `scripts/check_emu_image.py` | Proves the storage test image differs from the production build only in `stark_storage_medium` |
 | `scripts/install_esp_emu.sh` | Fetch the pinned esp-emulator and verify its SHA-256 |
 | `scripts/test_wokwi.sh` | Headless Wokwi scenarios — optional (ADR-0017) |
 
@@ -335,6 +336,11 @@ scripts/test_host.sh
 
 # Run the emulator scenarios (mandatory, free)
 scripts/test_emu.sh
+
+# The storage test image and its scenarios (ADR-0018)
+scripts/build.sh --docker --emu-storage
+python3 scripts/check_emu_image.py
+scripts/test_emu.sh --image storage
 
 # Optional: Wokwi, only while free quota lasts
 scripts/test_wokwi.sh

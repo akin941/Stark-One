@@ -1,0 +1,17 @@
+# STARK-0201 on the emulator storage test image (ADR-0018 §3): the storage
+# task mounts the test medium (a FAT volume on internal flash, standing in
+# for the microSD card) in the background, after the UI is up, and the
+# device stays navigable. Software logic only: a real card is a V1 check.
+name = "emu-v02-storage-mount"
+image = "storage"
+end_ms = 3000
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 2000, hold_ms = 60 },
+]
+expect = [
+    "boot: ui_ready in ",
+    "storage: mounted emu-flashfat total=",
+    'menu: sel=2 "Diagnostics"',
+]
+forbid = ["storage: no card", "storage: unusable card", "storage: card removed"]

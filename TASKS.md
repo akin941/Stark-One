@@ -1545,10 +1545,10 @@ as an event, and the same code runs against the emulator's internal-flash medium
 * `components/stark_storage/{include/stark_storage.h,storage_core.{c,h},stark_storage.c,Kconfig.stark,CMakeLists.txt}` (new)
 * `main/{stark_main.c,Kconfig.projbuild,CMakeLists.txt}`, `sdkconfig.defaults` (FATFS: long names on heap, `CONFIG_FATFS_MAX_LFN=64`)
 * `cmake/stark_flags.cmake` (new: the warning-flag walk moved out of the root `CMakeLists.txt` so both firmware projects share it), `CMakeLists.txt`
-* `test/emu/storage_image/{CMakeLists.txt,sdkconfig.defaults,partitions.csv,components/stark_storage_medium/{medium_flashfat.c,CMakeLists.txt}}` (new)
-* `scripts/{check_layers.py,check_emu_image.py (new),test_emu.py,test_emu.sh,build.sh}`, `scripts/test_emu_harness.py`
+* `test/emu/storage_image/{CMakeLists.txt,partitions.csv,dependencies.lock,components/stark_storage_medium/{medium_flashfat.c,CMakeLists.txt}}` (new)
+* `scripts/{check_layers.py,check_emu_image.py (new),test_check_emu_image.py (new),test_emu.py,test_emu.sh,build.sh}`, `scripts/test_emu_harness.py`, `components/stark_board/board_devkitc1.c` (SD CS pull-up)
 * `.github/workflows/ci.yml` (new `esp-emulator-storage` job)
-* `test/host/{test_storage_core.c,support/fake_medium.c,CMakeLists.txt}`
+* `test/host/{test_storage_core.c,CMakeLists.txt}`, `scripts/test_host.sh` (coverage filter)
 * `test/emu/v02-storage-boot.toml`, `test/emu/storage/v02-storage-mount.toml`
 * ARCHITECTURE.md §2/§6.9/§7/§8/§9/§10, docs/VALIDATION.md §2/§3.5, TESTING.md §4/§7
 
@@ -1560,19 +1560,23 @@ as an event, and the same code runs against the emulator's internal-flash medium
   ```c
   typedef struct { uint64_t total_bytes, free_bytes; } stark_medium_space_t;
   const char *stark_storage_medium_name(void);                 /* "sdspi" */
-  stark_err_t stark_storage_medium_mount(const char *mount_point);
+  stark_err_t stark_storage_medium_mount(const char *mount_point, size_t max_files);
       /* OK; NOT_FOUND = no card answers; NOT_SUPPORTED = card answers, no FAT volume;
          IO = anything else. Never formats (ADR-0018 §6). */
   void        stark_storage_medium_unmount(void);              /* idempotent */
-  stark_err_t stark_storage_medium_probe(void);                /* mounted: CMD13 → OK / NOT_FOUND / IO */
-  stark_err_t stark_storage_medium_present(void);              /* unmounted: card init only, no mount */
+  stark_err_t stark_storage_medium_probe(void);                /* mounted: CMD13 → OK / NOT_FOUND */
   stark_err_t stark_storage_medium_space(stark_medium_space_t *out);
+  /* STARK-0202 adds stark_storage_medium_present() (card init only, for EJECTED). */
   ```
-  `medium_sdspi.c`: `esp_vfs_fat_sdspi_mount()` on `SPI2_HOST` (bus already initialised by
-  `stark_board`), `slot.gpio_cs = stark_board_pins()->sd_cs`, max 20 MHz
-  (`CONFIG_STARK_STORAGE_SD_KHZ`, 20000, range 400–20000), `format_if_mount_failed =
-  false`, `max_files = CONFIG_STARK_STORAGE_MAX_FILES + 1` (the log writer);
-  `sdmmc_get_status()` for `probe`; `esp_vfs_fat_info()` for space. No STARK code other
+  `medium_sdspi.c` (as built): the card is attached to `SPI2_HOST` once
+  (`sdspi_host_init_device`, CS = `stark_board_pins()->sd_cs`) and stays attached, so
+  its CS is driven high between uses and retries do not attach/detach the device; each
+  mount attempt runs `sdmmc_card_init()` (clock ceiling `CONFIG_STARK_STORAGE_SD_KHZ`,
+  20000, range 400–20000) and mounts with `esp_vfs_fat_register()` + `f_mount()` —
+  never formatting; `sdmmc_get_status()` for `probe`; `esp_vfs_fat_info()` for space.
+  `stark_board_init()` pulls `SD_CS` up before the first attach. The SD/FAT drivers'
+  own per-attempt ERROR lines are switched off (one STARK line per state change
+  instead). No STARK code other
   than this file and `stark_display` issues SPI2 transactions (ADR-0018 §4).
 * **States** (`stark_storage_state_t`): `NOT_FITTED` (board `sd_cs == -1`; nothing runs),
   `ABSENT`, `MOUNTED`, `UNUSABLE` (card answers, no FAT), `REMOVED` (lost while mounted),
@@ -1600,9 +1604,10 @@ as an event, and the same code runs against the emulator's internal-flash medium
   repository's `main`, every `apps/app_*` and every `components/*` except
   `stark_storage_medium` (explicit filter, so the substitution is visible in one line),
   plus its own `components/stark_storage_medium`; includes `cmake/stark_flags.cmake`;
-  `SDKCONFIG_DEFAULTS` = the repository's `sdkconfig.defaults` followed by an overlay
-  that only selects `partitions.csv` (the production table plus `emufat, data, fat, ,
-  1M`). `medium_flashfat.c` mounts that partition at the mount point with
+  `SDKCONFIG_DEFAULTS` = the repository's `sdkconfig.defaults` unchanged; the
+  production setting `CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"` resolves to the
+  test project's own `partitions.csv` (the production table plus `emufat, data, fat, ,
+  1M`), so the resolved sdkconfigs are identical. `medium_flashfat.c` mounts that partition at the mount point with
   `esp_vfs_fat_spiflash_mount_rw_wl()` (formatting it once if it has never been
   formatted — the test medium's own blank flash, not user media) and exposes
   `volatile uint8_t emu_medium_present = 1, emu_medium_formatted = 1;`. While
@@ -1611,23 +1616,27 @@ as an event, and the same code runs against the emulator's internal-flash medium
   would; while `formatted == 0`: `mount` → `NOT_SUPPORTED`. Name: `"emu-flashfat"`.
 * `scripts/build.sh --docker --emu-storage` builds it to `build/emu-storage/` (+ merged
   image). `scripts/check_emu_image.py` compares the two builds'
-  `project_description.json` component lists and `config/sdkconfig.json`: they must
-  differ in exactly `stark_storage_medium`'s source directory and the
-  `PARTITION_TABLE_*` keys; anything else fails. Unit-tested in
-  `scripts/test_emu_harness.py`.
+  `project_description.json` component lists (sets, directories, sources, include
+  directories, requirements) and `config/sdkconfig.json`: they must differ in exactly
+  `stark_storage_medium`'s directory, the sdkconfigs must be identical, and the test
+  partition table must start with the production one; anything else fails.
+  Unit-tested in `scripts/test_check_emu_image.py`.
 * **Harness:** a scenario key `image = "storage"` selects `build/emu-storage/*`; the
   default set (`test/emu/*.toml`) stays production-only and the runner refuses a
   scenario whose `image` does not match the firmware it was given.
 * `check_layers.py`: `stark_storage_medium` L1; `stark_storage` L3 with the sideways edge
-  `stark_storage → stark_event`; `storage_core.c` listed as pure (host-built without
-  ESP-IDF). ARCHITECTURE §10 table updated in the same change.
+  `stark_storage → stark_event`; `storage_core.c`'s purity is enforced by its host
+  build (no ESP-IDF on the include path). ARCHITECTURE §10 table updated in the same
+  change.
 
 **Host tests.** `test_storage_core.c`: every state × input transition, retry and probe
 cadence across `now_ms` wrap, no publish without a state change, `IO_ERROR` while not
 mounted ignored, `NOT_FITTED` absorbing. `storage_core.c` 100 % lines. `fake_medium.c`
 drives the port's mount/probe sequencing in a host build of `stark_storage.c` with a fake
 mutex/task shim only if that shim stays under 150 lines; otherwise the port is covered by
-the emulator scenarios and only the core is host-tested (record which in the PR).
+the emulator scenarios and only the core is host-tested (record which in the PR). As
+built: the core only — the port is a thin action loop, covered by both images'
+scenarios.
 
 **Emulator.** `v02-storage-boot.toml` (production image, no card): `boot: ui_ready` then
 `storage: no card`; a key press after it still reaches the launcher (`menu: sel=1`);

@@ -32,11 +32,19 @@ Scenario files (test/emu/*.toml):
   heap_min = 200000                     # optional; first `diag: heap=` gate
   heap_delta_max = 1024                 # optional; first vs last stark_diag heap
   wall_limit_s = 1500                   # optional; host wall-clock cap (default 600)
+  image = "storage"                     # optional; the firmware it needs (below)
   (always: every `diag:` line carrying drops= must read drops=0)
 
+Images (ADR-0018): "production" (default) is build/merged-binary.bin;
+"storage" is the emulator storage test image build/emu-storage/ — the same
+firmware with the storage medium replaced by internal-flash FAT, whose
+scenarios live in test/emu/storage/. A scenario run against the other image
+fails.
+
 Usage:
-  test_emu.py [--emu PATH] [--gdb PATH] [--firmware BIN] [--elf ELF]
-              [--log-dir DIR] [scenario.toml ...]     (default: test/emu/*.toml)
+  test_emu.py [--image production|storage] [--emu PATH] [--gdb PATH]
+              [--firmware BIN] [--elf ELF] [--log-dir DIR] [scenario.toml ...]
+              (default: test/emu/*.toml, or test/emu/storage/*.toml)
 
 Exit status: 0 when every scenario passes, 1 otherwise, 2 on a setup error.
 """
@@ -59,6 +67,11 @@ DEFAULT_FORBID = ("panic:", "Guru Meditation", "ui: render failed", "abort() was
 END_MARK = "STARK-EMU-END"
 INJECT_SOURCE = ROOT / "components/stark_input/input_core.c"
 WALL_LIMIT_S = 600
+IMAGES = {
+    "production": ("build/merged-binary.bin", "build/stark-one.elf", "test/emu/*.toml"),
+    "storage": ("build/emu-storage/merged-binary.bin",
+                "build/emu-storage/stark-one-emu-storage.elf", "test/emu/storage/*.toml"),
+}
 
 
 def inject_line():
@@ -105,6 +118,16 @@ def gdb_script(scenario, port):
         "quit",
     ]
     return "\n".join(out) + "\n"
+
+
+def image_mismatch(scenario, image):
+    """Failure message when a scenario needs another firmware image, else None."""
+    want = scenario.get("image", "production")
+    if want not in IMAGES:
+        return "unknown image %r" % want
+    if want != image:
+        return "scenario needs the %s image, runner has the %s image" % (want, image)
+    return None
 
 
 def check_log(scenario, log, gdb_log):
@@ -174,6 +197,10 @@ def run_scenario(path, args):
     scenario = tomllib.loads(Path(path).read_text())
     name = scenario.get("name") or Path(path).stem
     scenario["name"] = name
+    mismatch = image_mismatch(scenario, args.image)
+    if mismatch:
+        print("FAIL: %s — %s" % (name, mismatch), file=sys.stderr)
+        return False
     log_path = Path(args.log_dir) / (name + ".log")
     gdb_path = Path(args.log_dir) / (name + ".gdb.log")
     script_path = Path(args.log_dir) / (name + ".gdb")
@@ -223,13 +250,17 @@ def find_gdb():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Run esp-emulator scenarios.")
+    ap.add_argument("--image", choices=sorted(IMAGES), default="production")
     ap.add_argument("--emu", default=os.environ.get("STARK_ESP_EMU"))
     ap.add_argument("--gdb", default=None)
-    ap.add_argument("--firmware", default=str(ROOT / "build/merged-binary.bin"))
-    ap.add_argument("--elf", default=str(ROOT / "build/stark-one.elf"))
+    ap.add_argument("--firmware", default=None)
+    ap.add_argument("--elf", default=None)
     ap.add_argument("--log-dir", default=str(ROOT / "build/emu"))
     ap.add_argument("scenarios", nargs="*")
     args = ap.parse_args(argv)
+    firmware, elf, default_glob = IMAGES[args.image]
+    args.firmware = args.firmware or str(ROOT / firmware)
+    args.elf = args.elf or str(ROOT / elf)
 
     args.gdb = args.gdb or find_gdb()
     problems = [msg for ok, msg in (
@@ -243,7 +274,7 @@ def main(argv=None):
     if problems:
         return 2
 
-    scenarios = args.scenarios or sorted(glob.glob(str(ROOT / "test/emu/*.toml")))
+    scenarios = args.scenarios or sorted(glob.glob(str(ROOT / default_glob)))
     if not scenarios:
         print("ERROR: no scenarios", file=sys.stderr)
         return 2

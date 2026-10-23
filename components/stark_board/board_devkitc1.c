@@ -85,6 +85,23 @@ stark_err_t stark_board_init(void)
         return STARK_ERR_IO;
     }
 
+    /* The microSD shares SPI2 (HARDWARE.md §2.3): until stark_storage claims
+     * its CS, a pull-up keeps the card deselected so it ignores the panel's
+     * traffic instead of seeing a floating chip select. */
+    if (s_pins.sd_cs >= 0) {
+        gpio_config_t sd_cs_cfg = {
+            .pin_bit_mask = 1ULL << s_pins.sd_cs,
+            .mode = GPIO_MODE_INPUT,
+            .pull_up_en = GPIO_PULLUP_ENABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        err = gpio_config(&sd_cs_cfg);
+        if (err != ESP_OK) {
+            return STARK_ERR_IO;
+        }
+    }
+
     spi_bus_config_t buscfg = {
         .mosi_io_num = s_pins.mosi,
         .miso_io_num = s_pins.miso,

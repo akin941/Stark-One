@@ -407,6 +407,18 @@ target_compile_options(run_diag_core_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_diag_core_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_diag_core_tests PRIVATE unity)
 
+# stark_storage's pure mount state machine (STARK-0201). Built without
+# ESP-IDF on the include path, which is what keeps storage_core.c pure.
+add_executable(run_storage_core_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_storage_core.c
+    ${STARK_COMPONENTS}/stark_storage/storage_core.c
+)
+target_include_directories(run_storage_core_tests PRIVATE ${STARK_COMPONENTS}/stark_storage
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include)
+target_compile_options(run_storage_core_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_storage_core_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_storage_core_tests PRIVATE unity)
+
 # The real Diagnostics screen on the UI port, with a settable fake stark_diag.
 add_executable(run_ui_diagnostics_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_diagnostics.c
@@ -441,6 +453,7 @@ add_test(NAME stark_ui_navigation_tests COMMAND run_ui_navigation_tests)
 add_test(NAME stark_app_fault_tests COMMAND run_app_fault_tests)
 add_test(NAME stark_ui_fault_tests COMMAND run_ui_fault_tests)
 add_test(NAME stark_diag_core_tests COMMAND run_diag_core_tests)
+add_test(NAME stark_storage_core_tests COMMAND run_storage_core_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)
 add_test(NAME stark_ui_format_tests COMMAND run_ui_format_tests)
 
