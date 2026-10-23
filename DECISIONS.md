@@ -253,7 +253,10 @@ serialised through the owning component (ARCHITECTURE §8).
 | A global bus mutex | Simpler but hides ownership; the display's DMA transfers need to be the scheduling point, not a lock anyone can take |
 
 **Consequences.** Concurrent SD and display access is the known hot spot; V0.2's exit
-criteria test it explicitly (large file write while rendering).
+criteria test it explicitly (large file write while rendering). Under ADR-0018 V0.2
+verifies the software half (the UI keeps rendering while a worker writes through the
+same storage code path, emulator); the physical half — real bus contention, band-flush
+stalls during SD commands, signal integrity — stays **open** until the V1 prototype.
 
 ---
 
@@ -512,3 +515,95 @@ HIL. `scripts/wokwi_gate.py` stays useful for optional Wokwi runs.
 **Revisit trigger:** an esp-emu release that adds external-pad stimulus or SPI device
 models (widen Tier 3), or the V1 prototype (add HIL as a mandatory tier for hardware
 milestones).
+
+---
+
+## ADR-0018 — V0.2 storage: software-verified in simulation, physical microSD at V1; the storage-medium seam
+
+**Status:** accepted (owner decision "Option A", 2026-10-23). Applies ADR-0017 to V0.2;
+narrows ADR-0010's "one artifact" rule for exactly one component (below); refines
+ADR-0008's arbitration wording. Does not close ADR-0008's shared-bus risk.
+
+**Context.** ROADMAP V0.2 exit criteria 2 and 3 (a 100 kB write/read-back while the UI
+renders; card removal mid-write) and ADR-0008's display/SD bus sharing need a microSD
+card. esp-emu 0.44.0 models no SD card and no external SPI device (docs/VALIDATION.md
+§2); paid Wokwi is excluded (ADR-0017). Requiring a physical card would move hardware
+ahead of the V1 prototype.
+
+**Decision.**
+1. **Two levels of completion.** *V0.2 complete* means the storage and settings
+   **software logic is verified** with free, local tiers: host tests with deterministic
+   fakes and fault injection, the production image in esp-emu (NVS persistence across a
+   reset, the no-card path), and an emulator storage test image (item 3). *Physical
+   microSD behaviour is not claimed.* Each affected exit criterion is split into a
+   V0.2 software half and a V1 physical-HIL half (ROADMAP V0.2, TASKS.md V0.2). These
+   remain open until the V1 prototype: real microSD electrical behaviour, real
+   insertion/removal, real card-detect behaviour, display/SD contention and timing on
+   the shared SPI2 bus, simultaneous panel + SD traffic, signal integrity and clock
+   limits.
+2. **The storage-medium seam.** Production code targets the real ESP-IDF APIs:
+   `esp_vfs_fat_sdspi_mount()` over `SPI2_HOST`, `sdmmc_get_status()` for presence, the
+   POSIX/VFS file API over FATFS. The medium — "make a FAT volume appear at `/sd`, take
+   it away, and say whether the card still answers" — sits behind one small interface,
+   `stark_storage_medium.h`, provided by the L1 component `stark_storage_medium`
+   (production source: `medium_sdspi.c`). Everything above it — mount state machine,
+   presence polling, eject, paths, file helpers, the log writer — is identical in every
+   build. This is the same link-time port pattern as `stark_hal_host.c` (ARCHITECTURE
+   §6.2): the seam exists because the medium is genuinely hardware, not for the
+   emulator's convenience, and production code contains no test medium, no fake path
+   and no conditional.
+3. **Substitutes live only in test trees.** Host tests link
+   `test/host/support/fake_medium.c` (and a fault-injecting wrapper around the real
+   POSIX I/O ops). The emulator storage test image `test/emu/storage_image/` is an
+   ESP-IDF project that builds the repository's `main`, `apps/*` and every
+   `components/*` **except** `stark_storage_medium`, which it replaces with
+   `test/emu/storage_image/components/stark_storage_medium/` — a wear-levelled FAT
+   volume on an internal-flash partition, mounted at `/sd` with
+   `esp_vfs_fat_spiflash_mount_rw_wl()`, whose presence is a test-image variable that
+   the emulator harness flips over GDB to simulate removal and reinsertion. Its own
+   partition table adds that FAT partition. `scripts/check_emu_image.py` (CI `lint`)
+   proves the two builds' component lists differ in exactly that component. The
+   production merged image stays the artifact every other scenario runs (ADR-0010
+   unchanged for it).
+4. **Bus arbitration** (refines ADR-0008). The display and the SD card are two devices
+   on `SPI2_HOST`; the arbiter is ESP-IDF's `spi_master` bus lock — every transaction is
+   atomic per device, and `sdspi_host` holds the bus across a multi-transaction SD
+   command. STARK adds no global bus mutex (ADR-0008 rejects one). The ownership rules
+   are: only `stark_display` (UI task) issues panel transactions; only
+   `stark_storage_medium`, called from inside `stark_storage` under its own mutex (the
+   storage task or an app worker), issues SD transactions; no other code calls
+   `spi_device_*` on SPI2. Whether that is fast enough — how long an SD command can
+   stall a band flush — is measured on hardware at V1 and is the open half of ADR-0008.
+5. **No card-detect pin in V0.2.** The pin map is unchanged (`SD_CS` = GPIO 8 only).
+   Presence is polled: while mounted, `sdmmc_get_status()` (CMD13) once per
+   `CONFIG_STARK_STORAGE_PROBE_MS`; while absent, a mount attempt every
+   `CONFIG_STARK_STORAGE_RETRY_MS`; an I/O error triggers an immediate probe. A
+   card-detect switch is a PCB decision (V1 hardware) and would only shorten detection.
+6. **No automatic formatting.** A card that mounts but is not FAT is reported as
+   unusable; firmware never formats or repairs user media in V0.2.
+7. **Board capability.** `stark_board_pins()->sd_cs != -1` is the SD capability; no
+   separate capability structure is added (nothing else would read it; ADR-0009 keeps
+   capability bits for V0.5).
+8. **Wokwi.** `sim/diagram.storage.json` is not created in V0.2: an artifact that no
+   mandatory check runs would rot. The emulator storage test image replaces it.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| B: physical microSD as a V0.2 prerequisite | Owner chose A; moves hardware ahead of V1 |
+| Paid Wokwi with its microSD part | Excluded (ADR-0017) |
+| `#ifdef`/Kconfig switch selecting a flash "SD" in the production image | A simulator conditional in shipped firmware (ADR-0010) and a fake storage path in production |
+| Making the production image fall back to internal-flash FAT when no card is present | Changes product behaviour to suit tests; ADR-0007 defers a no-card fallback store |
+| Abstracting all file I/O behind a STARK VFS so tests need no FAT | Reshapes production around the emulator; the POSIX API over FATFS is the real contract |
+| A STARK bus mutex around every SPI2 user | Rejected in ADR-0008; duplicates the driver's bus lock and hides ownership |
+
+**Consequences.** V0.2's report lists software-, emulator- and host-verified behaviour
+separately from deferred physical evidence. The V1 prototype inherits concrete SD gates
+(ROADMAP V1, TESTING §5). One extra firmware build runs in CI (`esp-emulator-storage`).
+The ADR-0008 risk stays **open**: the emulator proves the UI task keeps rendering while
+a worker writes through the same code path, not that the real bus shares well.
+
+**Revisit trigger:** an esp-emu release with an SD-over-SPI model (move exit 2/3
+evidence onto the production image and retire the storage test image), or the V1
+prototype (run the deferred physical gates).

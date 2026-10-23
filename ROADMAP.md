@@ -122,16 +122,23 @@ PSRAM, any radio, any new hardware.
 * `stark_settings`: typed key/value over NVS, defaults, validation, change events
 * Settings app: brightness, volume, key repeat, log level, "restore defaults"
 * Log-to-file sink for `stark_log` (bounded, rotating)
-* Wokwi: `sim/diagram.storage.json` with `wokwi-microsd-card`
+* Simulation (ADR-0017/0018): emulator scenarios on the production image, plus the
+  emulator storage test image (internal-flash FAT behind the storage-medium seam) in
+  place of the former Wokwi `sim/diagram.storage.json`
 
-**Exit criteria**
+**Completion levels (ADR-0018).** *V0.2 complete* = storage and settings **software
+logic verified** (host + esp-emulator + deterministic test doubles). Physical microSD
+and shared-bus behaviour are verified at the **V1 prototype**; V0.2 never claims them.
 
-1. Settings survive reboot (verified in a Wokwi scenario: set → reboot → assert).
-2. A 100 kB file writes and reads back byte-identical while the UI keeps rendering.
-3. Removing the card mid-write degrades gracefully (error surfaced, no panic).
-4. Mount failure leaves the device fully usable.
+**Exit criteria** — each split into the evidence V0.2 requires and the physical evidence
+deferred to V1:
 
----
+| # | Criterion (unchanged) | V0.2 software evidence (required) | V1 physical HIL evidence (deferred) |
+| --- | --- | --- | --- |
+| 1 | Settings survive reboot (set → reboot → assert) | Emulator, production image: set in the Settings app → chip reset over the esp-emu control channel → the loaded value is logged and applied (NVS in emulated flash); host: NVS faults fall back to defaults | Same flow on the breadboard with a power cycle |
+| 2 | A 100 kB file writes and reads back byte-identical while the UI keeps rendering | Emulator storage test image: 100 kB streamed by an app worker and read back with a matching CRC-32 while the UI task keeps rendering and handling keys; host: chunking/streaming and read-back verification on the real POSIX I/O ops | Real microSD on the shared SPI2 bus: byte-identical read-back, display band flushes interleaved with SD commands, worst display stall measured |
+| 3 | Removing the card mid-write degrades gracefully (error surfaced, no panic) | Emulator storage test image: medium removed mid-write (harness) → write fails with an error, `storage: card removed`, status bar and app show it, no panic, remount after reinsertion; host: I/O errors, short writes, no-space, rename and commit failures injected at every step | Physical card pulled mid-write; real card-detect/probe timing; reinsertion |
+| 4 | Mount failure leaves the device fully usable | Emulator, production image: no card is modelled, so every boot exercises it — every app reachable, settings work, `storage: no card`; host: unusable (non-FAT) card and mount errors | Breadboard with no card, a non-FAT card and a faulty card |
 
 ## V0.3 — infrared lab
 
@@ -286,6 +293,12 @@ simulated milestones (ADR-0011):
    reference (the delta between the two is itself useful data).
 7. The pin map survives unchanged, or the changes are merged into `stark_board` and
    `diagram.json` together.
+8. **Deferred V0.2 storage gates** (ADR-0018): settings survive a power cycle; a 100 kB
+   file on a real microSD reads back byte-identical while the UI renders, with the
+   worst band-flush stall during SD commands measured; pulling the card mid-write
+   surfaces an error without a panic and reinsertion remounts; no card, a non-FAT card
+   and a faulty card leave the device usable; SPI2 shared by panel and SD is stable at
+   the chosen clocks (logic-analyser capture of interleaved transactions).
 
 ---
 

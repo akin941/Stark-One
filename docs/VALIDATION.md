@@ -175,6 +175,27 @@ scenario `test/emu/<name>.toml` asserting the same log lines; a "screenshot" is 
 render check at the display-port boundary; anything needing a real peripheral is
 labelled **physical, deferred to HIL** in the task's evidence.
 
+### 3.5 V0.2 — storage and settings (ADR-0018)
+
+V0.2 completion means **storage and settings software logic verified**; physical
+microSD behaviour is never claimed below V1. Per exit criterion:
+
+| Exit criterion | Host (Tier 1/4A) | Emulator, production image (Tier 3) | Emulator, storage test image (Tier 4B) | Physical, deferred to HIL (V1) |
+| --- | --- | --- | --- | --- |
+| 1. Settings survive reboot | settings core over a fake NVS with every failure switch | set in the app → control-channel reset → loaded and applied | — | power cycle on the breadboard |
+| 2. 100 kB write/read-back while rendering | helpers on real POSIX I/O in a temp dir, streaming, CRC | — (no SD model) | worker streams 100 kB, byte compare + CRC-32, UI renders and handles a key meanwhile | real card on shared SPI2; band-flush stall measured |
+| 3. Removal mid-write degrades | `EIO`/short write/`ENOSPC`/rename/fsync faults at every step | — | medium removed mid-write over GDB → error, alert, no panic, remount, temp swept | real pull and reinsertion; detection latency |
+| 4. Mount failure leaves device usable | every mount result in the state machine | every boot is a no-card boot: all apps usable | unformatted medium → `unusable card` | no card / non-FAT / faulty card |
+
+**The storage test image** (`test/emu/storage_image/`) builds the repository's `main`,
+apps and components with only `stark_storage_medium` replaced by an internal-flash FAT
+volume (wear-levelled partition, mounted at `/sd`) whose presence and "formatted" flags
+the harness flips with GDB (`pokes`). Its partition table adds that FAT partition.
+`scripts/check_emu_image.py` proves in CI that it differs from the production build in
+exactly that component and the partition-table keys. It is the only firmware other than
+the production merged image that CI runs, and production code contains no reference to
+it (no conditional, no fake path, no test symbol).
+
 ---
 
 ## 4. Hardware-in-the-loop (future tier, V1 prototype)
@@ -189,6 +210,8 @@ Not a V0.x prerequisite. When the breadboard exists (ROADMAP "V1 prototype"):
   photodiode for glass-level smoke checks;
 * buzzer and LED measured on a logic analyser (frequency, duration, duty);
 * every performance gate from ROADMAP V1, measured, into `docs/measurements.md`.
+* the V0.2 storage gates deferred by ADR-0018 (ROADMAP V1 exit 8, TESTING.md §5): real
+  microSD write/read-back, pull-mid-write, card detection, panel + SD bus sharing.
 
 ---
 

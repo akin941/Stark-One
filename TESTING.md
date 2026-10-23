@@ -179,8 +179,9 @@ that milestone before a scenario depends on them.
 | V0.1 | `v01-app-lifecycle.toml` | Worker joined before `on_stop`; faults unwind to the launcher with an alert |
 | V0.1 | `v01-diag.toml` | Diagnostics logs live heap and FPS (the screen's pixels: host render check) |
 | V0.1 | `soak/v01-soak.toml` | 60 s of emulated use: `drops=0` throughout, root heap delta ≤ 1 kB |
-| V0.2 | `v02-settings-persist.toml` | Change a setting, reset via the emulator control channel, value survives (NVS in emulated flash) |
-| V0.2 | (host test port + HIL) | 100 kB SD write/read-back while the UI renders — esp-emu models no SD card on GP-SPI |
+| V0.2 | `v02-storage-boot.toml`, `v02-no-card.toml` | Production image (no card modelled): `storage: no card` after `boot: ui_ready`, every app usable |
+| V0.2 | `v02-settings-store.toml`, `v02-settings-persist.toml` | Set in the Settings app, chip reset over the esp-emu control channel, value loaded and applied (NVS in emulated flash) |
+| V0.2 | `storage/*.toml` (storage test image, ADR-0018) | Mount, removal/reinsertion, eject, 100 kB write + byte-identical read-back while the UI renders, removal mid-write, unusable card, log file — software logic only; the physical card and shared bus are V1 HIL |
 | V0.7 | `v07-i2c-scan.toml` | Scanner finds esp-emu's built-in I²C EEPROM (and nothing else) |
 | V0.7 | `v07-uart-loopback.toml` | UART bridge round-trips via esp-emu's `--uart1-tcp` side channel |
 
@@ -212,6 +213,13 @@ alongside its simulated counterpart, and is a pass/fail condition for the milest
 7. LED: heartbeat visible.
 8. Thermals: module temperature after 15 minutes of use.
 9. Longevity: 1 hour of continuous operation, then `diag:` heap unchanged (leak check).
+
+V0.2 storage gates deferred here (ADR-0018, ROADMAP V1 exit 8): settings survive a
+power cycle; 100 kB write test on a real microSD byte-identical while the UI renders,
+with the worst band-flush stall during SD commands measured on a logic analyser; card
+pulled mid-write → error surfaced, no panic, reinsertion remounts; boots with no card, a
+non-FAT card and a faulty card stay usable; panel + SD stable on SPI2 at the chosen
+clocks; SD MISO released when its CS is high.
 
 Radio milestones add their own: IR range and protocol fidelity against our own remotes;
 NFC read reliability over 20 attempts per tag; Sub-GHz RSSI versus distance, and a
