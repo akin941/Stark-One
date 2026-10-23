@@ -1,0 +1,36 @@
+# stark_storage options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). TASKS.md STARK-0201.
+
+config STARK_STORAGE_RETRY_MS
+    int "Storage: mount retry period (ms)"
+    range 1000 60000
+    default 3000
+    help
+        While no usable card is mounted, a mount is attempted this often.
+        There is no card-detect pin (ADR-0018 §5): polling is how an
+        inserted card is found.
+
+config STARK_STORAGE_PROBE_MS
+    int "Storage: presence probe period (ms)"
+    range 250 10000
+    default 1000
+    help
+        While a card is mounted, it is asked (CMD13) this often whether it
+        is still there; an I/O error also triggers a probe at once.
+
+config STARK_STORAGE_MAX_FILES
+    int "Storage: files open at once"
+    range 1 8
+    default 4
+
+config STARK_STORAGE_TASK_PRIO
+    int "Storage task priority"
+    range 1 4
+    default 2
+    help
+        Below the app worker (4) and the UI task (5).
+
+config STARK_STORAGE_TASK_STACK
+    int "Storage task stack (bytes)"
+    range 3072 8192
+    default 4096

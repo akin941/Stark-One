@@ -1,0 +1,10 @@
+# stark_storage_medium options, shown in the single STARK menu:
+# main/Kconfig.projbuild sources this file (ARCHITECTURE.md §9).
+
+config STARK_STORAGE_SD_KHZ
+    int "microSD SPI clock (kHz)"
+    range 400 20000
+    default 20000
+    help
+        Upper bound for the card's clock on the shared SPI2 bus (HARDWARE.md
+        §2.3). Card initialisation always starts at 400 kHz.

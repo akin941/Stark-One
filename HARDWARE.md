@@ -102,9 +102,15 @@ One bus, `SPI2_HOST`, shared by panel / SD / Sub-GHz with independent CS lines.
 * Sub-GHz (CC1101) tops out at ~6.5 MHz; per-device clock again.
 
 Mixing a display and an SD card on one bus is the known-awkward part: an SD access
-during a panel DMA transfer must not interleave. The driver serialises through the
-`stark_display` owner (ARCHITECTURE §8) — SD I/O happens from the UI task, or from a
-worker that acquires the bus through the same API.
+during a panel DMA transfer must not interleave. ESP-IDF's `spi_master` bus lock keeps
+each device's transactions atomic (and `sdspi` holds the bus across a multi-transaction
+SD command); STARK adds no bus mutex, and only `stark_display` and
+`stark_storage_medium` issue SPI2 transactions (ARCHITECTURE §8, ADR-0018 §4).
+`stark_board_init()` pulls `SD_CS` up so a card ignores panel traffic before
+`stark_storage` attaches it; once attached, the card stays attached and its CS is
+driven high whenever it is not addressed. How long an SD command can stall a band
+flush, and whether a given breakout releases MISO when deselected, are measured on the
+breadboard at V1 (ROADMAP V1 exit 8).
 
 ---
 

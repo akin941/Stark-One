@@ -155,6 +155,7 @@ commit. Reserved prefixes:
 | `key:` | `stark_input` (DEBUG) | `key: OK short` |
 | `diag:` | `stark_diag` | `diag: heap=228412 min=224000 fps=30.0 drops=0 overruns=0` (STARK-0109; `heap=` stays first) |
 | `dialog:` | `stark_ui` dialogs | `dialog: open "Confirm"` / `dialog: ok` / `dialog: cancel` (STARK-0105) |
+| `storage:` | `stark_storage` | `storage: no card` / `storage: mounted sdspi total=<kB> free=<kB>` / `storage: card removed` (STARK-0201; one line per state change) |
 
 **Scenario budget:** ≤ 20 s of emulated time each. Emulator scenarios are free and
 all run on every push and pull request. (Wokwi's quota once forced a push-only smoke
@@ -257,7 +258,7 @@ lint      (ubuntu-latest, ~30 s)
   ├─ clang-format --check        (scripts/fmt.sh --check)
   ├─ check_layers.py
   ├─ check_pins.py
-  ├─ wokwi_gate.py unit tests
+  ├─ script unit tests           (emulator harness, check_emu_image, Wokwi gate)
   └─ gitleaks
 
 host      (ubuntu-latest + macos-latest, ~1 min)
@@ -273,6 +274,12 @@ esp-emulator (needs firmware)
   ├─ scripts/install_esp_emu.sh  (pinned esp-emu, SHA-256 verified)
   └─ scripts/test_emu.sh         (every test/emu/*.toml on the production image)
 
+esp-emulator-storage (needs firmware; ADR-0018)
+  ├─ scripts/build.sh --docker --emu-storage   (test/emu/storage_image → build/emu-storage)
+  ├─ verify its dependencies.lock unchanged
+  ├─ scripts/check_emu_image.py  (differs from production only in stark_storage_medium)
+  └─ scripts/test_emu.sh --image storage       (every test/emu/storage/*.toml)
+
 esp-emulator-soak (needs firmware; pull requests + manual dispatch)
   └─ scripts/test_emu.sh test/emu/soak/v01-soak.toml   (60 s: drops, heap delta)
 
@@ -284,7 +291,7 @@ clang-tidy on stark_*            (planned: debt register)
 ```
 
 Merge rule: the mandatory, free jobs — `lint`, `firmware`, `host` (both OSes),
-`esp-emulator` and, on pull requests, `esp-emulator-soak` — must be green before merge. The optional Wokwi workflow never gates a
+`esp-emulator`, `esp-emulator-storage` and, on pull requests, `esp-emulator-soak` — must be green before merge. The optional Wokwi workflow never gates a
 merge; a red optional run is reported, not hidden. `main` has no GitHub branch protection configured; the rule is
 enforced by the working agreement (AGENTS.md), not by the repository settings.
 `main` is always releasable — if a milestone is mid-flight, it lives on a branch.

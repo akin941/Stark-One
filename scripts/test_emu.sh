@@ -4,10 +4,13 @@
 # on the built firmware, locally or in CI, with no account and no quota
 # (docs/VALIDATION.md, ADR-0017).
 #
-# Usage:  scripts/test_emu.sh [scenario.toml ...]
+# Usage:  scripts/test_emu.sh [--image storage] [scenario.toml ...]
 #
 # Needs build/merged-binary.bin and build/stark-one.elf:
 #   scripts/build.sh --docker   (also writes the merged image)
+# or, with --image storage, the emulator storage test image (ADR-0018):
+#   scripts/build.sh --docker --emu-storage   (build/emu-storage/;
+#   default scenarios test/emu/storage/*.toml)
 # Runs scripts/test_emu.py inside the pinned espressif/idf image (it provides
 # the Xtensa GDB) with the pinned, SHA-256-verified Linux esp-emu build for
 # this machine's architecture (scripts/install_esp_emu.sh). Logs:
@@ -25,9 +28,27 @@ case "$(uname -m)" in
     *) echo "ERROR: unsupported architecture $(uname -m)" >&2; exit 2 ;;
 esac
 
-for f in build/merged-binary.bin build/stark-one.elf; do
+IMAGE=production
+FIRMWARE=build/merged-binary.bin
+ELF=build/stark-one.elf
+BUILD_HINT="scripts/build.sh --docker"
+if [[ "${1:-}" == "--image" ]]; then
+    case "${2:-}" in
+        production) ;;
+        storage)
+            IMAGE=storage
+            FIRMWARE=build/emu-storage/merged-binary.bin
+            ELF=build/emu-storage/stark-one-emu-storage.elf
+            BUILD_HINT="scripts/build.sh --docker --emu-storage"
+            ;;
+        *) echo "ERROR: --image production|storage" >&2; exit 2 ;;
+    esac
+    shift 2
+fi
+
+for f in "$FIRMWARE" "$ELF"; do
     if [[ ! -f "$f" ]]; then
-        echo "ERROR: $f missing — run: scripts/build.sh --docker" >&2
+        echo "ERROR: $f missing — run: $BUILD_HINT" >&2
         exit 2
     fi
 done
@@ -42,6 +63,6 @@ for s in "$@"; do
 done
 
 docker run --rm -v "$PROJECT_ROOT:/p" -w /p "espressif/idf:${IDF_TAG}" \
-    python3 scripts/test_emu.py --emu "$EMU_IN_CONTAINER" \
-    --firmware /p/build/merged-binary.bin --elf /p/build/stark-one.elf \
+    python3 scripts/test_emu.py --image "$IMAGE" --emu "$EMU_IN_CONTAINER" \
+    --firmware "/p/$FIRMWARE" --elf "/p/$ELF" \
     --log-dir /p/build/emu ${args[@]+"${args[@]}"}

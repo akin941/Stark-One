@@ -42,7 +42,7 @@ the sketch is the contract; naming and signatures may be refined but not re-inve
 │     stark_event · stark_gfx · stark_input_core · stark_ui_model    │
 ├────────────────────────────────────────────────────────────────────┤
 │ L1  stark_hal   (gpio/spi/i2c/pwm/time/task port)                  │
-│     stark_log · stark_err                                          │
+│     stark_log · stark_err · stark_storage_medium (SD port)         │
 ├────────────────────────────────────────────────────────────────────┤
 │ L0  stark_board (pin map, clocks, board_init, capability flags)    │
 ├────────────────────────────────────────────────────────────────────┤
@@ -295,6 +295,14 @@ Binary rather than counting because a burst needs one wakeup, not one per event.
 number of producer tasks; exactly one consumer task (the UI task) calls `wait()` and
 `dispatch()`. Task context only — `esp_timer` callbacks qualify only with the default
 `ESP_TIMER_TASK` dispatch. Every call returns `STARK_ERR_STATE` before `init()`.
+
+`STARK_EVT_SYSTEM` ids (`system.id`), one table so no two components collide:
+
+| id | Name | Owner | `system.arg` |
+| --- | --- | --- | --- |
+| 1 | `STARK_SYS_DIAG_SAMPLE` | `stark_diag` (STARK-0109) | — |
+| 2 | `STARK_SYS_STORAGE` | `stark_storage` (STARK-0201) | the new `stark_storage_state_t` |
+| 3 | `STARK_SYS_SETTING` | `stark_settings` (STARK-0204, planned) | the `stark_setting_t` that changed |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -650,11 +658,44 @@ min=<n> fps=<n.n> drops=<n> overruns=<n>`. The arithmetic and formatting are pur
 scenario runners gate `drops=0` on every such line; FPS and overruns are reported, never
 gated in simulation (ADR-0011). Local only.
 
+### 6.9b `stark_storage` (L3) and `stark_storage_medium` (L1) — STARK-0201, ADR-0018
+
+```c
+/* stark_storage.h */
+stark_err_t           stark_storage_init(void);      /* starts the storage task, returns at once */
+stark_storage_state_t stark_storage_state(void);     /* any task */
+stark_err_t           stark_storage_space(stark_medium_space_t *out); /* not from the UI task */
+
+/* stark_storage_medium.h — the hardware port; only stark_storage calls it, under its mutex */
+stark_err_t stark_storage_medium_mount(const char *mount_point, size_t max_files);
+void        stark_storage_medium_unmount(void);
+stark_err_t stark_storage_medium_probe(void);
+stark_err_t stark_storage_medium_space(stark_medium_space_t *out);
+```
+
+States: `NOT_FITTED` (board `sd_cs == -1`), `ABSENT`, `MOUNTED`, `UNUSABLE` (a card
+answers but holds no FAT volume — never formatted), `REMOVED` (lost while mounted),
+`EJECTED` (STARK-0202). The pure core `storage_core.c` (host-tested, 100 %) decides
+every transition: a mount attempt every `STARK_STORAGE_RETRY_MS` while no usable card is
+mounted, a CMD13 presence probe every `STARK_STORAGE_PROBE_MS` while mounted, an
+immediate probe after an I/O error. There is no card-detect pin (ADR-0018 §5). The
+storage task (`stark_storage`, core 0) performs the actions; each state change is
+published as `STARK_SYS_STORAGE` and logged once (`storage: no card`, `storage: mounted
+<medium> total=<kB> free=<kB>`, `storage: unusable card: <err>`, `storage: card
+removed`, `storage: not fitted`); retries that change nothing are silent. The volume is
+mounted at `STARK_STORAGE_ROOT` (`/sd`).
+
+The production medium (`medium_sdspi.c`) attaches the card to `SPI2_HOST` **once** and
+keeps it attached (its CS is driven high whenever it is not addressed; `stark_board`
+pulls it up before that), and each mount attempt only re-initialises the card
+(`sdmmc_card_init`) and mounts its FAT volume (`esp_vfs_fat_register` + `f_mount`). The
+emulator storage test image substitutes the whole component (ADR-0018 §3).
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
-| `stark_storage` | V0.2 | Mounts SD (FATFS over SPI2, shared bus) through the `stark_storage_medium` port (ADR-0018), `stark_storage_*` file helpers, hot-insert events — specified in TASKS.md STARK-0201…0203/0206; the contract moves here as each lands |
+| `stark_storage` | V0.2 | Mount state machine, task and medium port are implemented (§6.9b, STARK-0201); eject, file helpers and the log writer land with STARK-0202/0203/0206 |
 | `stark_settings` | V0.2 | Typed key/value over NVS with defaults and change notifications — TASKS.md STARK-0204 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
@@ -677,7 +718,8 @@ app_main()
  ├─ stark_app_init(stark_apps, n)          – log the registry, push the launcher
  ├─ xTaskCreate(stark_ui_task, prio 5, 6 kB stack, core 1)
  │      loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
- └─ stark_diag_init(ui adapter)            – 1 s diagnostics sampler (STARK-0109)
+ ├─ stark_diag_init(ui adapter)            – 1 s diagnostics sampler (STARK-0109)
+ └─ stark_storage_init()                   – storage task; mounts in the background (STARK-0201)
 ```
 
 Since STARK-0017 the UI task (`stark_ui_task`, created by `main`) is the event bus's one
@@ -698,14 +740,18 @@ asserts on the **presence and ordering** of that line, never on the number in it
 | --- | --- | --- | --- |
 | `stark_ui` | 5 | 6 kB | Event dispatch, app ticks, rendering. Owns SPI2 and the band buffers. |
 | `app_worker` | 4 | 4 kB (static) | The running app's optional background worker, core 0 (STARK-0108); joined before the app's `on_stop` |
+| `stark_storage` | 2 | 4 kB (static) | Card mount/probe/retry (STARK-0201), core 0. The only caller of the storage medium |
 | `esp_timer` (input) | high | – | 5 ms key sample → publish events. Never blocks. |
 | `esp_timer` (led/buzzer) | high | – | Heartbeat blink, tone sequence steps. |
 | IDLE/main | – | – | Standard IDF. |
 
 **Rules:**
 
-* Only `stark_ui` touches the display or the SPI2 bus in V0. Any future component that
-  needs SPI2 goes through `stark_display`/`stark_module` arbitration, never directly.
+* SPI2 has exactly two users (ADR-0008/0018): `stark_display` (panel transactions, UI
+  task) and `stark_storage_medium` (the microSD, called only from `stark_storage` under
+  its mutex — the storage task or an app worker). ESP-IDF's `spi_master` bus lock keeps
+  their transactions apart; no other code calls `spi_device_*` on SPI2, and a future
+  SPI2 device goes through `stark_module` arbitration (V0.5).
 * Only the event bus crosses task boundaries. No shared mutable globals between tasks.
 * All allocation happens during init. The render and input paths are allocation-free.
 * Static memory budget V0: band buffers 51.2 kB + event ring 2 kB + UI/app state < 8 kB.
@@ -732,6 +778,9 @@ gains options adds its line there in the same change:
 | `STARK_UI_TARGET_FPS` | 30 | Render cap |
 | `STARK_INPUT_REPEAT_DELAY_MS` / `_INTERVAL_MS` | 400 / 120 | Key repeat timing (STARK-0106) |
 | `STARK_APP_WORKER_STACK` / `_PRIO` / `_JOIN_MS` | 4096 / 4 / 1000 | App worker slot (STARK-0108) |
+| `STARK_STORAGE_RETRY_MS` / `_PROBE_MS` | 3000 / 1000 | Mount retry and presence probe periods (STARK-0201) |
+| `STARK_STORAGE_MAX_FILES` / `_TASK_PRIO` / `_TASK_STACK` | 4 / 2 / 4096 | Storage task and open-file limit (STARK-0201) |
+| `STARK_STORAGE_SD_KHZ` | 20000 | microSD clock ceiling on SPI2 (`stark_storage_medium`) |
 | `STARK_LOG_LEVEL` | INFO | Maps to esp_log level |
 
 No runtime behaviour may depend on a Kconfig symbol that Wokwi and hardware would need
@@ -751,16 +800,17 @@ to set differently (ADR-0010).
   | --- | --- |
   | universal | `stark_err` (any layer may require it; it requires nothing) |
   | L0 | `stark_board` |
-  | L1 | `stark_hal`, `stark_log` |
+  | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018) |
   | L2 | `stark_gfx` (the only all-pure component) |
-  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag` |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task) |
   | L4 | `stark_ui`, `stark_app` |
   | L5 | every `apps/app_*` |
   | root | `main` — the composition root, may require anything |
 
   Same-layer allowlist: `stark_input → stark_event` (the input service publishes key
   events), `stark_app → stark_ui` (the launcher is a `stark_ui` menu) and
-  `stark_diag → stark_event` (event-drop counters and the sample event, STARK-0109). Pure
+  `stark_diag → stark_event` (event-drop counters and the sample event, STARK-0109) and
+  `stark_storage → stark_event` (state-change events, STARK-0201). Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with
