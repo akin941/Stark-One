@@ -654,8 +654,8 @@ gated in simulation (ADR-0011). Local only.
 
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
-| `stark_storage` | V0.2 | Mounts SD (FATFS over SPI2, shared bus), `stark_storage_*` file helpers, hot-insert events |
-| `stark_settings` | V0.2 | Typed key/value over NVS with defaults and change notifications |
+| `stark_storage` | V0.2 | Mounts SD (FATFS over SPI2, shared bus) through the `stark_storage_medium` port (ADR-0018), `stark_storage_*` file helpers, hot-insert events — specified in TASKS.md STARK-0201…0203/0206; the contract moves here as each lands |
+| `stark_settings` | V0.2 | Typed key/value over NVS with defaults and change notifications — TASKS.md STARK-0204 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
@@ -804,4 +804,5 @@ task.
 | Single UI task blocks on a slow app | Apps must not block > 16 ms in a callback; `stark_diag` reports frame overruns; long work goes to a worker task |
 | The static app array is a shared file (merge conflicts) | Accepted knowingly (ADR-0009); one line per app, and `stark_app_list()` is dumped at boot at INFO level |
 | Event bus becomes a dumping ground | Only 4 event families; new families require an ADR |
+| Display and microSD share SPI2: an SD command (card busy time) can stall a band flush; a card that does not release MISO breaks the panel bus | ESP-IDF bus lock per transaction, SD I/O only from the storage task or a worker (ADR-0008/0018). **Open until V1:** stall and signal integrity are measured on the breadboard (ROADMAP V1 exit 8); the emulator proves only that the UI keeps rendering while the same code writes |
 | LVGL adoption later invalidates `stark_ui` | Screens are the only UI abstraction apps see; an LVGL backend would implement the same `stark_screen_t` contract (ADR-0005) |

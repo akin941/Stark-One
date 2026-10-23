@@ -1441,8 +1441,9 @@ pure helpers).
 
 **Out of scope.** V0.2 work, hardware measurements.
 
-**CI.** New dispatch-only job. **Hardware.** None; V0.2 is also simulation-first (Wokwi
-microSD part) — the first milestone needing hardware halves is V0.3.
+**CI.** New dispatch-only job. **Hardware.** None; V0.2 is also simulation-first
+(ADR-0018: software-verified, physical microSD at V1) — the first milestone needing
+hardware halves is V0.3.
 **Security.** None.
 
 ---
@@ -1466,15 +1467,722 @@ separately as CI infrastructure, PR #20).
 
 # V0.2 — storage & settings
 
-| ID | Goal |
+**Scope source:** [ROADMAP.md](ROADMAP.md) "V0.2". Nothing from V0.3+ is pulled
+forward (no captures format, no capability bits, no radios, no formatting tool).
+
+**Completion levels (ADR-0018, owner decision 2026-10-23).** *V0.2 complete* means the
+storage and settings **software logic is verified** with free, local tiers. It never
+means physical microSD behaviour is verified. Every task below lists its **software
+evidence (required now)** and its **physical HIL evidence (deferred to V1)**; the
+deferred half is collected in ROADMAP V1 exit 8 and TESTING.md §5.
+
+**Validation (ADR-0017/0018).** Tiers used:
+
+* **Host (Tier 1/4A)** — pure cores at 100 % lines where stated; the real POSIX file
+  I/O ops running against a host temp directory; `test/host/support/fake_medium.c`
+  and a fault-injecting I/O wrapper (fail the Nth call, short writes, `ENOSPC`, `EIO`
+  from a byte offset on, failing `fsync`/`rename`/`unlink`/`mkdir`, a "removed" switch);
+  a fake NVS store with the same failure switches.
+* **Host UI port (Tier 4B)** — the real screens rendered into memory and compared with
+  inspected golden frames (docs/VALIDATION.md §3.3).
+* **Emulator, production image (Tier 3)** — `test/emu/*.toml` on
+  `build/merged-binary.bin`. esp-emu models no SD card, so **every production-image
+  boot is a no-card boot**; NVS lives in emulated flash and survives a chip reset over
+  the esp-emu control channel.
+* **Emulator, storage test image (Tier 4B on the emulator)** — `test/emu/storage/*.toml`
+  on `build/emu-storage/merged-binary.bin` (ADR-0018 §3): the production `main`, apps
+  and components with `stark_storage_medium` replaced by an internal-flash FAT volume
+  whose presence and "formatted" flag the harness flips over GDB. Its log lines are the
+  production code's; only the medium differs.
+
+Names: a "scenario" is an emulator scenario; a "golden" is an inspected host render;
+"physical, deferred to HIL" marks evidence collected at the V1 prototype.
+
+**Hardware.** None. The pin map is unchanged (`SD_CS` = GPIO 8 is already reserved and
+in `stark_board`); no card-detect pin (ADR-0018 §5).
+
+**Exit-criteria map** (ROADMAP V0.2; each row's V1 half is ROADMAP V1 exit 8):
+
+| Exit criterion | V0.2 software evidence | Proven by |
+| --- | --- | --- |
+| 1. Settings survive reboot | Production image: set in the Settings app → control-channel reset → loaded and applied | STARK-0204 (store, reset harness), STARK-0205 (`v02-settings-persist.toml`) |
+| 2. 100 kB write + byte-identical read-back while the UI renders | Storage test image: worker streams 100 kB, CRC-32 and byte compare match, UI renders and moves the selection during the write | STARK-0203 (helpers, write test), STARK-0207 (`storage/v02-write-under-render.toml`) |
+| 3. Card removed mid-write degrades gracefully | Storage test image: medium removed mid-write → error surfaced, no panic, remount; host fault injection at every I/O step | STARK-0202 (removal), STARK-0203 (helpers), STARK-0207 (`storage/v02-remove-mid-write.toml`) |
+| 4. Mount failure leaves the device usable | Production image (no card): every app reachable, settings work; storage image: unformatted medium; host: mount errors | STARK-0201, STARK-0207 (`v02-no-card.toml`) |
+
+**System event ids** (`STARK_EVT_SYSTEM`, `system.id`; ARCHITECTURE §6.3 keeps the
+table): 1 `STARK_SYS_DIAG_SAMPLE` (V0.1), 2 `STARK_SYS_STORAGE` (`arg` = new
+`stark_storage_state_t`), 3 `STARK_SYS_SETTING` (`arg` = `stark_setting_t` that changed).
+
+**Launcher.** The two new apps, Storage (STARK-0202) and Settings (STARK-0205), form a
+new category **Device**, appended after Examples, so every V0/V0.1 scenario's key
+sequence stays valid; only `app: registry n=…` expectations change.
+
+**Planning-debt audit at V0.1 close** (what V0.2 inherits):
+
+| Item | Disposition |
 | --- | --- |
-| STARK-0201 | `stark_storage`: SD over shared SPI2, mount/unmount, bus arbitration |
-| STARK-0202 | Hot-insert/removal events, safe-eject, graceful degradation |
-| STARK-0203 | Path conventions + file helpers + `sim/diagram.storage.json` |
-| STARK-0204 | `stark_settings` over NVS: typed keys, defaults, change events |
-| STARK-0205 | Settings app (brightness, volume, repeat, log level, restore defaults) |
-| STARK-0206 | Rotating file log sink for `stark_log` |
-| STARK-0207 | V0.2 scenarios (persistence, 100 kB write under render load) |
+| `clang-tidy`, binary-size flag | Stay in the infrastructure debt register; not V0.2 exit criteria |
+| `stark_log` promised a file sink "at V0.2 without touching call sites" | STARK-0206 — the facade stays; capture hooks below it |
+| Runtime key-repeat adjustment promised for V0.2 (ARCHITECTURE §6.6) | STARK-0204 (`stark_input_set_timing()`), STARK-0205 (setting) |
+| Board capability struct promised for V0.2 (ARCHITECTURE §6.1) | Superseded by ADR-0018 §7: `sd_cs != -1` is the capability |
+| `sim/diagram.storage.json` (old STARK-0203 title, ROADMAP scope) | Dropped (ADR-0018 §8); the storage test image replaces it |
+| Physical SD + shared-bus verification | Deferred to V1 (ADR-0018 §1), listed per task |
+
+---
+
+## STARK-0201 — `stark_storage` v1: medium seam, mount state machine, storage task
+
+**Goal.** A FAT volume on the microSD card is mounted at `/sd` in the background without
+delaying boot, its state is tracked by a pure, host-tested state machine and published
+as an event, and the same code runs against the emulator's internal-flash medium.
+
+**Layer.** L1 `stark_storage_medium` (hardware port); L3 `stark_storage` (L2 pure core
+`storage_core.c` + L3 port `stark_storage.c`); composition root.
+
+**Files.**
+* `components/stark_storage_medium/{include/stark_storage_medium.h,medium_sdspi.c,CMakeLists.txt}` (new)
+* `components/stark_storage/{include/stark_storage.h,storage_core.{c,h},stark_storage.c,Kconfig.stark,CMakeLists.txt}` (new)
+* `main/{stark_main.c,Kconfig.projbuild,CMakeLists.txt}`, `sdkconfig.defaults` (FATFS: long names on heap, `CONFIG_FATFS_MAX_LFN=64`)
+* `cmake/stark_flags.cmake` (new: the warning-flag walk moved out of the root `CMakeLists.txt` so both firmware projects share it), `CMakeLists.txt`
+* `test/emu/storage_image/{CMakeLists.txt,sdkconfig.defaults,partitions.csv,components/stark_storage_medium/{medium_flashfat.c,CMakeLists.txt}}` (new)
+* `scripts/{check_layers.py,check_emu_image.py (new),test_emu.py,test_emu.sh,build.sh}`, `scripts/test_emu_harness.py`
+* `.github/workflows/ci.yml` (new `esp-emulator-storage` job)
+* `test/host/{test_storage_core.c,support/fake_medium.c,CMakeLists.txt}`
+* `test/emu/v02-storage-boot.toml`, `test/emu/storage/v02-storage-mount.toml`
+* ARCHITECTURE.md §2/§6.9/§7/§8/§9/§10, docs/VALIDATION.md §2/§3.5, TESTING.md §4/§7
+
+**Deps.** STARK-0110.
+
+**Notes.**
+* **Medium port** (`stark_storage_medium.h`, ADR-0018 §2) — only `stark_storage` calls it,
+  always under its mutex:
+  ```c
+  typedef struct { uint64_t total_bytes, free_bytes; } stark_medium_space_t;
+  const char *stark_storage_medium_name(void);                 /* "sdspi" */
+  stark_err_t stark_storage_medium_mount(const char *mount_point);
+      /* OK; NOT_FOUND = no card answers; NOT_SUPPORTED = card answers, no FAT volume;
+         IO = anything else. Never formats (ADR-0018 §6). */
+  void        stark_storage_medium_unmount(void);              /* idempotent */
+  stark_err_t stark_storage_medium_probe(void);                /* mounted: CMD13 → OK / NOT_FOUND / IO */
+  stark_err_t stark_storage_medium_present(void);              /* unmounted: card init only, no mount */
+  stark_err_t stark_storage_medium_space(stark_medium_space_t *out);
+  ```
+  `medium_sdspi.c`: `esp_vfs_fat_sdspi_mount()` on `SPI2_HOST` (bus already initialised by
+  `stark_board`), `slot.gpio_cs = stark_board_pins()->sd_cs`, max 20 MHz
+  (`CONFIG_STARK_STORAGE_SD_KHZ`, 20000, range 400–20000), `format_if_mount_failed =
+  false`, `max_files = CONFIG_STARK_STORAGE_MAX_FILES + 1` (the log writer);
+  `sdmmc_get_status()` for `probe`; `esp_vfs_fat_info()` for space. No STARK code other
+  than this file and `stark_display` issues SPI2 transactions (ADR-0018 §4).
+* **States** (`stark_storage_state_t`): `NOT_FITTED` (board `sd_cs == -1`; nothing runs),
+  `ABSENT`, `MOUNTED`, `UNUSABLE` (card answers, no FAT), `REMOVED` (lost while mounted),
+  `EJECTED` (STARK-0202). The pure core decides every transition and the next action
+  from `(state, input, now_ms)`: inputs `MOUNT_RESULT(err)`, `PROBE_RESULT(err)`,
+  `IO_ERROR`, `TICK`, `REQ_MOUNT`, `REQ_EJECT` (the last two used from STARK-0202);
+  actions `TRY_MOUNT`, `PROBE`, `PRESENT_CHECK`, `UNMOUNT`, `NONE`, plus a "publish"
+  flag on every state change. Retry while `ABSENT`/`REMOVED`/`UNUSABLE` every
+  `CONFIG_STARK_STORAGE_RETRY_MS` (3000, range 1000–60000); probe while `MOUNTED` every
+  `CONFIG_STARK_STORAGE_PROBE_MS` (1000, range 250–10000); an `IO_ERROR` while mounted
+  schedules an immediate probe. No libc, no ESP-IDF in the core.
+* **Port** (`stark_storage.c`): `stark_err_t stark_storage_init(void)` — static mutex,
+  static task `stark_storage` (prio `CONFIG_STARK_STORAGE_TASK_PRIO` 2, stack
+  `CONFIG_STARK_STORAGE_TASK_STACK` 4096, core 0); returns immediately (the first mount
+  attempt runs in the task, so `boot: ui_ready` never waits for a card).
+  `stark_storage_state_t stark_storage_state(void)` (any task, atomic).
+  `stark_err_t stark_storage_space(stark_medium_space_t *out)` (`STARK_ERR_STATE` unless
+  mounted). On every state change: publish `STARK_EVT_SYSTEM`/`STARK_SYS_STORAGE` and
+  log exactly one line (contract): `storage: not fitted`, `storage: no card`,
+  `storage: mounted <medium> total=<kB> free=<kB>`, `storage: unusable card: <err>`,
+  `storage: card removed` (WARN). Retries that do not change the state are silent.
+* **Boot** (ARCHITECTURE §7): `stark_storage_init()` after `stark_diag_init()` — last, so
+  a slow or stuck medium can never hold up the UI.
+* **Storage test image** (ADR-0018 §3): `test/emu/storage_image/CMakeLists.txt` lists the
+  repository's `main`, every `apps/app_*` and every `components/*` except
+  `stark_storage_medium` (explicit filter, so the substitution is visible in one line),
+  plus its own `components/stark_storage_medium`; includes `cmake/stark_flags.cmake`;
+  `SDKCONFIG_DEFAULTS` = the repository's `sdkconfig.defaults` followed by an overlay
+  that only selects `partitions.csv` (the production table plus `emufat, data, fat, ,
+  1M`). `medium_flashfat.c` mounts that partition at the mount point with
+  `esp_vfs_fat_spiflash_mount_rw_wl()` (formatting it once if it has never been
+  formatted — the test medium's own blank flash, not user media) and exposes
+  `volatile uint8_t emu_medium_present = 1, emu_medium_formatted = 1;`. While
+  `present == 0`: `mount` → `NOT_FOUND`, `probe`/`present` → `NOT_FOUND`, and every
+  sector read/write through its wrapped wear-levelling diskio fails as a pulled card's
+  would; while `formatted == 0`: `mount` → `NOT_SUPPORTED`. Name: `"emu-flashfat"`.
+* `scripts/build.sh --docker --emu-storage` builds it to `build/emu-storage/` (+ merged
+  image). `scripts/check_emu_image.py` compares the two builds'
+  `project_description.json` component lists and `config/sdkconfig.json`: they must
+  differ in exactly `stark_storage_medium`'s source directory and the
+  `PARTITION_TABLE_*` keys; anything else fails. Unit-tested in
+  `scripts/test_emu_harness.py`.
+* **Harness:** a scenario key `image = "storage"` selects `build/emu-storage/*`; the
+  default set (`test/emu/*.toml`) stays production-only and the runner refuses a
+  scenario whose `image` does not match the firmware it was given.
+* `check_layers.py`: `stark_storage_medium` L1; `stark_storage` L3 with the sideways edge
+  `stark_storage → stark_event`; `storage_core.c` listed as pure (host-built without
+  ESP-IDF). ARCHITECTURE §10 table updated in the same change.
+
+**Host tests.** `test_storage_core.c`: every state × input transition, retry and probe
+cadence across `now_ms` wrap, no publish without a state change, `IO_ERROR` while not
+mounted ignored, `NOT_FITTED` absorbing. `storage_core.c` 100 % lines. `fake_medium.c`
+drives the port's mount/probe sequencing in a host build of `stark_storage.c` with a fake
+mutex/task shim only if that shim stays under 150 lines; otherwise the port is covered by
+the emulator scenarios and only the core is host-tested (record which in the PR).
+
+**Emulator.** `v02-storage-boot.toml` (production image, no card): `boot: ui_ready` then
+`storage: no card`; a key press after it still reaches the launcher (`menu: sel=1`);
+`heap_min = 200000`; no `storage: mounted`. `storage/v02-storage-mount.toml` (storage
+image): `storage: mounted emu-flashfat total=` after `boot: ui_ready`.
+
+**Fault injection.** Host: every `mount` result (`OK`/`NOT_FOUND`/`NOT_SUPPORTED`/`IO`)
+and every `probe` result in every state. Emulator: the production image's no-card boot
+(every boot); GDB-driven removal arrives with STARK-0202, the unusable-card scenario
+with STARK-0207.
+
+**AC.**
+1. Production-image boot logs `storage: no card` after `boot: ui_ready`; the device
+   stays navigable (`v02-storage-boot.toml` in CI).
+2. Storage image mounts its medium (`storage/v02-storage-mount.toml` in CI, new
+   `esp-emulator-storage` job).
+3. `check_emu_image.py` passes in that job: the images differ only in
+   `stark_storage_medium` and the partition-table keys.
+4. `storage_core.c` at 100 % lines; whole host suite green on Linux and macOS.
+5. `check_layers.py` classifies both components; `grep -rIiE 'wokwi|qemu|esp_emu|emu_medium'
+   components/ apps/ main/` is empty.
+6. Root heap ≥ 200 kB on the production image (runner gate); the heap and flash cost of
+   FATFS + SDSPI is recorded in the PR.
+
+**Out of scope.** Eject, removal handling beyond the state machine (STARK-0202), file
+helpers and paths (STARK-0203), formatting, SDMMC 4-bit, a card-detect pin, an
+internal-flash fallback store in production (ADR-0007).
+
+**Resource limits.** Heap after mount ≤ 12 kB more than V0.1 at the root (FATFS volume,
+sector cache, SDSPI host); storage task stack HWM ≥ 1 kB in the emulator; flash
+≤ +80 kB.
+
+**CI.** New component pair, new host test, two scenarios, a new required job
+`esp-emulator-storage` (build the storage image, run `check_emu_image.py`, run
+`test/emu/storage/*.toml`), `build.sh` flag. **Security.** No auto-format: the firmware
+never destroys data on a card it cannot read. **Physical HIL (deferred to V1).** Mount
+of a real card at 20 MHz on the shared bus; no-card and wrong-card boots on the
+breadboard; init time of a real card.
+
+---
+
+## STARK-0202 — Removal and reinsertion, safe eject, status bar, Storage app
+
+**Goal.** Losing the card never panics: removal is detected, surfaced to the user and
+recovered from on reinsertion; the user can eject safely; the status bar shows the card
+state; a Storage app shows status and offers Eject / Mount.
+
+**Layer.** L3 `stark_storage`; L4 `stark_ui` (status bar); composition root; L5 app.
+
+**Files.** `components/stark_storage/{storage_core.{c,h},stark_storage.c,include/stark_storage.h}`,
+`components/stark_ui/{ui_statusbar.c,include/stark_ui.h,include/stark_theme.h}`,
+`main/{stark_main.c,storage_ui.{c,h} (new),app_registry.{c,h}}`, `apps/app_storage/**` (new),
+`scripts/test_emu.py` (GDB `pokes`), `scripts/test_emu_harness.py`,
+`test/host/{test_storage_core.c,test_ui_statusbar.c,test_ui_storage.c,CMakeLists.txt}`,
+`test/emu/storage/v02-remove-insert.toml`, `test/emu/storage/v02-eject.toml`,
+existing scenarios' `app: registry` lines, ARCHITECTURE §6.7/§6.9, TESTING §4.
+
+**Deps.** STARK-0201.
+
+**Notes.**
+* **Removal** (both paths converge on one core transition): (a) a probe returns
+  `NOT_FOUND`/`IO`; (b) a file operation fails with an I/O error (STARK-0203 reports it
+  via `IO_ERROR`) and the immediate probe confirms. Then, under the mutex: every open
+  handle is closed at the VFS level and marked stale, the volume is unmounted, the
+  mount generation increments, state → `REMOVED`, event published, `storage: card
+  removed`. Retries resume at the retry cadence; a successful mount → `MOUNTED`.
+* **Eject** — `stark_err_t stark_storage_request_eject(void)` and
+  `stark_storage_request_mount(void)`: non-blocking requests handled by the storage task
+  (safe from the UI task). Eject with open handles (other than the log writer's) is
+  refused: `storage: eject refused: <n> open`, event re-published with the unchanged
+  state so the UI can say so. Otherwise: flush/close internal files, unmount,
+  `storage: ejected`, state `EJECTED`. While `EJECTED` the task runs `present()` at the
+  retry cadence and never mounts: a card that stops answering moves to `ABSENT` (the
+  user pulled it), so the next answer mounts it again; `REQ_MOUNT` mounts at once.
+* **Status bar** — `void stark_ui_status_set_storage(stark_ui_storage_icon_t icon)`
+  (`NONE`, `ABSENT`, `MOUNTED`, `ERROR`, `EJECTED`), an 8 × 10 card glyph at the right of
+  the status bar, colours from `stark_theme.h`; damages only its own rectangle. `NONE`
+  draws nothing (V0.1 status bar pixel-identical).
+* **Composition root** (`main/storage_ui.c`): subscribes to `STARK_SYS_STORAGE`, maps
+  state → icon (`NOT_FITTED`→`NONE`, `ABSENT`→`ABSENT`, `MOUNTED`→`MOUNTED`,
+  `REMOVED`/`UNUSABLE`→`ERROR`, `EJECTED`→`EJECTED`) and, on `MOUNTED → REMOVED` only,
+  opens `stark_ui_dialog_alert("SD card removed", "Data being written may be
+  incomplete.")` (if a dialog is already open, the icon alone surfaces it). Lives in
+  `main` because `stark_storage` (L3) may not call `stark_ui` (L4).
+* **Storage app** (`apps/app_storage`, id `storage`, title `Storage`, category `Device`,
+  registry position after `hello`): a status row (`No card`, `Mounted · <free> free of
+  <total>`, `Card removed`, `Ejected`, `Card not usable`, `Not fitted`) refreshed on
+  `STARK_SYS_STORAGE`; items `Eject` (confirm dialog "Eject card?") and `Mount`
+  (enabled when ejected/absent/removed). Logs `storageapp: status <state>`.
+  ≤ 150 lines per file.
+* **Harness** — `pokes = [ { at_ms = 2500, var = "emu_medium_present", value = 0 } ]`:
+  applied at the existing core-0 breakpoint when `now_ms` first reaches `at_ms`
+  (a global `set var`; the GPIO limitation does not apply to RAM). Valid only with
+  `image = "storage"`; the runner rejects pokes on the production image.
+
+**Host tests.** `test_storage_core.c` extended: removal from probe and from `IO_ERROR`,
+generation bump, eject refused/accepted, `EJECTED → ABSENT → MOUNTED`, `REQ_MOUNT` in
+each state; 100 % lines kept. `test_ui_statusbar.c`: each icon state pixel-identical to
+its inspected golden, `NONE` identical to the V0.1 status bar, only the icon rectangle
+damaged on change. `test_ui_storage.c` (host UI port with a settable fake
+`stark_storage`): each status text, `Mount` enabled/disabled per state, the eject confirm.
+
+**Emulator** (storage image). `v02-remove-insert.toml`: mounted → poke `present = 0` →
+`storage: card removed`, `dialog: open "SD card removed"`, OK → poke `present = 1` →
+`storage: mounted emu-flashfat`; no panic. `v02-eject.toml`: Storage app → `Eject` →
+confirm → `storage: ejected` (no remount while the card still "answers") → poke
+`present = 0` → poke `present = 1` → `storage: mounted`; and `Mount` after an eject
+mounts at once.
+
+**Fault injection.** Host: probe failure kinds, `IO_ERROR` during eject, eject while a
+handle is open, unmount while handles are open (all closed, all stale). Emulator: GDB
+removal and reinsertion at arbitrary times, including during the dialog.
+
+**AC.**
+1. Both scenarios pass in CI; removal never produces `panic:`/Guru Meditation.
+2. The status bar shows each state (goldens inspected); V0.1 goldens unchanged.
+3. Eject with an open file is refused and says so; eject never loses the log writer's
+   buffered lines (flushed first — verified in STARK-0206 once the writer exists; here
+   the hook is a no-op).
+4. Host coverage: `storage_core.c` 100 %.
+5. Existing scenarios still pass with only their `app: registry` lines updated.
+
+**Out of scope.** File helpers (STARK-0203), the write test (STARK-0203), a card-detect
+pin, reporting which file was being written when the card went.
+
+**Resource limits.** Storage app ≤ 2 kB static RAM; no heap growth across 10
+remove/insert cycles (emulator, root heap equal ± 256 B — card buffers are re-used).
+
+**CI.** Two scenarios in `esp-emulator-storage`, three host tests, harness `pokes` with
+unit tests. **Security/safety.** Eject is the documented safe way to remove a card
+(ADR-0007); the alert tells the user unflushed data may be lost — it never claims
+success it did not verify. **Physical HIL (deferred to V1).** Real removal and
+reinsertion, detection latency with the CMD13 poll, behaviour of cards that answer
+slowly after insertion, MISO tri-state on the shared bus when the SD CS is high.
+
+---
+## STARK-0203 — Paths, file helpers, atomic writes, Storage write test
+
+**Goal.** Apps read and write files under `/sd/stark/{captures,logs,apps,config}`
+through small helpers that validate names, stream data, write atomically, map every
+failure to a `stark_err_t`, and never touch a card that has gone; the Storage app's
+100 kB write test exercises them while the UI renders.
+
+**Layer.** L3 `stark_storage` (pure helpers + POSIX I/O ops); `stark_err`; L5 app.
+
+**Files.** `components/stark_storage/{storage_path.{c,h},storage_file.{c,h},storage_io.h,storage_io_posix.c,stark_storage.c,include/stark_storage.h}`,
+`components/stark_err/{include/stark_err.h,stark_err.c}` (append `STARK_ERR_NO_SPACE`),
+`apps/app_storage/**` (write test, worker), `scripts/test_emu.py` (`expect_re`),
+`test/host/{test_storage_path.c,test_storage_file.c,support/fault_io.{c,h},test_err.c,CMakeLists.txt}`,
+`test/emu/storage/v02-files.toml`, ARCHITECTURE §5/§6.9, TESTING §4.
+
+**Deps.** STARK-0202.
+
+**Notes.**
+* **Paths** (pure, `storage_path.c`): `typedef enum { STARK_DIR_CAPTURES, STARK_DIR_LOGS,
+  STARK_DIR_APPS, STARK_DIR_CONFIG } stark_dir_t;` `stark_err_t stark_storage_path(stark_dir_t
+  dir, const char *name, char *out, size_t out_len)` → `/sd/stark/<dir>/<name>`. A name is
+  1–32 characters of `[A-Za-z0-9._-]`, does not start with `.`, does not end in `.tmp`
+  (reserved): anything else is `STARK_ERR_INVALID_ARG` — no `/`, no `..`, no traversal.
+  `out` too small → `STARK_ERR_INVALID_ARG`.
+  On every mount the port creates the four directories (`mkdir`, `EEXIST` fine) and
+  deletes stale `*.tmp` files in them: `storage: swept <n> tmp` when n > 0.
+* **I/O ops** (`storage_io.h`): a table of `open/read/write/fsync/close/rename/unlink/mkdir/stat/opendir/readdir/closedir`
+  wrappers. `storage_io_posix.c` implements it with POSIX calls and compiles unchanged on
+  the host (real temp directory) and on the target (VFS → FATFS). The helpers take the
+  table at init (production: POSIX; host tests: POSIX or `fault_io` wrapping it). This is
+  a test seam *inside* the component, not a second storage path: the target always uses
+  POSIX.
+* **Handles** (`storage_file.c`): a static pool of `CONFIG_STARK_STORAGE_MAX_FILES` (4).
+  ```c
+  typedef enum { STARK_FILE_READ, STARK_FILE_WRITE_ATOMIC, STARK_FILE_APPEND } stark_file_mode_t;
+  typedef struct stark_file stark_file_t;
+  stark_err_t stark_storage_open(stark_dir_t dir, const char *name, stark_file_mode_t mode,
+                                 stark_file_t **out);
+  stark_err_t stark_storage_read(stark_file_t *f, void *buf, size_t len, size_t *got);
+  stark_err_t stark_storage_write(stark_file_t *f, const void *buf, size_t len);
+  stark_err_t stark_storage_close(stark_file_t *f);   /* atomic: fsync, unlink old, rename */
+  void        stark_storage_discard(stark_file_t *f); /* atomic: drop the temp file */
+  stark_err_t stark_storage_remove(stark_dir_t dir, const char *name);
+  stark_err_t stark_storage_list(stark_dir_t dir,
+                                 bool (*fn)(const char *name, uint32_t size, void *ctx), void *ctx);
+  ```
+  `WRITE_ATOMIC` writes `<name>.tmp` and on `close` fsyncs, removes `<name>` and renames
+  (FAT cannot rename over a file; the window between unlink and rename is documented —
+  ADR-0007: FAT has no power-loss atomicity; the sweep removes orphaned temps; the old
+  content is lost only if power fails inside that window). Each call takes the storage
+  mutex for that call only — never across calls — so probes, eject and the log writer
+  interleave with long streams. A handle from an older mount generation returns
+  `STARK_ERR_IO` without touching the VFS; `close` on it frees the slot.
+* **Error mapping** (one pure function, host-tested): `ENOSPC` → `STARK_ERR_NO_SPACE`
+  (new, appended to `stark_err_t`; string "No space"); `ENOENT` → `NOT_FOUND`; `EEXIST`
+  → `STARK_ERR_STATE`; `EINVAL`/`ENAMETOOLONG` → `INVALID_ARG`; anything
+  else → `IO`. Every `IO` result while mounted is reported to the core as `IO_ERROR`.
+  Not mounted → `STARK_ERR_STATE`; pool exhausted → `STARK_ERR_BUSY`.
+* **Calling context:** the helpers block on the card, so they are called from an app
+  worker (STARK-0108) or the storage task — never from a UI-task callback (ARCHITECTURE
+  §6.8's 16 ms rule). `stark_storage_state()`/requests stay UI-safe.
+* **Write test** (Storage app item `Write test`, enabled when mounted): the app's worker
+  streams 100 kB (`CONFIG` none — fixed 102 400 B) of a deterministic pattern
+  (xorshift32 from a fixed seed) in 4 kB chunks to `captures/wtest.bin` with
+  `WRITE_ATOMIC`, then reads it back in 4 kB chunks comparing every byte with the
+  regenerated pattern and computing CRC-32 of both. Progress (percent) reaches the screen
+  through `STARK_APP_REQ_NOTIFY` every chunk. Logs (contract):
+  `storageapp: wtest start`, `storageapp: wtest ok bytes=102400 crc=<8 hex> frames=<n>`
+  (`frames` = UI frames rendered between start and end, from `stark_ui_stats()`), or
+  `storageapp: wtest failed: <err> at <offset>`; `storageapp: wtest refused: <state>`
+  when not mounted. Stopping the app joins the worker, which discards the temp file.
+* **Harness** — `expect_re`: ordered regular expressions checked after `expect`, used
+  for counts that must be non-zero (e.g. `frames=[1-9]`) — never for wall-clock values.
+
+**Host tests.** `test_storage_path.c`: valid names, every rejection class, exact
+output, truncation; 100 % lines. `test_storage_file.c` on the POSIX ops in a temp
+directory: write/read round trip, atomic replace (old content until `close`), discard,
+append, list, remove, pool exhaustion, stale-generation handles. With `fault_io`: `EIO`
+at every call position of a 100 kB atomic write (open, each write, fsync, unlink,
+rename, close) — each returns an error, leaves no handle allocated and reports
+`IO_ERROR` exactly once; short writes are completed or reported; `ENOSPC` → `NO_SPACE`
+with the temp file removed when possible; the "removed" switch makes every op `IO`.
+`storage_file.c` ≥ 95 % lines; `test_err.c` covers the new code and string.
+
+**Emulator** (storage image). `v02-files.toml`: Storage app → `Write test` →
+`storageapp: wtest start` … `storageapp: wtest ok bytes=102400 crc=` (regex: non-zero
+`frames=`); a second run replaces the file atomically; `storage: swept` does not appear
+(no orphans). Production image: `Write test` disabled, selecting it logs
+`storageapp: wtest refused: no card` (added to `v02-storage-boot.toml`).
+
+**AC.**
+1. `v02-files.toml` passes in CI: 100 kB written and read back byte-identical (byte
+   compare and CRC-32) on the storage image, with UI frames rendered during the test.
+2. Every injected I/O fault returns an error without a crash, leaks no handle and leaves
+   no file but an orphaned `.tmp` that the next mount sweeps (host).
+3. Path validation rejects traversal and reserved names (host, 100 %).
+4. `STARK_ERR_NO_SPACE` appended without renumbering; `stark_err_str` covers it.
+5. ARCHITECTURE §6.9 holds the `stark_storage` contract (moved from "deferred").
+
+**Out of scope.** Capture file formats (V0.3+), directory trees below the four roots, a
+file browser, file copy/move, timestamps (no RTC), encryption.
+
+**Resource limits.** Handle pool ≤ 4 slots; helpers allocate nothing per call beyond
+what newlib/FATFS allocate on `open` (released on `close`); write-test worker stack fits
+the 4 kB worker slot (HWM ≥ 512 B, Diagnostics task table).
+
+**CI.** Host tests, one storage-image scenario, harness `expect_re` with unit tests.
+**Security.** Name validation closes path traversal for every future app (captures from
+radios land here); nothing outside `/sd/stark/` is writable through the helpers.
+**Physical HIL (deferred to V1).** The same write test on a real card, timing per 4 kB
+chunk, and the worst display band-flush stall while it runs (logic analyser on SPI2).
+
+---
+
+## STARK-0204 — `stark_settings` over NVS: typed keys, defaults, change events, runtime appliers
+
+**Goal.** Brightness, volume, key repeat and log level are typed, validated settings
+persisted in NVS, loaded at boot with safe fallbacks, published on change and applied
+live; the emulator proves they survive a chip reset.
+
+**Layer.** L3 `stark_settings` (L2 pure core `settings_core.c` + L3 NVS port); L3
+`stark_input`, `stark_buzzer` (runtime setters); L1 `stark_log`; composition root.
+
+**Files.** `components/stark_settings/{include/stark_settings.h,settings_core.{c,h},stark_settings.c,CMakeLists.txt}` (new),
+`components/stark_input/{input_core.{c,h},input_service.c,include/stark_input.h}` (`input_core_set_timing`, `stark_input_set_timing`),
+`components/stark_buzzer/{buzzer.c,buzzer_volume.{c,h} (new, pure),include/stark_buzzer.h}`,
+`main/{stark_main.c,settings_apply.{c,h} (new)}`, `scripts/{check_layers.py,test_emu.py,test_emu_harness.py}`,
+`test/host/{test_settings_core.c,support/fake_nvs.{c,h},test_input_core.c,test_buzzer_volume.c,CMakeLists.txt}`,
+`test/emu/v02-settings-store.toml`, ARCHITECTURE §6.6/§6.6a/§6.9/§7/§10, docs/VALIDATION.md §2.
+
+**Deps.** STARK-0201 (only for the event-id table and boot order; no storage use).
+
+**Notes.**
+* **Keys** (the pure core's table; NVS namespace `stark`, values `u8`):
+
+  | `stark_setting_t` | NVS key | Range | Default | Labels / unit |
+  | --- | --- | --- | --- | --- |
+  | `STARK_SET_BRIGHTNESS` | `bright` | 10–100, step 10 | 100 (V0.1 boot backlight) | % |
+  | `STARK_SET_VOLUME` | `volume` | 0–3 | 3 (V0.1 duty) | Off, Low, Medium, High |
+  | `STARK_SET_REPEAT` | `repeat` | 0–2 | 1 | Slow (600/180 ms), Normal (Kconfig, 400/120), Fast (250/60) |
+  | `STARK_SET_LOG_LEVEL` | `loglvl` | 0–3 | 2 | Error, Warn, Info, Debug |
+
+  plus `schema` = 1. The table is the only place a key is defined.
+* **API:**
+  ```c
+  stark_err_t stark_settings_init(void);                    /* never fails the boot */
+  uint8_t     stark_settings_get(stark_setting_t key);      /* any task */
+  stark_err_t stark_settings_set(stark_setting_t key, uint8_t value); /* UI task */
+  stark_err_t stark_settings_commit(void);                  /* writes dirty keys */
+  stark_err_t stark_settings_restore_defaults(void);        /* set all + commit */
+  const stark_setting_desc_t *stark_settings_desc(stark_setting_t key);
+  ```
+  `set` validates (`INVALID_ARG` out of range or off-step), updates RAM, marks dirty and,
+  only if the value changed, publishes `STARK_SYS_SETTING` and logs
+  `settings: <name>=<value>`. `commit` writes dirty keys and `nvs_commit`s:
+  `settings: committed n=<k>` (nothing dirty → no write, no log).
+* **Load** (`init`): `nvs_flash_init()`; on `ESP_ERR_NVS_NO_FREE_PAGES` /
+  `ESP_ERR_NVS_NEW_VERSION_FOUND` erase and re-init (IDF's documented recovery; NVS holds
+  only settings) with `settings: store reset (<reason>)` WARN. Missing key → default;
+  out-of-range or off-step value → default, `settings: <name> invalid (<v>), default`
+  WARN, rewritten at the next commit. A fresh store (no `schema`) writes `schema=1` and
+  commits. Store unavailable (`nvs_open` fails) → RAM-only: defaults, `settings: store
+  unavailable: <err>` WARN, `set` works, `commit` returns `STARK_ERR_IO`. Then exactly one
+  line: `settings: loaded brightness=<v> volume=<v> repeat=<v> loglvl=<v> (<nvs|defaults|ram>)`.
+* The core is pure and takes an injected store (`get_u8`/`set_u8`/`commit` returning
+  `stark_err_t`); the port maps `nvs_*` onto it. Host tests run the core against
+  `fake_nvs` with failure switches.
+* **Appliers** (`main/settings_apply.c` — the composition root, because L3 services may
+  not call each other): at boot after the services start and on every
+  `STARK_SYS_SETTING`: brightness → `stark_display_set_backlight()`; volume →
+  `stark_buzzer_set_volume()`; repeat → `stark_input_set_timing()`; log level →
+  `stark_log_set_level("*", …)`, with the `key` tag kept at DEBUG for Info/Debug and set
+  to the same level for Warn/Error (TESTING §4 contract unaffected at the default).
+  Logs `settings: applied <name>=<value>`.
+* `stark_err_t stark_input_set_timing(uint16_t repeat_delay_ms, uint16_t repeat_interval_ms)`
+  validates with the core's existing rule, hands the value to the sampler under a
+  spinlock, and the sampler applies it before its next `input_core_update()` through the
+  new pure `input_core_set_timing()` — key state is kept, the next repeat uses the new
+  interval.
+* `stark_err_t stark_buzzer_set_volume(uint8_t level)`: 0 mutes (requests succeed
+  silently), 1/2/3 → duty `buzzer_volume_duty()` = 5 / 15 / 50 % (pure, host-tested;
+  loudness is a V1 measurement).
+* **Harness — reset phases:** `resets = [ { at_ms = 2500 } ]` sends `reset` on the esp-emu
+  `--control-tcp` channel (flash persists inside the process); presses and pokes take an
+  optional `phase` (0 before the first reset, 1 after, …) and the next phase begins when
+  emulated time restarts. `end_ms` applies to the last phase. If the 0.44.0 GDB stub
+  does not survive a chip reset, phases run as successive esp-emu processes over one
+  copied flash image with `--save-state`; either way record the mechanism in
+  docs/VALIDATION.md §2 with the evidence.
+* Boot order (ARCHITECTURE §7): `stark_settings_init()` right after `stark_event_init()`
+  (log level takes effect early); appliers run after `stark_input_start()`.
+* `check_layers.py`: `stark_settings` L3, sideways edge `stark_settings → stark_event`;
+  `settings_core.c` pure.
+
+**Host tests.** `test_settings_core.c`: defaults on a fresh store and `schema` written;
+round trip; each invalid value class replaced and rewritten; `set` range/step rejection;
+no event/log when unchanged; commit writes only dirty keys; restore defaults; every
+`fake_nvs` failure (open, get type mismatch, set, commit) → RAM-only or `IO` exactly as
+specified. 100 % lines of `settings_core.c`. `test_input_core.c`: timing change mid-hold.
+`test_buzzer_volume.c`: duty table and mute.
+
+**Emulator** (production image). `v02-settings-store.toml`: phase 0 on blank NVS →
+`settings: loaded … (defaults)`; reset; phase 1 → `settings: loaded … (nvs)`;
+`settings: applied` lines present; no `store unavailable`.
+
+**Fault injection.** Host: every store failure above, corrupted values, a schema newer
+than 1 (values still validated). Emulator: `erase-region` of the NVS partition over the
+control channel between phases → next boot `(defaults)` again (proves recovery from a
+wiped store).
+
+**AC.**
+1. `v02-settings-store.toml` passes in CI, including the erase-region recovery.
+2. `settings_core.c` 100 % lines; input/buzzer additions covered.
+3. No NVS failure can stop the boot (host, every failure switch).
+4. Applied values reach their services (`settings: applied` lines; backlight/buzzer
+   levels themselves are physical, deferred).
+5. ARCHITECTURE §6.9 moves `stark_settings` to a contract; §6.6/§6.6a gain the setters.
+
+**Out of scope.** The Settings app (STARK-0205), per-app settings, string/blob settings,
+settings import/export to SD, factory reset of anything but these keys.
+
+**Resource limits.** RAM ≤ 256 B static; NVS writes only on `commit` (no write per key
+press); flash ≤ +24 kB (NVS is already linked by the PHY/IDF — measure).
+
+**CI.** New component, host tests, harness `resets`, one scenario. **Security.** No
+secrets in NVS; NVS encryption stays off (nothing sensitive stored) — recorded.
+**Physical HIL (deferred to V1).** Survival across a real power cycle; backlight levels
+visibly distinct; buzzer volume steps audible.
+
+---
+
+## STARK-0205 — Settings app
+
+**Goal.** The user changes brightness, volume, key repeat and log level, sees each
+change take effect immediately, restores defaults with a confirmation, and the values
+survive a reboot.
+
+**Layer.** L4 `stark_ui` (menu value column); L5 app; composition root (registry).
+
+**Files.** `components/stark_ui/{ui_menu.c,include/ui_menu.h}` (optional value text per
+item, LEFT/RIGHT hook), `apps/app_settings/**` (new), `main/app_registry.{c,h}`,
+`test/host/{test_ui_settings.c,test_ui_launcher.c,CMakeLists.txt}`,
+`test/emu/v02-settings-persist.toml`, existing scenarios' `app: registry` lines,
+ARCHITECTURE §6.7, TESTING §4.
+
+**Deps.** STARK-0204, STARK-0202 (registry/category placement).
+
+**Notes.**
+* `ui_menu` gains `const char *(*value)(size_t index, void *ctx)` (right-aligned value text,
+  NULL = none) and `bool (*adjust)(size_t index, int dir, void *ctx)` for LEFT/RIGHT
+  (returns true when the value changed → the row is damaged). Menus without them render
+  pixel-identically to V0.1 (launcher goldens unchanged).
+* **App** (id `settings`, title `Settings`, category `Device`, registry after `storage`):
+  rows `Brightness 100%`, `Volume High`, `Key repeat Normal`, `Log level Info`,
+  `Restore defaults`. LEFT/RIGHT (with key repeat) step a value → `stark_settings_set()`
+  → applied live by the composition root; OK on a value row steps forward with wrap.
+  `Restore defaults` → `stark_ui_dialog_confirm("Restore defaults?", …)` → OK →
+  `stark_settings_restore_defaults()`. Leaving the app (`on_stop`: BACK, long-BACK,
+  fault) calls `stark_settings_commit()`. ≤ 150 lines per file.
+* Changing the log level to Error hides INFO scenario lines by design; the scenarios
+  never leave it there.
+
+**Host tests.** `test_ui_settings.c` on the host UI port with the real `stark_settings`
+core over `fake_nvs`: each row's text and value pixel-identical to inspected goldens;
+LEFT/RIGHT clamps at range ends; OK wraps; restore-defaults confirm → defaults; BACK
+commits (fake store shows the writes). `test_ui_launcher.c`: Device category rows.
+
+**Emulator** (production image). `v02-settings-persist.toml`: Settings → brightness
+down twice (`settings: brightness=80`), volume down once (`settings: volume=2`) → BACK
+(`settings: committed n=2`) → reset → phase 1 `settings: loaded brightness=80 volume=2
+repeat=1 loglvl=2 (nvs)`, `settings: applied brightness=80`; then Settings → Restore
+defaults → OK → BACK → reset → `settings: loaded brightness=100 volume=3 … (nvs)`.
+
+**AC.**
+1. `v02-settings-persist.toml` passes in CI (ROADMAP V0.2 exit 1, software half).
+2. Goldens inspected; V0.1 launcher/menu goldens unchanged.
+3. App files ≤ 150 lines each; no edit under `components/` except the `ui_menu`
+   extension named here.
+
+**Out of scope.** Wi-Fi/BT/time settings, per-app settings pages, a slider widget.
+
+**Resource limits.** App static RAM ≤ 1 kB; no heap.
+
+**CI.** Host test, scenario. **Security.** None. **Physical HIL (deferred to V1).**
+Brightness/volume perceptible on the breadboard; repeat presets feel right.
+
+---
+
+## STARK-0206 — Rotating file log sink for `stark_log`
+
+**Goal.** Console log lines are also kept, bounded, on the card in
+`/sd/stark/logs/`, rotating, without ever blocking the task that logged, and without
+changing a single `STARK_LOG*` call site.
+
+**Layer.** L1 `stark_log` (capture ring, pure core `log_ring.c`); L3 `stark_storage`
+(writer + pure rotation plan `log_rotate.c`).
+
+**Files.** `components/stark_log/{stark_log.c,log_ring.{c,h} (new),include/stark_log.h,Kconfig.stark (new),CMakeLists.txt}`,
+`components/stark_storage/{storage_log.c (new),log_rotate.{c,h} (new),stark_storage.c,Kconfig.stark}`,
+`main/Kconfig.projbuild`, `test/host/{test_log_ring.c,test_log_rotate.c,test_storage_log.c,CMakeLists.txt}`,
+`test/emu/storage/v02-log-file.toml`, ARCHITECTURE §6.2a (stark_log), §8, TESTING §4.
+
+**Deps.** STARK-0203.
+
+**Notes.**
+* **Capture** (`stark_log`): `stark_log_init()` installs an `esp_log_set_vprintf()` hook
+  that forwards to the previous function (UART unchanged) and appends the formatted line
+  (≤ 159 chars, truncated with `…`) to a static byte ring of `CONFIG_STARK_LOG_RING_BYTES`
+  (4096; 0 disables capture) under a spinlock — no allocation, no blocking, whole lines
+  only, oldest lines dropped when full and counted. API:
+  `size_t stark_log_ring_take(char *buf, size_t max)` (whole lines, oldest first) and
+  `uint32_t stark_log_ring_dropped(void)` (since last take). Lines logged before the card
+  mounts stay in the ring, so the boot log reaches the file.
+* **Writer** (`storage_log.c`, in the storage task): while mounted, every
+  `CONFIG_STARK_STORAGE_LOG_FLUSH_MS` (1000) or when the ring is half full, appends the
+  taken bytes to `logs/stark.log` via the STARK-0203 helpers (append mode, open and close
+  per flush so a removal loses at most one flush), preceded by
+  `--- <n> log lines dropped ---` when lines were lost. First write after each mount
+  logs `storage: logging to logs/stark.log` once. The writer never logs on success
+  (no feedback loop).
+* **Rotation** (pure plan, `log_rotate.c`): before an append that would push `stark.log`
+  past `CONFIG_STARK_STORAGE_LOG_FILE_KB` (64), remove `stark.<N-1>.log`, rename
+  `stark.<i>.log` → `stark.<i+1>.log` downwards, rename `stark.log` → `stark.1.log`, with
+  `N = CONFIG_STARK_STORAGE_LOG_FILES` (4): the log directory never exceeds
+  `N × 64 kB` plus one flush. A failing step aborts that rotation and the append goes to
+  the existing file; the next flush retries.
+* Eject (STARK-0202) and removal: eject flushes first; removal keeps untaken lines in the
+  ring. `storage: ejected log=<bytes written this mount>` replaces `storage: ejected`.
+* `CONFIG_STARK_STORAGE_LOG_FILE` (y) turns the writer off without touching capture.
+
+**Host tests.** `test_log_ring.c`: whole-line semantics, wrap, oversize line, drop
+counting, take into a small buffer; 100 % lines. `test_log_rotate.c`: plans for every
+existing-file combination and N = 1…4; 100 % lines. `test_storage_log.c` on the POSIX ops
+(temp dir) and `fault_io`: append, rotation sequence and bound after 1 MB of lines, a
+failure at each rotation step, removal between take and write, dropped-lines marker.
+
+**Emulator** (storage image). `v02-log-file.toml`: mounted → `storage: logging to
+logs/stark.log`; navigate for a few seconds; Storage → `Eject` → OK →
+`storage: ejected log=` with a non-zero count (`expect_re`); no panic; task table shows
+every task's stack HWM ≥ 512 B (Diagnostics log line, `expect_re`).
+
+**Fault injection.** Host: as above. Emulator: poke `present = 0` during a flush (no
+panic, `storage: card removed`, the ring keeps capturing).
+
+**AC.**
+1. `v02-log-file.toml` passes in CI; no call site changed (`git diff` shows no
+   `STARK_LOG*` edits outside `stark_log`).
+2. The log directory is bounded by `N × size` + one flush (host, 1 MB run).
+3. Logging never blocks the caller (spinlock + memcpy only; reviewed, and the 5 ms
+   input timer shows no `drops=` in any scenario).
+4. Host coverage: `log_ring.c` and `log_rotate.c` 100 %.
+
+**Out of scope.** Log levels per sink, log export over USB (V0.7), timestamps beyond
+esp_log's, compression, a log viewer app.
+
+**Resource limits.** Ring 4 kB static; writer adds ≤ 512 B to the storage task's stack
+HWM; per-line hook stack ≤ 192 B; flash ≤ +4 kB.
+
+**CI.** Host tests, one scenario. **Security.** Logs stay on the device's own card;
+STARK logs contain no secrets (AGENTS.md); later radio milestones decide what they may
+log (SECURITY_SCOPE §5: transmissions are logged). **Physical HIL (deferred to V1).**
+Write endurance and timing on a real card; log integrity after a real pull.
+
+---
+
+## STARK-0207 — V0.2 exit scenarios, soak, measurements, milestone close-out
+
+**Goal.** Every V0.2 exit criterion's software half is demonstrated in CI and recorded,
+and every physical half is listed, unclaimed, for V1.
+
+**Layer.** Tests, CI, docs.
+
+**Files.** `test/emu/v02-no-card.toml`, `test/emu/storage/{v02-write-under-render.toml,v02-remove-mid-write.toml,v02-unusable-card.toml}`,
+`test/emu/soak/v02-soak.toml` (storage image), `.github/workflows/ci.yml` (soak job runs
+both soaks), `docs/measurements.md`, `docs/VALIDATION.md` §3.5, `README.md`, TESTING
+§4/§5, ROADMAP (V0.2 status).
+
+**Deps.** STARK-0206.
+
+**Notes.**
+* `v02-no-card.toml` (production image, exit 4): no card → `storage: no card`; visit
+  every app (About, Diagnostics, Input/Display/Buzzer/App Test, Hello, Storage — shows
+  `No card`, write test refused —, Settings — change and restore a value); `drops=0`,
+  `heap_min`.
+* `storage/v02-write-under-render.toml` (exit 2): write test running, a DOWN press during
+  it moves the selection (`menu: sel=` between `wtest start` and `wtest ok`),
+  `frames=` non-zero, CRC line present.
+* `storage/v02-remove-mid-write.toml` (exit 3): poke `present = 0` after
+  `wtest start` → `storageapp: wtest failed: I/O error at <offset>`, `storage: card
+  removed`, `dialog: open "SD card removed"`, no panic; poke `present = 1` → `storage:
+  mounted`, `storage: swept 1 tmp`; a fresh write test then passes.
+* `storage/v02-unusable-card.toml` (exit 4, storage image): poke `formatted = 0` and
+  `present = 0` → removed → `present = 1` → `storage: unusable card: Not supported`;
+  every app still reachable.
+* `soak/v02-soak.toml` (storage image, 60 s emulated): V0.1 soak path plus Settings
+  changes, two write tests, one remove/insert, one eject/mount; `drops=0`, root
+  `heap_delta_max = 1024`. Runs in `esp-emulator-soak` with the V0.1 soak.
+* `docs/measurements.md` V0.2 rows: heap at boot and at the root (production and storage
+  images), storage/settings/log-ring RAM, flash delta per component, write-test duration
+  *(emulated, informational)*, soak heap delta, task HWMs. A **V0.2 exit-criteria
+  evidence** table with two columns per criterion: software evidence (links to CI
+  scenarios and host tests) and **physical evidence: deferred to V1** (ROADMAP V1 exit 8).
+* README status → "V0.2 complete (software-verified; physical microSD at V1)".
+
+**AC.**
+1. Every V0.2 exit criterion's software half demonstrably met, evidence in
+   `docs/measurements.md`; every physical half listed as deferred, none claimed.
+2. All V0.2 scenarios and both soaks pass in CI; `check_emu_image.py` green.
+3. `grep -rIiE 'wokwi|qemu|esp_emu|emu_medium' components/ apps/ main/` is empty.
+4. No scenario asserts a wall-clock value.
+5. ADR-0008's risk recorded as open in ARCHITECTURE §13 with the V1 measurement that
+   closes it.
+
+**Out of scope.** Any hardware work; V0.3 tasks.
+
+**CI.** Scenarios in the existing jobs; the soak job runs the V0.2 soak too.
+**Security.** None new. **Physical HIL (deferred to V1).** ROADMAP V1 exit 8 in full.
+
+---
 
 # V0.3 — infrared lab
 
