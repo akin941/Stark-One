@@ -1,0 +1,30 @@
+# STARK-0203 on the storage test image (ADR-0018): Storage -> Write test
+# streams 100 kB to captures/wtest.bin through the file helpers (atomic
+# write) on the app worker and reads it back byte-identical (byte compare +
+# CRC-32) while the UI task keeps rendering — the frame count during the
+# test must be non-zero (a count, never a duration). A second run replaces
+# the file atomically. No orphaned temp file is ever swept. ROADMAP V0.2
+# exit 2, software half (STARK-0207 adds input during the write).
+name = "emu-v02-files"
+image = "storage"
+end_ms = 14000
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },
+    { key = "OK", at_ms = 600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 900, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1100, hold_ms = 60 },
+    { key = "OK", at_ms = 1400, hold_ms = 60 },
+    { key = "OK", at_ms = 8000, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    "app: start storage",
+    'menu: sel=3 "Write test (100 kB)"',
+    "storageapp: wtest start",
+    "storageapp: wtest ok bytes=102400 crc=f9541b81 frames=",  # the pattern's fixed CRC-32
+    "storageapp: wtest start",
+]
+# the second run: same content, replaced atomically, UI frames rendered
+expect_re = ['storageapp: wtest ok bytes=102400 crc=f9541b81 frames=[1-9]']
+forbid = ["storage: swept", "wtest failed", "storage: card removed"]

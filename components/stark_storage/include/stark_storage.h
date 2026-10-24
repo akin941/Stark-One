@@ -8,6 +8,8 @@
  */
 #pragma once
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "stark_err.h"
 #include "stark_storage_medium.h"
@@ -72,3 +74,53 @@ stark_err_t stark_storage_space(stark_medium_space_t *out);
 
 /* Stable lower-case name of a state ("no card", "mounted", ...), for logs. */
 const char *stark_storage_state_str(stark_storage_state_t state);
+
+/* ---- paths and files (STARK-0203) --------------------------------------
+ *
+ * Files live in four directories, created at every mount:
+ * STARK_STORAGE_ROOT "/stark/{captures,logs,apps,config}". A name is 1-32
+ * characters of [A-Za-z0-9._-], not starting with '.' and not ending in
+ * ".tmp" (reserved): anything else is STARK_ERR_INVALID_ARG, so no path can
+ * leave those directories.
+ *
+ * These calls block on the card: call them from an app worker or the storage
+ * task, never from a UI-task callback. Each one holds the storage lock for
+ * its own duration only. Errors: STARK_ERR_STATE when no card is mounted,
+ * STARK_ERR_BUSY when all handles are in use, STARK_ERR_NO_SPACE when the
+ * card is full, STARK_ERR_NOT_FOUND for a missing file, STARK_ERR_IO for
+ * anything else — including every call on a handle whose card was removed
+ * or ejected since it was opened (close it to free the slot).
+ */
+typedef enum {
+    STARK_DIR_CAPTURES,
+    STARK_DIR_LOGS,
+    STARK_DIR_APPS,
+    STARK_DIR_CONFIG,
+} stark_dir_t;
+
+typedef enum {
+    STARK_FILE_READ,         /* existing file, from the start */
+    STARK_FILE_WRITE_ATOMIC, /* new content; the old file stays until close succeeds */
+    STARK_FILE_APPEND,       /* created if missing */
+} stark_file_mode_t;
+
+typedef struct stark_file stark_file_t;
+
+stark_err_t stark_storage_open(stark_dir_t dir, const char *name, stark_file_mode_t mode,
+                               stark_file_t **out);
+/* *got = bytes read; 0 with STARK_OK at the end of the file. */
+stark_err_t stark_storage_read(stark_file_t *f, void *buf, size_t len, size_t *got);
+/* Writes all len bytes or fails. */
+stark_err_t stark_storage_write(stark_file_t *f, const void *buf, size_t len);
+/* Flushes and frees the handle; WRITE_ATOMIC then replaces the old file
+ * with the new one (FAT has no atomic rename: the old file is removed
+ * first, ADR-0007). The handle is freed even when this fails. */
+stark_err_t stark_storage_close(stark_file_t *f);
+/* Frees the handle without committing: a WRITE_ATOMIC file is dropped. */
+void stark_storage_discard(stark_file_t *f);
+stark_err_t stark_storage_remove(stark_dir_t dir, const char *name);
+
+/* Calls fn(name, size) for each file in dir (temp files hidden) until it
+ * returns false. */
+typedef bool (*stark_storage_list_fn)(const char *name, uint32_t size, void *ctx);
+stark_err_t stark_storage_list(stark_dir_t dir, stark_storage_list_fn fn, void *ctx);

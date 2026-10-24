@@ -8,7 +8,7 @@
 
 void test_stark_err_str_all_codes_non_null(void)
 {
-    for (int i = STARK_OK; i <= STARK_ERR_STATE; i++) {
+    for (int i = STARK_OK; i <= STARK_ERR_NO_SPACE; i++) {
         const char *s = stark_err_str((stark_err_t)i);
         TEST_ASSERT_NOT_NULL_MESSAGE(s, "stark_err_str returned NULL");
         TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, (int)strlen(s),
@@ -18,13 +18,13 @@ void test_stark_err_str_all_codes_non_null(void)
 
 void test_stark_err_str_all_codes_distinct(void)
 {
-    const char *strings[STARK_ERR_STATE + 1];
-    for (int i = STARK_OK; i <= STARK_ERR_STATE; i++) {
+    const char *strings[STARK_ERR_NO_SPACE + 1];
+    for (int i = STARK_OK; i <= STARK_ERR_NO_SPACE; i++) {
         strings[i] = stark_err_str((stark_err_t)i);
     }
 
-    for (int i = STARK_OK; i <= STARK_ERR_STATE; i++) {
-        for (int j = i + 1; j <= STARK_ERR_STATE; j++) {
+    for (int i = STARK_OK; i <= STARK_ERR_NO_SPACE; i++) {
+        for (int j = i + 1; j <= STARK_ERR_NO_SPACE; j++) {
             /* strcmp returns 0 when equal, so test for != 0 */
             TEST_ASSERT_NOT_EQUAL(0, strcmp(strings[i], strings[j]));
         }
@@ -42,6 +42,7 @@ void test_stark_err_str_known_values(void)
     TEST_ASSERT_EQUAL_STRING("Busy", stark_err_str(STARK_ERR_BUSY));
     TEST_ASSERT_EQUAL_STRING("I/O error", stark_err_str(STARK_ERR_IO));
     TEST_ASSERT_EQUAL_STRING("Invalid state", stark_err_str(STARK_ERR_STATE));
+    TEST_ASSERT_EQUAL_STRING("No space", stark_err_str(STARK_ERR_NO_SPACE));
 }
 
 /* Unity requires setUp and tearDown functions */

@@ -1796,6 +1796,12 @@ failure to a `stark_err_t`, and never touch a card that has gone; the Storage ap
 
 **Deps.** STARK-0202.
 
+**As built.** `components/stark_app/app_worker.c` changed too: a worker that has already
+returned is reaped by the next `stark_app_worker_start()` (it used to hold the slot until
+the app stopped, so the write test could run only once per launch). Host tests share
+`test_ui_storage.c` for the write-test item and the CRC-32 check value; the UI port fake
+gained stub file calls.
+
 **Notes.**
 * **Paths** (pure, `storage_path.c`): `typedef enum { STARK_DIR_CAPTURES, STARK_DIR_LOGS,
   STARK_DIR_APPS, STARK_DIR_CONFIG } stark_dir_t;` `stark_err_t stark_storage_path(stark_dir_t
@@ -1811,7 +1817,9 @@ failure to a `stark_err_t`, and never touch a card that has gone; the Storage ap
   table at init (production: POSIX; host tests: POSIX or `fault_io` wrapping it). This is
   a test seam *inside* the component, not a second storage path: the target always uses
   POSIX.
-* **Handles** (`storage_file.c`): a static pool of `CONFIG_STARK_STORAGE_MAX_FILES` (4).
+* **Handles** (`storage_file.c`): a static pool of `STORAGE_FILE_SLOTS` (4; as built the
+  STARK-0201 Kconfig option `STARK_STORAGE_MAX_FILES` was folded into this constant — the
+  VFS gets the same number).
   ```c
   typedef enum { STARK_FILE_READ, STARK_FILE_WRITE_ATOMIC, STARK_FILE_APPEND } stark_file_mode_t;
   typedef struct stark_file stark_file_t;

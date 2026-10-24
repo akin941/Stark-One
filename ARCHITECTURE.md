@@ -138,6 +138,7 @@ typedef enum {
     STARK_ERR_BUSY,
     STARK_ERR_IO,
     STARK_ERR_STATE,
+    STARK_ERR_NO_SPACE,   /* storage full (STARK-0203); values are only ever appended */
 } stark_err_t;
 
 const char *stark_err_str(stark_err_t err);
@@ -625,7 +626,9 @@ the stop flag and joins the worker **before** `on_stop` (`app: worker <id> joine
 after `STARK_APP_WORKER_JOIN_MS` (1000) it is deleted anyway (`app: worker <id> join
 timeout`, counted) and `on_stop` still runs. The wrapper suspends itself after `fn`
 returns and the joiner deletes only a suspended (or, on timeout, a deleted-and-reaped)
-task, so the static slot is never reused while FreeRTOS owns it. `stark_app_fail(err)`
+task, so the static slot is never reused while FreeRTOS owns it. A worker that has
+returned while its app still runs is reaped by the next `stark_app_worker_start()`, so an
+app may run several workers in turn (STARK-0203). `stark_app_fail(err)`
 (UI task or worker) records the error with the current launch generation and publishes
 `STARK_APP_REQ_FAIL`; `stark_app` subscribes to `STARK_EVT_APP_REQUEST` and, on the UI
 task, a report of the running generation logs `app: fault <id>: <err>`, unwinds with
@@ -690,6 +693,23 @@ published as `STARK_SYS_STORAGE` and logged once (`storage: no card`, `storage: 
 removed`, `storage: not fitted`); retries that change nothing are silent. The volume is
 mounted at `STARK_STORAGE_ROOT` (`/sd`).
 
+**Files (STARK-0203).** `stark_storage_open/read/write/close/discard/remove/list` work
+in `/sd/stark/{captures,logs,apps,config}` (created at every mount, orphaned `*.tmp`
+swept: `storage: swept <n> tmp`). Names are 1–32 of `[A-Za-z0-9._-]`, not starting with
+`.`, not ending in `.tmp` — no traversal is expressible. At most 4 handles
+(`STORAGE_FILE_SLOTS`); `WRITE_ATOMIC` writes `<name>.tmp` and on close fsyncs, removes
+the old file and renames (FAT has no atomic rename — ADR-0007). Each call holds the
+storage lock for its own duration only, so probes, eject and other writers interleave
+with long streams; a handle belongs to one mount generation — removal or eject closes
+its descriptor and every later call is `STARK_ERR_IO` (close frees the slot). Errors map
+`ENOSPC`→`NO_SPACE`, `ENOENT`→`NOT_FOUND`, `EEXIST`→`STATE`, `EINVAL`→`INVALID_ARG`,
+else `IO`; an `IO` while mounted asks the storage task for an immediate probe. They
+block on the card: workers or the storage task only, never a UI-task callback. The
+engine (`storage_file.c`, `storage_path.c`) takes its I/O table, lock and mount state
+by injection: the firmware passes POSIX over VFS/FATFS, host tests the same POSIX table
+over a temp directory or a fault-injecting wrapper. Eject is refused while a handle is
+open.
+
 Eject and mount (STARK-0202) are requests the storage task carries out. Eject unmounts
 (`storage: ejected`), bumping the mount generation; it is refused while a file is open
 (`storage: eject refused: <n> open`, unchanged state re-published). An ejected card is
@@ -708,7 +728,7 @@ emulator storage test image substitutes the whole component (ADR-0018 §3).
 
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
-| `stark_storage` | V0.2 | Mount state machine, task, medium port, removal and eject are implemented (§6.9b, STARK-0201/0202); file helpers and the log writer land with STARK-0203/0206 |
+| `stark_storage` | V0.2 | Mount state machine, task, medium port, removal, eject and file helpers are implemented (§6.9b, STARK-0201…0203); the log writer lands with STARK-0206 |
 | `stark_settings` | V0.2 | Typed key/value over NVS with defaults and change notifications — TASKS.md STARK-0204 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
@@ -792,7 +812,7 @@ gains options adds its line there in the same change:
 | `STARK_INPUT_REPEAT_DELAY_MS` / `_INTERVAL_MS` | 400 / 120 | Key repeat timing (STARK-0106) |
 | `STARK_APP_WORKER_STACK` / `_PRIO` / `_JOIN_MS` | 4096 / 4 / 1000 | App worker slot (STARK-0108) |
 | `STARK_STORAGE_RETRY_MS` / `_PROBE_MS` | 3000 / 1000 | Mount retry and presence probe periods (STARK-0201) |
-| `STARK_STORAGE_MAX_FILES` / `_TASK_PRIO` / `_TASK_STACK` | 4 / 2 / 4096 | Storage task and open-file limit (STARK-0201) |
+| `STARK_STORAGE_TASK_PRIO` / `_TASK_STACK` | 2 / 4096 | Storage task (STARK-0201); at most 4 files open at once (`STORAGE_FILE_SLOTS`, STARK-0203) |
 | `STARK_STORAGE_SD_KHZ` | 20000 | microSD clock ceiling on SPI2 (`stark_storage_medium`) |
 | `STARK_LOG_LEVEL` | INFO | Maps to esp_log level |
 

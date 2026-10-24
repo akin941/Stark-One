@@ -1,6 +1,7 @@
 /*
- * app_storage.c — Storage (TASKS.md STARK-0202): the card's state, with
- * Eject (after a confirmation) and Mount. Both are requests the storage task
+ * app_storage.c — Storage (TASKS.md STARK-0202/0203): the card's state, with
+ * Eject (after a confirmation), Mount and the 100 kB write test
+ * (storage_wtest.c, on the app worker). Eject and Mount are requests the storage task
  * carries out; the result comes back as STARK_SYS_STORAGE and the status row
  * follows it. Every status the row shows is logged for the scenarios.
  */
@@ -9,16 +10,19 @@
 #include "stark_app.h"
 #include "stark_log.h"
 #include "stark_storage.h"
+#include "storage_wtest.h"
 #include "ui_dialog.h"
 #include "ui_menu.h"
 
-enum { ROW_STATUS, ROW_EJECT, ROW_MOUNT };
+enum { ROW_STATUS, ROW_EJECT, ROW_MOUNT, ROW_WTEST };
 
 static char s_status[48];
+static char s_wtest[32] = "Write test (100 kB)";
 static ui_menu_item_t s_items[] = {
     [ROW_STATUS] = {.label = s_status, .disabled = true},
     [ROW_EJECT] = {.label = "Eject"},
     [ROW_MOUNT] = {.label = "Mount"},
+    [ROW_WTEST] = {.label = s_wtest},
 };
 static ui_menu_t s_menu;
 static bool (*s_menu_event)(stark_screen_t *self, const stark_event_t *e);
@@ -79,6 +83,8 @@ static void activate(size_t index, void *ctx)
     } else if (index == ROW_MOUNT) {
         STARK_LOGI("storageapp", "mount requested");
         (void)stark_storage_request_mount();
+    } else if (index == ROW_WTEST) {
+        storage_wtest_start();
     }
 }
 
@@ -89,6 +95,11 @@ static bool storage_event(stark_screen_t *self, const stark_event_t *e)
         stark_ui_invalidate(self, stark_ui_content_rect());
         return true;
     }
+    if (e->type == STARK_EVT_APP_REQUEST && e->app.id == STARK_APP_REQ_NOTIFY) {
+        snprintf(s_wtest, sizeof s_wtest, "Write test  %d%%", (int)e->app.arg);
+        stark_ui_invalidate(self, stark_ui_content_rect());
+        return true;
+    }
     return s_menu_event(self, e);
 }
 
@@ -96,6 +107,7 @@ static stark_screen_t *storage_screen(void *state)
 {
     (void)state;
     refresh_status();
+    snprintf(s_wtest, sizeof s_wtest, "Write test (100 kB)");
     ui_menu_init(&s_menu, "Storage", s_items, sizeof s_items / sizeof s_items[0], activate, NULL);
     s_menu_event = s_menu.screen.on_event;
     s_menu.screen.on_event = storage_event;

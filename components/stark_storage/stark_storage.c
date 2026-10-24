@@ -20,6 +20,7 @@
 #include "stark_log.h"
 #include "stark_storage_medium.h"
 #include "storage_core.h"
+#include "storage_file.h"
 
 #define STORAGE_CORE 0 /* the UI task runs on core 1 (ARCHITECTURE §8) */
 
@@ -32,6 +33,7 @@ static storage_core_t s_core; /* guarded by s_lock */
 static atomic_int s_state = STARK_STORAGE_NOT_FITTED;
 static atomic_bool s_req_eject;
 static atomic_bool s_req_mount;
+static atomic_bool s_io_error;
 static portMUX_TYPE s_space_lock = portMUX_INITIALIZER_UNLOCKED;
 static stark_medium_space_t s_space; /* cached at mount, under s_space_lock */
 
@@ -61,6 +63,13 @@ static void report(stark_storage_state_t state, stark_err_t last)
             portEXIT_CRITICAL(&s_space_lock);
             STARK_LOGI("storage", "mounted %s total=%u free=%u", stark_storage_medium_name(),
                        (unsigned)(space.total_bytes / 1024u), (unsigned)(space.free_bytes / 1024u));
+            uint32_t swept = 0;
+            stark_err_t prep = storage_files_prepare(&swept);
+            if (prep != STARK_OK) {
+                STARK_LOGW("storage", "cannot prepare directories: %s", stark_err_str(prep));
+            } else if (swept > 0) {
+                STARK_LOGI("storage", "swept %u tmp", (unsigned)swept);
+            }
             break;
         case STARK_STORAGE_ABSENT:
             STARK_LOGI("storage", "no card");
@@ -79,11 +88,33 @@ static void report(stark_storage_state_t state, stark_err_t last)
     publish(state);
 }
 
-/* Files open through the helpers; eject is refused while any is.
- * NOTE: the file helpers arrive with STARK-0203 — until then none can be. */
-static uint32_t open_files(void)
+/* ---- the file helpers' environment (storage_file.h) ------------------ */
+
+static void env_lock(void *ctx)
 {
-    return 0;
+    (void)ctx;
+    (void)xSemaphoreTake(s_lock, portMAX_DELAY);
+}
+
+static void env_unlock(void *ctx)
+{
+    (void)ctx;
+    (void)xSemaphoreGive(s_lock);
+}
+
+static bool env_mounted(void *ctx, uint32_t *generation)
+{
+    (void)ctx;
+    *generation = s_core.generation;
+    return s_core.state == STARK_STORAGE_MOUNTED;
+}
+
+/* Called by a helper (any task) under the lock: probe at once. */
+static void env_io_error(void *ctx)
+{
+    (void)ctx;
+    atomic_store(&s_io_error, true);
+    xTaskNotifyGive(s_task);
 }
 
 /* Runs one input through the core and every action that follows from it. */
@@ -96,8 +127,7 @@ static void run(storage_input_t in, stark_err_t result)
         }
         switch (step.action) {
             case STORAGE_ACT_TRY_MOUNT:
-                result =
-                    stark_storage_medium_mount(STARK_STORAGE_ROOT, CONFIG_STARK_STORAGE_MAX_FILES);
+                result = stark_storage_medium_mount(STARK_STORAGE_ROOT, STORAGE_FILE_SLOTS);
                 step = storage_core_step(&s_core, STORAGE_IN_MOUNT_RESULT, result, now_ms());
                 continue;
             case STORAGE_ACT_PROBE:
@@ -109,6 +139,7 @@ static void run(storage_input_t in, stark_err_t result)
                 step = storage_core_step(&s_core, STORAGE_IN_PRESENT_RESULT, result, now_ms());
                 continue;
             case STORAGE_ACT_UNMOUNT:
+                storage_files_invalidate(); /* every open handle goes stale first */
                 stark_storage_medium_unmount();
                 break;
             case STORAGE_ACT_NONE:
@@ -124,7 +155,7 @@ static void storage_task(void *arg)
     for (;;) {
         (void)xSemaphoreTake(s_lock, portMAX_DELAY);
         if (atomic_exchange(&s_req_eject, false)) {
-            uint32_t open = open_files();
+            uint32_t open = storage_files_open_count();
             if (open > 0 && s_core.state == STARK_STORAGE_MOUNTED) {
                 STARK_LOGW("storage", "eject refused: %u open", (unsigned)open);
                 publish(s_core.state); /* unchanged: lets the UI say so */
@@ -134,6 +165,9 @@ static void storage_task(void *arg)
         }
         if (atomic_exchange(&s_req_mount, false)) {
             run(STORAGE_IN_REQ_MOUNT, STARK_OK);
+        }
+        if (atomic_exchange(&s_io_error, false)) {
+            run(STORAGE_IN_IO_ERROR, STARK_OK);
         }
         run(STORAGE_IN_TICK, STARK_OK);
         uint32_t wait = storage_core_wait_ms(&s_core, now_ms());
@@ -151,6 +185,15 @@ stark_err_t stark_storage_init(void)
     bool fitted = stark_board_pins()->sd_cs >= 0;
     storage_timing_t timing = {CONFIG_STARK_STORAGE_RETRY_MS, CONFIG_STARK_STORAGE_PROBE_MS};
     storage_core_init(&s_core, fitted, timing, now_ms());
+    const storage_env_t env = {
+        .io = &storage_io_posix,
+        .root = STARK_STORAGE_ROOT,
+        .lock = env_lock,
+        .unlock = env_unlock,
+        .mounted = env_mounted,
+        .io_error = env_io_error,
+    };
+    storage_files_init(&env);
     if (!fitted) {
         report(STARK_STORAGE_NOT_FITTED, STARK_OK);
         return STARK_OK;

@@ -75,7 +75,8 @@ typedef void (*stark_app_worker_fn)(void *ctx);
  * <id> joined`); past that the task is deleted anyway (`app: worker <id>
  * join timeout`, counted), and on_stop still runs. UI task only.
  * STARK_ERR_STATE without a running app, STARK_ERR_BUSY while its worker
- * runs, STARK_ERR_INVALID_ARG for a NULL fn.
+ * runs (a worker that has returned is reaped here, so an app may run
+ * several in turn — STARK-0203), STARK_ERR_INVALID_ARG for a NULL fn.
  */
 stark_err_t stark_app_worker_start(stark_app_worker_fn fn, void *ctx);
 

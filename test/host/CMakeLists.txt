@@ -427,9 +427,39 @@ add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_
 target_include_directories(storage_core_nocov PRIVATE ${STARK_COMPONENTS}/stark_storage/include
     ${STARK_COMPONENTS}/stark_storage_medium/include)
 target_compile_options(storage_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
+add_library(storage_path_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_path.c)
+target_include_directories(storage_path_nocov PRIVATE ${STARK_COMPONENTS}/stark_storage/include
+    ${STARK_COMPONENTS}/stark_storage_medium/include)
+target_compile_options(storage_path_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
+# stark_storage's paths (pure) and file helpers (STARK-0203): the real POSIX
+# I/O ops in a temp directory, and a fault-injecting wrapper around them.
+add_executable(run_storage_path_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_storage_path.c
+    ${STARK_COMPONENTS}/stark_storage/storage_path.c
+)
+target_include_directories(run_storage_path_tests PRIVATE ${STARK_COMPONENTS}/stark_storage
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include)
+target_compile_options(run_storage_path_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_storage_path_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_storage_path_tests PRIVATE unity)
+
+add_executable(run_storage_file_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_storage_file.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/fault_io.c
+    ${STARK_COMPONENTS}/stark_storage/storage_file.c
+    ${STARK_COMPONENTS}/stark_storage/storage_io_posix.c
+    $<TARGET_OBJECTS:storage_path_nocov>
+)
+target_include_directories(run_storage_file_tests PRIVATE ${STARK_COMPONENTS}/stark_storage
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include)
+target_compile_options(run_storage_file_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_storage_file_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_storage_file_tests PRIVATE unity)
+
 add_executable(run_ui_storage_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_storage.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_storage/app_storage.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_storage/storage_wtest.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../main/storage_ui.c
     ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_storage.c
     $<TARGET_OBJECTS:storage_core_nocov>
@@ -437,7 +467,7 @@ add_executable(run_ui_storage_tests
 )
 target_include_directories(run_ui_storage_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
     ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../main)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_storage)
 target_compile_options(run_ui_storage_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_storage_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_storage_tests PRIVATE unity)
@@ -477,6 +507,8 @@ add_test(NAME stark_app_fault_tests COMMAND run_app_fault_tests)
 add_test(NAME stark_ui_fault_tests COMMAND run_ui_fault_tests)
 add_test(NAME stark_diag_core_tests COMMAND run_diag_core_tests)
 add_test(NAME stark_storage_core_tests COMMAND run_storage_core_tests)
+add_test(NAME stark_storage_path_tests COMMAND run_storage_path_tests)
+add_test(NAME stark_storage_file_tests COMMAND run_storage_file_tests)
 add_test(NAME stark_ui_storage_tests COMMAND run_ui_storage_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)
 add_test(NAME stark_ui_format_tests COMMAND run_ui_format_tests)

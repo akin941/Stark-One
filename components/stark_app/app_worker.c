@@ -35,6 +35,8 @@ static void wrapper(void *arg)
     vTaskSuspend(NULL); /* the joiner deletes a suspended task: safe to reuse */
 }
 
+static void wait_state(eTaskState state);
+
 stark_err_t stark_app_worker_start(stark_app_worker_fn fn, void *ctx)
 {
     if (fn == NULL) {
@@ -44,7 +46,15 @@ stark_err_t stark_app_worker_start(stark_app_worker_fn fn, void *ctx)
         return STARK_ERR_STATE;
     }
     if (s_task != NULL) {
-        return STARK_ERR_BUSY;
+        /* A worker that has already returned only waits to be reaped (its
+         * app is still running): reap it now so the app can start another
+         * (STARK-0203's write test runs more than once per launch). */
+        if (xSemaphoreTake(s_done, 0) != pdTRUE) {
+            return STARK_ERR_BUSY;
+        }
+        wait_state(eSuspended);
+        vTaskDelete(s_task);
+        s_task = NULL;
     }
     if (s_done == NULL) {
         s_done = xSemaphoreCreateBinaryStatic(&s_done_buf);

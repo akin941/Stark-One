@@ -20,6 +20,7 @@ typedef enum {
     STARK_ERR_BUSY,
     STARK_ERR_IO,
     STARK_ERR_STATE,
+    STARK_ERR_NO_SPACE, /* storage full (STARK-0203) */
 } stark_err_t;
 
 /**
