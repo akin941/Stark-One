@@ -1,0 +1,7 @@
+# spec-derived lab signal, not recorded (ADR-0019 §3)
+stark-ir 1
+protocol RC5
+address 0x0005
+command 0x0035
+carrier 36000
+timings 889 889 1778 889 889 889 889 1778 1778 1778 889 889 889 889 1778 1778 1778 1778 889

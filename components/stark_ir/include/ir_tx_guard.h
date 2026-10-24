@@ -1,6 +1,8 @@
 /*
- * ir_tx_guard.h — private to stark_ir: the transmit gate (TASKS.md
- * STARK-0304, ADR-0019 §4, SECURITY_SCOPE §4). Pure; host-tested.
+ * ir_tx_guard.h — the transmit gate (TASKS.md STARK-0304, ADR-0019 §4,
+ * SECURITY_SCOPE §4). Pure; host-tested. Public so the IR app can show the
+ * plan stark_ir_transmit() will enforce before asking for confirmation
+ * (STARK-0306); the driver re-checks regardless.
  *
  * Every transmission passes here first. The limits are constants, not
  * settings: nothing at run time can widen them.

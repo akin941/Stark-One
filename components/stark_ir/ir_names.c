@@ -40,3 +40,15 @@ stark_err_t ir_names_next(const ir_names_t *st, char *out, size_t len)
     (void)snprintf(out, len, "ir_%04u.ir", (unsigned)(st->highest + 1u));
     return STARK_OK;
 }
+
+int ir_names_compare(const char *a, const char *b)
+{
+    ir_names_t probe;
+    ir_names_init(&probe);
+    bool ca = ir_names_scan(&probe, a);
+    bool cb = ir_names_scan(&probe, b);
+    if (ca != cb) {
+        return ca ? -1 : 1;
+    }
+    return ca ? strcmp(b, a) : strcmp(a, b);
+}

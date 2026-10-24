@@ -2779,6 +2779,42 @@ inside the interval → "Wait a moment".
 4. `check_emu_image.py` still proves the storage image differs only in the medium (and
    now its seeded partition content).
 
+**As built.**
+* **Files.** The app keeps every file at 150 lines or fewer (the app-size rule), and is
+  split as follows. `app_ir.c` holds the screen, mode switch and lifecycle; `ir_view.c`
+  the receive view (STARK-0305's capture list, moved out); `ir_browse.c` the listing and
+  loading; `ir_send.c` the confirmation and transmission; `ir_save.c` card I/O (save and
+  load). All declarations are in the app's private `irapp.h`, with no per-file headers.
+  The browse order ("saved captures first, newest first, then the rest by name") is pure,
+  so it moved into `stark_ir`'s `ir_names_compare()` with host tests. `ir_tx_guard.h` became a public
+  header of `stark_ir` so the confirm dialog shows the plan the driver will enforce;
+  `stark_ir_transmit()` re-checks regardless.
+* **Seeds** are `lab_nec.ir … lab_sirc20.ir`, `lab_raw.ir` (13 durations) and the
+  malformed `lab_bad.ir`, not `ir_9001…ir_9099`: `ir_NNNN` names feed the save counter, so
+  seeds named that way would make the first user save `ir_9100.ir`. Browse lists saved
+  `ir_NNNN.ir` captures first (newest first), other `*.ir` after them by name.
+  `check_emu_image.py` needed no change — the seed is partition content, not a code
+  difference, and the check still passes.
+* **No separate detail screen.** Each list row shows the decoded payload
+  (`NEC 00/12`, `RAW 13`, `(invalid)`); OK opens the confirm dialog, which is the detail
+  view: `"NEC 00/12, 38000 Hz, 67 pulses, 68 ms. Own devices only."` The same text is
+  logged (`irapp: confirm <file>: …`) before the dialog opens, so the proposed
+  transmission is auditable.
+* **At most 16 files** are listed (`IRAPP_BROWSE_MAX`), each with its 24-byte name and
+  description. Browse and send add 1 014 B of static RAM (list 784 B, menu rows 192 B,
+  the sent file's name 24 B), within the 1 kB the 64 × 16 B budget allowed, because they
+  reuse the save path's buffers instead of
+  their own: one `irapp_work` (parsed signal + `.ir` text, 2 332 B) serves whichever worker
+  runs, and Save is refused (`save refused: busy`) while a list or load holds it. Without
+  the sharing the app grew by 2.3 kB more (measured, `nm`).
+* BACK on the list returns to the receive view. Re-initialising the one menu for the
+  other mode wiped the `on_exit` hook the app manager places on the app screen — BACK
+  then popped the IR app without stopping it, leaving RX on. The emulator scenario caught
+  it; the hook is carried across, and both the host test and `v03-replay` now assert
+  `app: stop ir` after a browse round trip.
+* The host UI port gained two opt-in seams (both off by default, so other UI tests are
+  unchanged): an inline worker and an in-memory `captures/` directory.
+
 **Out of scope.** Deleting/renaming files, sending lists, scheduled or repeated sends,
 editing timings, importing other formats.
 

@@ -50,11 +50,26 @@ static void test_limits(void)
     TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, ir_names_next(&st, NULL, 16));
 }
 
+static void test_browse_order(void)
+{
+    /* saved captures first, newest first */
+    TEST_ASSERT_TRUE(ir_names_compare("ir_0002.ir", "ir_0001.ir") < 0);
+    TEST_ASSERT_TRUE(ir_names_compare("ir_0001.ir", "ir_0002.ir") > 0);
+    /* then everything else, by name */
+    TEST_ASSERT_TRUE(ir_names_compare("ir_0001.ir", "lab_bad.ir") < 0);
+    TEST_ASSERT_TRUE(ir_names_compare("lab_bad.ir", "ir_9999.ir") > 0);
+    TEST_ASSERT_TRUE(ir_names_compare("lab_bad.ir", "lab_nec.ir") < 0);
+    TEST_ASSERT_TRUE(ir_names_compare("ir_12.ir", "ir_0001.ir") > 0); /* not a capture name */
+    TEST_ASSERT_EQUAL(0, ir_names_compare("lab_nec.ir", "lab_nec.ir"));
+    TEST_ASSERT_EQUAL(0, ir_names_compare("ir_0007.ir", "ir_0007.ir"));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_next_name);
     RUN_TEST(test_other_names_ignored);
     RUN_TEST(test_limits);
+    RUN_TEST(test_browse_order);
     return UNITY_END();
 }

@@ -1,6 +1,7 @@
 /*
  * ir_names.h — capture file names (TASKS.md STARK-0305): `ir_NNNN.ir` in
- * captures/, numbered upwards. Pure; host-tested.
+ * captures/, numbered upwards, and the order Browse lists them in
+ * (STARK-0306). Pure; host-tested.
  */
 #pragma once
 
@@ -24,3 +25,7 @@ bool ir_names_scan(ir_names_t *st, const char *name);
 /* "ir_<highest + 1>.ir"; STARK_ERR_NO_SPACE once ir_9999.ir exists,
  * STARK_ERR_INVALID_ARG for a buffer under 11 bytes. */
 stark_err_t ir_names_next(const ir_names_t *st, char *out, size_t len);
+
+/* Browse order, for qsort-style use: saved captures (`ir_NNNN.ir`) first,
+ * newest first; every other name after them, by name. */
+int ir_names_compare(const char *a, const char *b);

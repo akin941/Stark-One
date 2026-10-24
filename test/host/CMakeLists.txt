@@ -261,7 +261,8 @@ add_library(ir_core_nocov OBJECT ${STARK_COMPONENTS}/stark_ir/ir_timing.c
     ${STARK_COMPONENTS}/stark_ir/ir_nec.c ${STARK_COMPONENTS}/stark_ir/ir_codec.c
     ${STARK_COMPONENTS}/stark_ir/ir_biphase.c ${STARK_COMPONENTS}/stark_ir/ir_rc5.c
     ${STARK_COMPONENTS}/stark_ir/ir_rc6.c ${STARK_COMPONENTS}/stark_ir/ir_sirc.c
-    ${STARK_COMPONENTS}/stark_ir/ir_raw.c ${STARK_COMPONENTS}/stark_ir/ir_names.c)
+    ${STARK_COMPONENTS}/stark_ir/ir_raw.c ${STARK_COMPONENTS}/stark_ir/ir_names.c
+    ${STARK_COMPONENTS}/stark_ir/ir_tx_guard.c)
 target_include_directories(ir_core_nocov PRIVATE ${STARK_COMPONENTS}/stark_ir
     ${STARK_COMPONENTS}/stark_ir/include)
 target_compile_options(ir_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
@@ -602,11 +603,14 @@ target_compile_options(run_ui_storage_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_storage_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_storage_tests PRIVATE unity)
 
-# The real IR app on the UI port (STARK-0305) with fake stark_ir / stark_storage.
+# The real IR app on the UI port (STARK-0305/0306) with fake stark_ir / stark_storage.
 add_executable(run_ui_ir_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_ir.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_ir/app_ir.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_ir/ir_save.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_ir/ir_browse.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_ir/ir_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_ir/ir_send.c
     ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_ir.c
     ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_storage.c
     $<TARGET_OBJECTS:ir_core_nocov>

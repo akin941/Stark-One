@@ -26,5 +26,10 @@ set(SDKCONFIG_DEFAULTS "${STARK_ROOT}/sdkconfig.defaults")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(stark-one-emu-storage)
 
+# The FAT volume starts with the spec-derived lab signals (STARK-0306,
+# ADR-0019 §5) — like a user's card that already holds captures. Generated
+# by scripts/gen_ir_vectors.py; test image only.
+fatfs_create_spiflash_image(emufat "${CMAKE_CURRENT_LIST_DIR}/seed" FLASH_IN_PROJECT)
+
 set(STARK_EXTRA_STRICT_DIRS "${CMAKE_CURRENT_LIST_DIR}/components/stark_storage_medium")
 include(${STARK_ROOT}/cmake/stark_flags.cmake)

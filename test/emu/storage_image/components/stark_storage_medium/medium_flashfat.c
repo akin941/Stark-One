@@ -99,8 +99,8 @@ stark_err_t stark_storage_medium_mount(const char *mount_point, size_t max_files
         return STARK_ERR_NOT_SUPPORTED;
     }
     esp_vfs_fat_mount_config_t cfg = {
-        /* The test partition's own blank flash, never user media: formatted
-         * once, on the first boot of a fresh image. */
+        /* The test partition's own flash, never user media: it is seeded at
+         * build time (STARK-0306); formatting only rescues a damaged one. */
         .format_if_mount_failed = true,
         .max_files = (int)max_files,
     };
