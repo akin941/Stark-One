@@ -1,0 +1,36 @@
+# STARK-0206 on the storage test image (ADR-0018): console lines captured
+# since boot reach logs/stark.log once the medium mounts (`storage: logging
+# to logs/stark.log`, logged once); navigating keeps appending; Eject flushes
+# first and reports how much was written this mount — a non-zero count (a
+# count, never a duration). A pull during a later flush loses at most that
+# flush and never panics.
+name = "emu-v02-log-file"
+image = "storage"
+end_ms = 6500
+heap_min = 200000
+pokes = [
+    { at_ms = 4500, var = "emu_medium_present", value = 0 },
+]
+presses = [
+    { key = "DOWN", at_ms = 800, hold_ms = 60 },
+    { key = "UP", at_ms = 1100, hold_ms = 60 },
+    { key = "UP", at_ms = 1400, hold_ms = 60 },
+    { key = "OK", at_ms = 1700, hold_ms = 60 },
+    { key = "OK", at_ms = 2000, hold_ms = 60 },
+    { key = "OK", at_ms = 2300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 3000, hold_ms = 60 },
+    { key = "OK", at_ms = 3300, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    "storage: logging to logs/stark.log",
+    'menu: sel=12 "Storage"',
+    'dialog: open "Eject card?"',
+    "storageapp: eject requested",
+    "storage: ejected log=",
+    "storageapp: mount requested",
+    "storage: mounted emu-flashfat",
+    "storage: logging to logs/stark.log",
+    "storage: card removed",
+]
+forbid = ["storage: ejected log=0", "panic:"]

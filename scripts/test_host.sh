@@ -82,6 +82,9 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
             --filter "$PROJECT_ROOT/components/stark_storage/storage_path" \
             --filter "$PROJECT_ROOT/components/stark_storage/storage_file" \
             --filter "$PROJECT_ROOT/components/stark_settings/settings_core" \
+            --filter "$PROJECT_ROOT/components/stark_log/log_ring" \
+            --filter "$PROJECT_ROOT/components/stark_storage/log_rotate" \
+            --filter "$PROJECT_ROOT/components/stark_storage/storage_log" \
             --filter "$PROJECT_ROOT/components/stark_buzzer/buzzer_volume" \
             --gcov-executable "$GCOV_EXECUTABLE" \
             --xml --xml-pretty -o "$BUILD_DIR/coverage.xml"

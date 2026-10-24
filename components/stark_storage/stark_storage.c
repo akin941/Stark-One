@@ -21,6 +21,7 @@
 #include "stark_storage_medium.h"
 #include "storage_core.h"
 #include "storage_file.h"
+#include "storage_log.h"
 
 #define STORAGE_CORE 0 /* the UI task runs on core 1 (ARCHITECTURE §8) */
 
@@ -34,6 +35,7 @@ static atomic_int s_state = STARK_STORAGE_NOT_FITTED;
 static atomic_bool s_req_eject;
 static atomic_bool s_req_mount;
 static atomic_bool s_io_error;
+static uint32_t s_next_flush_ms; /* storage task only */
 static portMUX_TYPE s_space_lock = portMUX_INITIALIZER_UNLOCKED;
 static stark_medium_space_t s_space; /* cached at mount, under s_space_lock */
 
@@ -63,6 +65,7 @@ static void report(stark_storage_state_t state, stark_err_t last)
             portEXIT_CRITICAL(&s_space_lock);
             STARK_LOGI("storage", "mounted %s total=%u free=%u", stark_storage_medium_name(),
                        (unsigned)(space.total_bytes / 1024u), (unsigned)(space.free_bytes / 1024u));
+            storage_log_on_mount();
             uint32_t swept = 0;
             stark_err_t prep = storage_files_prepare(&swept);
             if (prep != STARK_OK) {
@@ -80,8 +83,10 @@ static void report(stark_storage_state_t state, stark_err_t last)
         case STARK_STORAGE_REMOVED:
             STARK_LOGW("storage", "card removed");
             break;
-        case STARK_STORAGE_NOT_FITTED:
         case STARK_STORAGE_EJECTED:
+            STARK_LOGI("storage", "ejected log=%u", (unsigned)storage_log_written());
+            break;
+        case STARK_STORAGE_NOT_FITTED:
             STARK_LOGI("storage", "%s", stark_storage_state_str(state));
             break;
     }
@@ -149,10 +154,28 @@ static void run(storage_input_t in, stark_err_t result)
     }
 }
 
+/* Outside the lock (the helpers take it per call): drain the capture ring
+ * into the log file. The writer logs nothing itself; its first write after a
+ * mount is announced here, once. */
+static void flush_log(void)
+{
+    bool first = false;
+    if (stark_storage_state() == STARK_STORAGE_MOUNTED && storage_log_flush(&first) == STARK_OK &&
+        first) {
+        STARK_LOGI("storage", "logging to logs/stark.log");
+    }
+}
+
 static void storage_task(void *arg)
 {
     (void)arg;
     for (;;) {
+        /* Due, or an eject is waiting: the log goes out first, so an eject
+         * never loses buffered lines and the writer holds no file. */
+        if (atomic_load(&s_req_eject) || (int32_t)(now_ms() - s_next_flush_ms) >= 0) {
+            flush_log();
+            s_next_flush_ms = now_ms() + CONFIG_STARK_STORAGE_LOG_FLUSH_MS;
+        }
         (void)xSemaphoreTake(s_lock, portMAX_DELAY);
         if (atomic_exchange(&s_req_eject, false)) {
             uint32_t open = storage_files_open_count();
@@ -171,6 +194,10 @@ static void storage_task(void *arg)
         }
         run(STORAGE_IN_TICK, STARK_OK);
         uint32_t wait = storage_core_wait_ms(&s_core, now_ms());
+        uint32_t to_flush = s_next_flush_ms - now_ms();
+        if (s_core.state == STARK_STORAGE_MOUNTED && (int32_t)to_flush >= 0 && to_flush < wait) {
+            wait = to_flush;
+        }
         (void)xSemaphoreGive(s_lock);
         (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait));
     }
@@ -194,6 +221,9 @@ stark_err_t stark_storage_init(void)
         .io_error = env_io_error,
     };
     storage_files_init(&env);
+    storage_log_init(CONFIG_STARK_LOG_RING_BYTES > 0 ? stark_log_ring_take : NULL,
+                     (uint32_t)CONFIG_STARK_STORAGE_LOG_FILE_KB * 1024u,
+                     CONFIG_STARK_STORAGE_LOG_FILES);
     if (!fitted) {
         report(STARK_STORAGE_NOT_FITTED, STARK_OK);
         return STARK_OK;

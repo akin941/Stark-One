@@ -295,6 +295,52 @@ stark_err_t stark_storage_remove(stark_dir_t dir, const char *name)
     return err;
 }
 
+stark_err_t storage_files_rename(stark_dir_t dir, const char *from, const char *to)
+{
+    char a[STORAGE_PATH_MAX];
+    char b[STORAGE_PATH_MAX];
+    STARK_CHECK_RET(storage_path_build(s_env.root, dir, from, false, a, sizeof a));
+    STARK_CHECK_RET(storage_path_build(s_env.root, dir, to, false, b, sizeof b));
+    s_env.lock(s_env.ctx);
+    uint32_t gen = 0;
+    stark_err_t err = STARK_OK;
+    if (!mounted(&gen)) {
+        err = STARK_ERR_STATE;
+    } else if (s_env.io->rename(a, b) != 0) {
+        err = fail();
+    }
+    s_env.unlock(s_env.ctx);
+    return err;
+}
+
+typedef struct {
+    const char *name;
+    uint32_t size;
+    bool found;
+} size_ctx_t;
+
+static bool size_one(const char *name, uint32_t size, void *ctx)
+{
+    size_ctx_t *sc = ctx;
+    if (strcmp(name, sc->name) == 0) {
+        sc->size = size;
+        sc->found = true;
+        return false;
+    }
+    return true;
+}
+
+stark_err_t storage_files_size(stark_dir_t dir, const char *name, uint32_t *size)
+{
+    size_ctx_t sc = {name, 0, false};
+    STARK_CHECK_RET(stark_storage_list(dir, size_one, &sc));
+    if (!sc.found) {
+        return STARK_ERR_NOT_FOUND;
+    }
+    *size = sc.size;
+    return STARK_OK;
+}
+
 typedef struct {
     stark_storage_list_fn fn;
     void *ctx;

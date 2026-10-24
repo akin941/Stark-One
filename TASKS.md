@@ -2125,6 +2125,13 @@ changing a single `STARK_LOG*` call site.
 * Eject (STARK-0202) and removal: eject flushes first; removal keeps untaken lines in the
   ring. `storage: ejected log=<bytes written this mount>` replaces `storage: ejected`.
 * `CONFIG_STARK_STORAGE_LOG_FILE` (y) turns the writer off without touching capture.
+  **As built:** dropped — `STARK_LOG_RING_BYTES = 0` turns capture and therefore the file
+  off, one knob instead of two. The writer reaches the file system through the public
+  helpers plus two private engine calls (`storage_files_rename`, `storage_files_size`),
+  runs outside the storage lock, and takes its ring through an injected function so the
+  host tests feed it directly. Stack headroom is measured with a GDB dump of the stacks'
+  fill pattern on the storage image (the Diagnostics app logs no task table):
+  esp_timer task 2,500 of 3,584 B untouched, storage task 2,024 of 4,096 B.
 
 **Host tests.** `test_log_ring.c`: whole-line semantics, wrap, oversize line, drop
 counting, take into a small buffer; 100 % lines. `test_log_rotate.c`: plans for every

@@ -29,3 +29,26 @@ config STARK_STORAGE_TASK_STACK
     int "Storage task stack (bytes)"
     range 3072 8192
     default 4096
+
+config STARK_STORAGE_LOG_FLUSH_MS
+    int "Storage: log file flush period (ms)"
+    range 250 10000
+    default 1000
+    help
+        While a card is mounted, the captured console lines
+        (STARK_LOG_RING_BYTES) are appended to logs/stark.log this often.
+        A removal loses at most one period's lines. Capture off (ring 0)
+        means no log file.
+
+config STARK_STORAGE_LOG_FILE_KB
+    int "Storage: log file size before rotation (kB)"
+    range 4 1024
+    default 64
+
+config STARK_STORAGE_LOG_FILES
+    int "Storage: log files kept (stark.log + older)"
+    range 1 8
+    default 4
+    help
+        The log directory never holds more than this many files of
+        STARK_STORAGE_LOG_FILE_KB each, plus one flush.

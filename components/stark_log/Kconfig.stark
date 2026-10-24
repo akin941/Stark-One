@@ -1,0 +1,13 @@
+# stark_log options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). STARK-0206.
+
+config STARK_LOG_RING_BYTES
+    int "Log capture ring (bytes)"
+    range 0 16384
+    default 4096
+    help
+        Every console line is also copied into a static ring of this many
+        bytes, which the storage service writes to the card's log file.
+        Lines logged before the card mounts wait here, so the boot log
+        reaches the file; when the ring is full the oldest whole lines go
+        (and are counted). 0 turns capture off.

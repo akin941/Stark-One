@@ -401,6 +401,26 @@ static void test_read_and_list_failures(void)
     TEST_ASSERT_EQUAL(3, s_io_errors);
 }
 
+static void test_rename_and_size(void)
+{
+    uint32_t size = 0;
+    TEST_ASSERT_EQUAL(STARK_OK, write_file(STARK_DIR_LOGS, "a.log", "12345"));
+    TEST_ASSERT_EQUAL(STARK_OK, storage_files_size(STARK_DIR_LOGS, "a.log", &size));
+    TEST_ASSERT_EQUAL_UINT32(5, size);
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, storage_files_size(STARK_DIR_LOGS, "none", &size));
+    TEST_ASSERT_EQUAL(STARK_OK, storage_files_rename(STARK_DIR_LOGS, "a.log", "b.log"));
+    TEST_ASSERT_TRUE(exists("logs", "b.log"));
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, storage_files_rename(STARK_DIR_LOGS, "a.log", "c.log"));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, storage_files_rename(STARK_DIR_LOGS, "../x", "c"));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, storage_files_rename(STARK_DIR_LOGS, "b.log", ".c"));
+    fault_io_fail_nth(FAULT_RENAME, 1, EIO);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, storage_files_rename(STARK_DIR_LOGS, "b.log", "c.log"));
+    TEST_ASSERT_EQUAL(1, s_io_errors);
+    s_mounted = false;
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, storage_files_rename(STARK_DIR_LOGS, "b.log", "c.log"));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, storage_files_size(STARK_DIR_LOGS, "b.log", &size));
+}
+
 static void test_posix_ops_directly(void)
 {
     /* The production table on its own, including a directory it cannot open. */
@@ -425,6 +445,7 @@ int main(void)
     RUN_TEST(test_short_writes_complete);
     RUN_TEST(test_no_space);
     RUN_TEST(test_read_and_list_failures);
+    RUN_TEST(test_rename_and_size);
     RUN_TEST(test_posix_ops_directly);
     return UNITY_END();
 }

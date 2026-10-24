@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "stark_err.h"
+#include "stark_storage.h"
 #include "storage_io.h"
 
 #define STORAGE_FILE_SLOTS 4 /* files open at once through the helpers */
@@ -38,6 +39,13 @@ stark_err_t storage_files_prepare(uint32_t *swept);
  * closes every open descriptor and marks its handle stale — later calls on
  * it return STARK_ERR_IO, close frees the slot. */
 void storage_files_invalidate(void);
+
+/* Renames dir/from to dir/to (both valid names); takes the lock itself.
+ * For the log writer's rotation (STARK-0206). */
+stark_err_t storage_files_rename(stark_dir_t dir, const char *from, const char *to);
+
+/* Size of dir/name in bytes, or STARK_ERR_NOT_FOUND; takes the lock itself. */
+stark_err_t storage_files_size(stark_dir_t dir, const char *name, uint32_t *size);
 
 /* Caller holds the lock. Handles currently open. */
 uint32_t storage_files_open_count(void);

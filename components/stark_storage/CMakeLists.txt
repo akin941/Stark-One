@@ -7,6 +7,8 @@ idf_component_register(
         "storage_path.c"
         "storage_file.c"
         "storage_io_posix.c"
+        "storage_log.c"
+        "log_rotate.c"
         "stark_storage.c"
     INCLUDE_DIRS
         "include"

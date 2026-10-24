@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "stark_log.c"
+        "log_ring.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
