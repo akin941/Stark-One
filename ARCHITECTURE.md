@@ -807,7 +807,7 @@ an app's confirmed action (SECURITY_SCOPE §4).
 | --- | --- | --- |
 | `stark_storage` | V0.2 | Implemented (§6.9b, STARK-0201…0203, 0206): mount state machine, task, medium port, removal, eject, file helpers, log file |
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
-| `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app and replay per TASKS.md STARK-0305…0307 |
+| `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |

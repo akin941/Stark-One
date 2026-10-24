@@ -24,7 +24,7 @@ presses = [
 expect = [
     "storage: mounted emu-flashfat",
     "storage: logging to logs/stark.log",
-    'menu: sel=12 "Storage"',
+    'menu: sel=14 "Storage"',
     'dialog: open "Eject card?"',
     "storageapp: eject requested",
     "storage: ejected log=",

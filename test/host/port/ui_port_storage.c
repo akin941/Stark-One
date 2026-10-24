@@ -104,3 +104,11 @@ void stark_storage_discard(stark_file_t *f)
 {
     (void)f;
 }
+
+stark_err_t stark_storage_list(stark_dir_t dir, stark_storage_list_fn fn, void *ctx)
+{
+    (void)dir;
+    (void)fn;
+    (void)ctx;
+    return s_state == STARK_STORAGE_MOUNTED ? STARK_OK : STARK_ERR_STATE;
+}

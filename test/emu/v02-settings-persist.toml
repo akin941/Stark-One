@@ -30,7 +30,7 @@ presses = [
 ]
 expect = [
     "settings: loaded brightness=100 volume=3 repeat=1 loglvl=2 (defaults)",
-    'menu: sel=11 "Settings"',
+    'menu: sel=13 "Settings"',
     "app: start settings",
     "settings: brightness=90",
     "settings: applied brightness=90",
