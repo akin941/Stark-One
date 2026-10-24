@@ -19,17 +19,21 @@
 #include "stark_storage.h"
 
 typedef enum {
-    STORAGE_IN_TICK,         /* periodic: runs whatever is due */
-    STORAGE_IN_MOUNT_RESULT, /* result of STORAGE_ACT_TRY_MOUNT */
-    STORAGE_IN_PROBE_RESULT, /* result of STORAGE_ACT_PROBE */
-    STORAGE_IN_IO_ERROR,     /* a file operation failed with an I/O error */
+    STORAGE_IN_TICK,           /* periodic: runs whatever is due */
+    STORAGE_IN_MOUNT_RESULT,   /* result of STORAGE_ACT_TRY_MOUNT */
+    STORAGE_IN_PROBE_RESULT,   /* result of STORAGE_ACT_PROBE */
+    STORAGE_IN_PRESENT_RESULT, /* result of STORAGE_ACT_PRESENT_CHECK */
+    STORAGE_IN_IO_ERROR,       /* a file operation failed with an I/O error */
+    STORAGE_IN_REQ_MOUNT,      /* the user asked to mount now */
+    STORAGE_IN_REQ_EJECT,      /* the user asked to eject; the port checked no file is open */
 } storage_input_t;
 
 typedef enum {
     STORAGE_ACT_NONE,
     STORAGE_ACT_TRY_MOUNT,
     STORAGE_ACT_PROBE,
-    STORAGE_ACT_UNMOUNT, /* the card went away: release it */
+    STORAGE_ACT_PRESENT_CHECK, /* ejected: does a card still answer? (no mount) */
+    STORAGE_ACT_UNMOUNT,       /* release the card: it went away, or eject */
 } storage_action_t;
 
 typedef struct {
@@ -43,7 +47,7 @@ typedef struct {
     uint32_t due_ms;     /* when the next periodic action is due */
     bool due_now;        /* an action is due regardless of due_ms */
     bool announced;      /* the first state has been published */
-    uint32_t generation; /* bumped whenever a mounted volume goes away */
+    uint32_t generation; /* bumped whenever a mounted volume goes away (removal, eject) */
 } storage_core_t;
 
 typedef struct {

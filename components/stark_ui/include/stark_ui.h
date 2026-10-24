@@ -81,6 +81,20 @@ void stark_ui_invalidate(stark_screen_t *s, gfx_rect_t area);
  */
 void stark_ui_tick(void);
 
+/* The status bar's storage indicator (STARK-0202): an 8 x 10 card glyph at
+ * the right end of the bar. The composition root maps storage states onto
+ * it; stark_ui knows nothing about storage. */
+typedef enum {
+    STARK_UI_STORAGE_NONE = 0, /* nothing drawn (no card slot; the V0.1 bar) */
+    STARK_UI_STORAGE_ABSENT,   /* dim outline: no card */
+    STARK_UI_STORAGE_MOUNTED,  /* filled: card in use */
+    STARK_UI_STORAGE_ERROR,    /* filled, error colour: lost or unusable card */
+    STARK_UI_STORAGE_EJECTED,  /* bright outline: safe to remove */
+} stark_ui_storage_icon_t;
+
+/* UI task only. Repaints just the glyph's rectangle when it changes. */
+void stark_ui_status_set_storage(stark_ui_storage_icon_t icon);
+
 /* Frame statistics (TASKS.md STARK-0101). A frame is a tick that rendered;
  * an overrun is one whose dispatch-plus-render time exceeded
  * 1 000 000 / CONFIG_STARK_UI_TARGET_FPS µs. Informational in simulation,

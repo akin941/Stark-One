@@ -120,6 +120,46 @@ class Scenarios(unittest.TestCase):
             self.assertEqual(s.get("image", "production") == "storage", in_storage_dir, f)
 
 
+class Pokes(unittest.TestCase):
+    def test_poke_fires_once(self):
+        s = emu.gdb_script({"name": "t", "end_ms": 900, "image": "storage",
+                            "pokes": [{"at_ms": 400, "var": "emu_medium_present",
+                                       "value": 0}]}, 1)
+        self.assertIn("set $poke0 = 0", s)
+        self.assertIn("if $poke0 == 0 && now_ms >= 400", s)
+        self.assertIn("set var emu_medium_present = 0", s)
+        self.assertIn("set $poke0 = 1", s)
+
+    def test_pokes_need_the_storage_image(self):
+        with self.assertRaises(SystemExit):
+            emu.gdb_script({"name": "t", "end_ms": 900,
+                            "pokes": [{"at_ms": 1, "var": "emu_medium_present", "value": 0}]}, 1)
+
+    def test_unknown_variable(self):
+        with self.assertRaises(SystemExit):
+            emu.gdb_script({"name": "t", "end_ms": 900, "image": "storage",
+                            "pokes": [{"at_ms": 1, "var": "s_core", "value": 0}]}, 1)
+
+
+class ForbidBetween(unittest.TestCase):
+    RULE = {"forbid_between": [{"after": "ejected", "before": "mount requested",
+                                "text": "mounted x"}]}
+
+    def run_check(self, log):
+        return emu.check_log(dict(self.RULE, name="t", end_ms=1), log, GDB_OK)
+
+    def test_clean_window(self):
+        self.assertEqual(self.run_check("ejected\nmount requested\nmounted x\n"), [])
+
+    def test_hit_inside_window(self):
+        f = self.run_check("ejected\nmounted x\nmount requested\n")
+        self.assertTrue(any("between" in m for m in f), f)
+
+    def test_missing_anchors(self):
+        self.assertTrue(any("anchor not found" in m for m in self.run_check("x\n")))
+        self.assertTrue(any("end not found" in m for m in self.run_check("ejected\n")))
+
+
 class Images(unittest.TestCase):
     def test_mismatch(self):
         self.assertIsNone(emu.image_mismatch({}, "production"))

@@ -1,0 +1,66 @@
+/*
+ * ui_port_storage.c — host UI test port: settable stark_storage backend
+ * (ui_port_storage.h). stark_storage_state_str() is the production one
+ * (storage_core.c), linked alongside.
+ */
+#include "stark_event.h"
+#include "ui_port_storage.h"
+
+static stark_storage_state_t s_state = STARK_STORAGE_NOT_FITTED;
+static stark_medium_space_t s_space;
+static int s_ejects, s_mounts;
+
+void ui_port_storage_set(stark_storage_state_t state, uint64_t total, uint64_t free_bytes)
+{
+    s_state = state;
+    s_space.total_bytes = total;
+    s_space.free_bytes = free_bytes;
+    stark_event_t e = {.type = STARK_EVT_SYSTEM};
+    e.system.id = STARK_SYS_STORAGE;
+    e.system.arg = (int32_t)state;
+    (void)stark_event_publish(&e);
+}
+
+int ui_port_storage_ejects(void)
+{
+    return s_ejects;
+}
+
+int ui_port_storage_mounts(void)
+{
+    return s_mounts;
+}
+
+stark_err_t stark_storage_init(void)
+{
+    return STARK_OK;
+}
+
+stark_storage_state_t stark_storage_state(void)
+{
+    return s_state;
+}
+
+stark_err_t stark_storage_space(stark_medium_space_t *out)
+{
+    if (out == NULL) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (s_state != STARK_STORAGE_MOUNTED) {
+        return STARK_ERR_STATE;
+    }
+    *out = s_space;
+    return STARK_OK;
+}
+
+stark_err_t stark_storage_request_eject(void)
+{
+    s_ejects++;
+    return STARK_OK;
+}
+
+stark_err_t stark_storage_request_mount(void)
+{
+    s_mounts++;
+    return STARK_OK;
+}

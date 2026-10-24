@@ -72,6 +72,14 @@ stark_err_t stark_storage_medium_probe(void)
     return emu_medium_present ? STARK_OK : STARK_ERR_NOT_FOUND;
 }
 
+stark_err_t stark_storage_medium_present(void)
+{
+    if (s_wl != WL_INVALID_HANDLE) {
+        return STARK_ERR_STATE;
+    }
+    return emu_medium_present ? STARK_OK : STARK_ERR_NOT_FOUND;
+}
+
 stark_err_t stark_storage_medium_space(stark_medium_space_t *out)
 {
     if (out == NULL) {

@@ -60,6 +60,7 @@ bump is a deliberate change with a full emulator run — never "latest".
 | GDB remote stub (breakpoint, `set var`, continue) on core 0 | ✅ used for key injection (below) |
 | Emulated-time scheduling independent of host speed | ✅ presses land at the same `now_ms` on every run |
 | SPI2 with a second device attached and nothing behind it (STARK-0201) | ✅ `sdmmc_card_init` fails at once: every production boot logs `storage: no card`, retries are silent, the UI stays responsive |
+| GDB writes to a RAM global (`pokes`, storage test image, STARK-0202) | ✅ `emu_medium_present` flips stick; removal and reinsertion land at the scheduled emulated time |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 
 **Not available, and not faked:**

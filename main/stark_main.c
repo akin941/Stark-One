@@ -10,6 +10,7 @@
 #include "stark_event.h"
 #include "stark_input.h"
 #include "stark_storage.h"
+#include "storage_ui.h"
 #include "stark_app.h"
 #include "app_registry.h"
 #include "stark_ui.h"
@@ -130,8 +131,13 @@ void app_main(void)
     }
 
     /* Last, and never boot-critical: the card is mounted in the background,
-     * so a missing or slow one cannot hold up the UI (STARK-0201). */
-    err = stark_storage_init();
+     * so a missing or slow one cannot hold up the UI (STARK-0201). The UI
+     * bridge subscribes first so even the first state reaches the status bar
+     * (STARK-0202). */
+    err = storage_ui_init();
+    if (err == STARK_OK) {
+        err = stark_storage_init();
+    }
     if (err != STARK_OK) {
         STARK_LOGE("boot", "storage init failed: %s", stark_err_str(err));
     }

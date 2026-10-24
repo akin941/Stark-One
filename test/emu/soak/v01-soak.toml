@@ -48,7 +48,8 @@ presses = [
     { key = "DOWN", at_ms = 18570, hold_ms = 60 },
     { key = "OK", at_ms = 18880, hold_ms = 60 },
     { key = "BACK", at_ms = 21190, hold_ms = 60 },
-    { key = "DOWN", at_ms = 21500, hold_ms = 60 },
+    { key = "DOWN", at_ms = 21500, hold_ms = 60 },  # Hello -> Storage (STARK-0202)
+    { key = "DOWN", at_ms = 21655, hold_ms = 60 },  # ... wraps to About
     { key = "OK", at_ms = 21810, hold_ms = 60 },
     { key = "BACK", at_ms = 23620, hold_ms = 60 },
     { key = "DOWN", at_ms = 23930, hold_ms = 60 },
@@ -85,7 +86,8 @@ presses = [
     { key = "DOWN", at_ms = 39980, hold_ms = 60 },
     { key = "OK", at_ms = 40290, hold_ms = 60 },
     { key = "BACK", at_ms = 42600, hold_ms = 60 },
-    { key = "DOWN", at_ms = 42910, hold_ms = 60 },
+    { key = "DOWN", at_ms = 42910, hold_ms = 60 },  # Hello -> Storage (STARK-0202)
+    { key = "DOWN", at_ms = 43065, hold_ms = 60 },  # ... wraps to About
     { key = "OK", at_ms = 43220, hold_ms = 60 },
     { key = "BACK", at_ms = 45030, hold_ms = 60 },
     { key = "DOWN", at_ms = 45340, hold_ms = 60 },

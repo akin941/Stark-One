@@ -419,6 +419,29 @@ target_compile_options(run_storage_core_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_storage_core_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_storage_core_tests PRIVATE unity)
 
+# Storage on the UI port (STARK-0202): the status-bar glyph, the composition
+# root's storage bridge and the real Storage app, with a settable stark_storage.
+# storage_core.c is linked only for stark_storage_state_str(); this copy is
+# built without coverage so the state machine's own suite owns its figure.
+add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_core.c)
+target_include_directories(storage_core_nocov PRIVATE ${STARK_COMPONENTS}/stark_storage/include
+    ${STARK_COMPONENTS}/stark_storage_medium/include)
+target_compile_options(storage_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
+add_executable(run_ui_storage_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_storage.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_storage/app_storage.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main/storage_ui.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_storage.c
+    $<TARGET_OBJECTS:storage_core_nocov>
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_storage_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main)
+target_compile_options(run_ui_storage_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_storage_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_storage_tests PRIVATE unity)
+
 # The real Diagnostics screen on the UI port, with a settable fake stark_diag.
 add_executable(run_ui_diagnostics_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_diagnostics.c
@@ -454,6 +477,7 @@ add_test(NAME stark_app_fault_tests COMMAND run_app_fault_tests)
 add_test(NAME stark_ui_fault_tests COMMAND run_ui_fault_tests)
 add_test(NAME stark_diag_core_tests COMMAND run_diag_core_tests)
 add_test(NAME stark_storage_core_tests COMMAND run_storage_core_tests)
+add_test(NAME stark_ui_storage_tests COMMAND run_ui_storage_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)
 add_test(NAME stark_ui_format_tests COMMAND run_ui_format_tests)
 
