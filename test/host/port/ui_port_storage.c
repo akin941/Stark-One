@@ -64,3 +64,43 @@ stark_err_t stark_storage_request_mount(void)
     s_mounts++;
     return STARK_OK;
 }
+
+/* File helpers: the UI port never runs a worker (ui_port_worker.c), so these
+ * are only linked, never reached with a mounted card. */
+stark_err_t stark_storage_open(stark_dir_t dir, const char *name, stark_file_mode_t mode,
+                               stark_file_t **out)
+{
+    (void)dir;
+    (void)name;
+    (void)mode;
+    (void)out;
+    return STARK_ERR_STATE;
+}
+
+stark_err_t stark_storage_read(stark_file_t *f, void *buf, size_t len, size_t *got)
+{
+    (void)f;
+    (void)buf;
+    (void)len;
+    (void)got;
+    return STARK_ERR_STATE;
+}
+
+stark_err_t stark_storage_write(stark_file_t *f, const void *buf, size_t len)
+{
+    (void)f;
+    (void)buf;
+    (void)len;
+    return STARK_ERR_STATE;
+}
+
+stark_err_t stark_storage_close(stark_file_t *f)
+{
+    (void)f;
+    return STARK_ERR_STATE;
+}
+
+void stark_storage_discard(stark_file_t *f)
+{
+    (void)f;
+}

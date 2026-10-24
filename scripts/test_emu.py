@@ -25,6 +25,10 @@ Scenario files (test/emu/*.toml):
   end_ms = 3500                         # emulated ms to run
   presses = [ { key = "DOWN", at_ms = 400, hold_ms = 60 } ]
   expect = [ "boot: ui_ready in ", 'menu: sel=1 "Buzzer Test"' ]  # in order
+  expect_re = [ 'wtest ok .* frames=[1-9]' ]
+                                        # optional; regular expressions, in order,
+                                        # after the `expect` lines — for counts
+                                        # that must be non-zero, never durations
   forbid = [ "panic:" ]                 # optional; added to DEFAULT_FORBID
   forbid_after = [ { after = "ui: chord reserved", text = "app: start" } ]
                                         # optional; text must not follow the
@@ -172,6 +176,15 @@ def check_log(scenario, log, gdb_log):
                 break
         else:
             failures.append("expected, in order, but not found: %r" % want)
+            break
+    for want in scenario.get("expect_re", []):
+        rx = re.compile(want)
+        for i in range(pos, len(lines)):
+            if rx.search(lines[i]):
+                pos = i + 1
+                break
+        else:
+            failures.append("expected regex, in order, but not matched: %r" % want)
             break
     for bad in tuple(scenario.get("forbid", ())) + DEFAULT_FORBID:
         hit = next((line for line in lines if bad in line), None)

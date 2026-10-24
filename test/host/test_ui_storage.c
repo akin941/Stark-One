@@ -16,6 +16,7 @@
 #include "stark_theme.h"
 #include "stark_ui.h"
 #include "storage_ui.h"
+#include "storage_wtest.h"
 #include "ui_port.h"
 #include "ui_port_storage.h"
 #include "unity.h"
@@ -152,6 +153,31 @@ static void test_storage_app(void)
     frame();
     TEST_ASSERT_EQUAL(1, ui_port_storage_mounts());
 
+    /* Write test (STARK-0203): refused without a card; with one, the UI
+     * port's worker stub declines, which the app reports. */
+    ui_port_reset_records();
+    ui_port_short(STARK_KEY_DOWN);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=3 \"Write test (100 kB)\""));
+    ui_port_short(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("storageapp: wtest refused: ejected"));
+    ui_port_storage_set(STARK_STORAGE_MOUNTED, 64ull << 20, 48ull << 20);
+    frame();
+    ui_port_short(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("storageapp: wtest not started: Not supported"));
+    /* progress reaches the item's label */
+    stark_event_t pe = {.type = STARK_EVT_APP_REQUEST};
+    pe.app.id = STARK_APP_REQ_NOTIFY;
+    pe.app.arg = 42;
+    TEST_ASSERT_EQUAL(STARK_OK, stark_event_publish(&pe));
+    ui_port_reset_records();
+    frame();
+    TEST_ASSERT_TRUE(ui_port_render_count() > 0);
+    ui_port_short(STARK_KEY_UP); /* back onto Mount for the pinned frame */
+    frame();
+
     /* Every state has its status text. */
     static const stark_storage_state_t states[] = {STARK_STORAGE_ABSENT,     STARK_STORAGE_REMOVED,
                                                    STARK_STORAGE_UNUSABLE,   STARK_STORAGE_EJECTED,
@@ -164,15 +190,24 @@ static void test_storage_app(void)
         snprintf(want, sizeof want, "storageapp: status %s", stark_storage_state_str(states[i]));
         TEST_ASSERT_TRUE_MESSAGE(ui_port_log_contains(want), want);
     }
-    /* The Storage app, mounted, Mount selected (inspected; regenerate the PPM
+    /* The Storage app, mounted, Mount selected, write test at 42 % (inspected; regenerate the PPM
      * by changing the hash, then look before pinning a new one). */
     uint64_t h = ui_port_fb_hash();
-    if (h != UINT64_C(0xd14de48693a42d56)) {
+    if (h != UINT64_C(0x8b4f34cc39b899f6)) {
         (void)ui_port_dump_ppm("ui_storage_mounted.ppm");
         printf("storage frame hash 0x%016llx (see ui_storage_mounted.ppm)\n",
                (unsigned long long)h);
     }
-    TEST_ASSERT_EQUAL_HEX64(UINT64_C(0xd14de48693a42d56), h);
+    TEST_ASSERT_EQUAL_HEX64(UINT64_C(0x8b4f34cc39b899f6), h);
+}
+
+static void test_wtest_crc32(void)
+{
+    /* The CRC-32/ISO-HDLC check value, and continuation across chunks. */
+    const uint8_t *msg = (const uint8_t *)"123456789";
+    TEST_ASSERT_EQUAL_HEX32(0xCBF43926u, storage_wtest_crc32(0, msg, 9));
+    TEST_ASSERT_EQUAL_HEX32(0xCBF43926u,
+                            storage_wtest_crc32(storage_wtest_crc32(0, msg, 4), msg + 4, 5));
 }
 
 int main(void)
@@ -180,5 +215,6 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_status_glyph_and_bridge);
     RUN_TEST(test_storage_app);
+    RUN_TEST(test_wtest_crc32);
     return UNITY_END();
 }

@@ -160,6 +160,19 @@ class ForbidBetween(unittest.TestCase):
         self.assertTrue(any("end not found" in m for m in self.run_check("ejected\n")))
 
 
+class ExpectRe(unittest.TestCase):
+    def check(self, log):
+        return emu.check_log({"name": "t", "end_ms": 1, "expect": ["start"],
+                              "expect_re": [r"ok frames=[1-9]"]}, log, GDB_OK)
+
+    def test_matches_after_expect(self):
+        self.assertEqual(self.check("start\nok frames=12\n"), [])
+
+    def test_zero_or_before_expect_fails(self):
+        self.assertTrue(self.check("start\nok frames=0\n"))
+        self.assertTrue(self.check("ok frames=3\nstart\n"))
+
+
 class Images(unittest.TestCase):
     def test_mismatch(self):
         self.assertIsNone(emu.image_mismatch({}, "production"))

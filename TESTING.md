@@ -156,7 +156,7 @@ commit. Reserved prefixes:
 | `diag:` | `stark_diag` | `diag: heap=228412 min=224000 fps=30.0 drops=0 overruns=0` (STARK-0109; `heap=` stays first) |
 | `dialog:` | `stark_ui` dialogs | `dialog: open "Confirm"` / `dialog: ok` / `dialog: cancel` (STARK-0105) |
 | `storage:` | `stark_storage` | `storage: no card` / `storage: mounted sdspi total=<kB> free=<kB>` / `storage: card removed` / `storage: ejected` (STARK-0201/0202; one line per state change) |
-| `storageapp:` | Storage app | `storageapp: status mounted` / `storageapp: eject requested` / `storageapp: mount requested` (STARK-0202) |
+| `storageapp:` | Storage app | `storageapp: status mounted` / `storageapp: eject requested` / `storageapp: mount requested` (STARK-0202) / `storageapp: wtest ok bytes=102400 crc=<hex> frames=<n>` / `storageapp: wtest failed: <err> at <offset>` (STARK-0203) |
 
 **Scenario budget:** ≤ 20 s of emulated time each. Emulator scenarios are free and
 all run on every push and pull request. (Wokwi's quota once forced a push-only smoke

@@ -27,6 +27,8 @@ const char *stark_err_str(stark_err_t err)
             return "I/O error";
         case STARK_ERR_STATE:
             return "Invalid state";
+        case STARK_ERR_NO_SPACE:
+            return "No space";
     }
     /* Unreachable if all enum values are handled; GCC/Clang warn with -Wswitch-enum */
     return "Unknown error";

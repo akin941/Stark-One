@@ -2,14 +2,21 @@
 # production-image boot is a no-card boot (ADR-0018): the storage task
 # reports `storage: no card` after the UI is up, keeps retrying silently
 # (one line per state change, never one per attempt), and the device stays
-# fully navigable. ROADMAP V0.2 exit 4, software half.
+# fully navigable; the Storage app's write test refuses to run (STARK-0203).
+# ROADMAP V0.2 exit 4, software half.
 name = "emu-v02-storage-boot"
-end_ms = 7500
+end_ms = 9200
 heap_min = 200000
 presses = [
     { key = "DOWN", at_ms = 600, hold_ms = 60 },
     { key = "UP", at_ms = 900, hold_ms = 60 },
     { key = "OK", at_ms = 6600, hold_ms = 60 },
+    { key = "BACK", at_ms = 7000, hold_ms = 60 },
+    { key = "UP", at_ms = 7300, hold_ms = 60 },     # wraps to Storage
+    { key = "OK", at_ms = 7600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 7900, hold_ms = 60 },
+    { key = "DOWN", at_ms = 8100, hold_ms = 60 },
+    { key = "OK", at_ms = 8400, hold_ms = 60 },
 ]
 expect = [
     "boot: ui_ready in ",
@@ -17,8 +24,13 @@ expect = [
     'menu: sel=2 "Diagnostics"',
     'menu: sel=1 "About"',
     "app: start about",
+    "app: stop about",
+    "storageapp: status no card",
+    "app: start storage",
+    'menu: sel=3 "Write test (100 kB)"',
+    "storageapp: wtest refused: no card",
 ]
-forbid = ["storage: mounted"]
+forbid = ["storage: mounted", "storageapp: wtest start"]
 # Two retries fall inside end_ms (CONFIG_STARK_STORAGE_RETRY_MS = 3000):
 # neither may log again.
 forbid_after = [{ after = "storage: no card", text = "storage: no card" }]

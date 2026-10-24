@@ -18,11 +18,6 @@ config STARK_STORAGE_PROBE_MS
         While a card is mounted, it is asked (CMD13) this often whether it
         is still there; an I/O error also triggers a probe at once.
 
-config STARK_STORAGE_MAX_FILES
-    int "Storage: files open at once"
-    range 1 8
-    default 4
-
 config STARK_STORAGE_TASK_PRIO
     int "Storage task priority"
     range 1 4
