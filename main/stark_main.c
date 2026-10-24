@@ -9,7 +9,9 @@
 #include "stark_display.h"
 #include "stark_event.h"
 #include "stark_input.h"
+#include "stark_settings.h"
 #include "stark_storage.h"
+#include "settings_apply.h"
 #include "storage_ui.h"
 #include "stark_app.h"
 #include "app_registry.h"
@@ -80,6 +82,10 @@ void app_main(void)
         return;
     }
 
+    /* Never fails the boot: NVS trouble means defaults (STARK-0204). Early,
+     * so the values are known before the services that use them start. */
+    (void)stark_settings_init();
+
     /* Boot-critical: nothing else is meaningful without the panel
      * (ARCHITECTURE §7) — a failure is a logged panic, not a black screen. */
     err = stark_display_init();
@@ -100,6 +106,13 @@ void app_main(void)
     err = stark_input_start();
     if (err != STARK_OK) {
         STARK_LOGE("boot", "input start failed: %s", stark_err_str(err));
+    }
+    /* Brightness, volume, key repeat and log level reach their services;
+     * later changes follow via STARK_SYS_SETTING. The `key` tag rule above is
+     * re-applied with the log level. */
+    err = settings_apply_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "settings apply failed: %s", stark_err_str(err));
     }
 
     /* The UI task is the event bus's one consumer from here on (ARCHITECTURE §7). */

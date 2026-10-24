@@ -37,6 +37,11 @@ stark_err_t stark_buzzer_play(const stark_buzzer_note_t *notes, size_t count);
 /* Silences the buzzer and drops the rest of any sequence. */
 void stark_buzzer_stop(void);
 
+/* Volume 0 (Off: requests still succeed, silently) .. 3 (High, the V0
+ * level), from the next note on (STARK-0204). STARK_ERR_INVALID_ARG above 3.
+ * Callable before init. */
+stark_err_t stark_buzzer_set_volume(uint8_t level);
+
 /* UI feedback (TASKS.md STARK-0020): a 20 ms click on a selection change,
  * a 60 ms low buzz on a rejected action (BACK at the root, OK with nothing
  * selectable). */

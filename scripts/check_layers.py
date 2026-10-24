@@ -39,6 +39,7 @@ LAYERS = {
     "stark_buzzer": 3,
     "stark_diag": 3,
     "stark_storage": 3,  # L2 core + L3 task
+    "stark_settings": 3,  # L2 core + L3 NVS port
     "stark_ui": 4,
     "stark_app": 4,
 }
@@ -51,6 +52,7 @@ SIDEWAYS = {
     ("stark_app", "stark_ui"),  # the launcher is a stark_ui menu
     ("stark_diag", "stark_event"),  # event-drop counters + the sample event (STARK-0109)
     ("stark_storage", "stark_event"),  # state-change events (STARK-0201)
+    ("stark_settings", "stark_event"),  # change events (STARK-0204)
 }
 
 PURE = {"stark_err", "stark_gfx"}

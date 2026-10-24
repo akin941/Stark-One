@@ -141,6 +141,35 @@ class Pokes(unittest.TestCase):
                             "pokes": [{"at_ms": 1, "var": "s_core", "value": 0}]}, 1)
 
 
+class Control(unittest.TestCase):
+    SCEN = {"name": "t", "end_ms": 900,
+            "control": [{"at_ms": 300, "command": "reset"},
+                        {"at_ms": 50, "phase": 1, "command": "erase-region 0x9000 0x6000"},
+                        {"at_ms": 400, "phase": 1, "command": "reset"}],
+            "presses": [{"key": "OK", "at_ms": 100}, {"key": "UP", "at_ms": 100, "phase": 2}]}
+
+    def test_split_phases(self):
+        phases = emu.split_phases(self.SCEN)
+        self.assertEqual([p["end_ms"] for p in phases], [300, 400, 900])
+        self.assertEqual([len(p["presses"]) for p in phases], [1, 0, 1])
+        self.assertEqual([len(p["control"]) for p in phases], [0, 1, 0])  # resets removed
+
+    def test_no_reset_is_one_phase(self):
+        self.assertEqual(len(emu.split_phases({"name": "t", "end_ms": 5})), 1)
+
+    def test_reset_in_wrong_phase(self):
+        with self.assertRaises(SystemExit):
+            emu.split_phases({"name": "t", "end_ms": 9,
+                              "control": [{"at_ms": 1, "phase": 1, "command": "reset"}]})
+
+    def test_control_command_in_gdb(self):
+        s = emu.gdb_script(emu.split_phases(self.SCEN)[1], 1, 7777)
+        self.assertIn("if $ctl0 == 0 && now_ms >= 50", s)
+        self.assertIn("create_connection(('127.0.0.1', 7777))", s)
+        self.assertIn("b'erase-region 0x9000 0x6000\\n'", s)
+        self.assertNotIn("reset", s)
+
+
 class ForbidBetween(unittest.TestCase):
     RULE = {"forbid_between": [{"after": "ejected", "before": "mount requested",
                                 "text": "mounted x"}]}

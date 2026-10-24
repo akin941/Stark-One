@@ -1,0 +1,26 @@
+# STARK-0204 on the production image: settings in NVS (emulated flash)
+# survive a chip reset over the esp-emu control channel. Phase 0 boots on a
+# blank store: defaults, and the schema is written. Phase 1 (after a reset)
+# loads from NVS. Then the NVS partition (0x9000, 24 kB) is erased over the
+# control channel and the chip reset again: phase 2 is back to defaults — a
+# wiped store is recovered, never fatal. Every phase applies the values.
+name = "emu-v02-settings-store"
+end_ms = 1500
+heap_min = 200000
+control = [
+    { at_ms = 1200, command = "reset" },
+    { at_ms = 900, phase = 1, command = "erase-region 0x9000 0x6000" },
+    { at_ms = 1200, phase = 1, command = "reset" },
+]
+expect = [
+    "settings: loaded brightness=100 volume=3 repeat=1 loglvl=2 (defaults)",
+    "settings: applied brightness=100",
+    "settings: applied loglvl=2",
+    "boot: ui_ready in ",
+    "settings: loaded brightness=100 volume=3 repeat=1 loglvl=2 (nvs)",
+    "settings: applied brightness=100",
+    "boot: ui_ready in ",
+    "settings: loaded brightness=100 volume=3 repeat=1 loglvl=2 (defaults)",
+    "boot: ui_ready in ",
+]
+forbid = ["settings: store unavailable", "invalid ("]

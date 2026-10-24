@@ -15,8 +15,12 @@ expect = [
     "diag: heap=",
     'menu: sel=2 "Diagnostics"',
     "app: start diagnostics",
-    "diagnostics: heap=3",   # a real sample from the first refresh on (not heap=0)
+    "diagnostics: heap=",
     "diagnostics: heap=",
     "diagnostics: heap=",
     "app: stop diagnostics",
 ]
+# A real sample from the first refresh on, never heap=0. (This used to be
+# the prefix "heap=3", which tied the scenario to the heap staying above
+# 300 kB; the bound itself is heap_min.)
+forbid = ["diagnostics: heap=0 "]

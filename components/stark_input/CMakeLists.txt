@@ -15,4 +15,5 @@ idf_component_register(
         stark_hal
         stark_log
         esp_timer
+        freertos
 )

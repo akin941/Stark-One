@@ -13,6 +13,7 @@
  */
 #include "stark_buzzer.h"
 #include <stdbool.h>
+#include "buzzer_volume.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -21,7 +22,6 @@
 #include "stark_hal_esp.h"
 
 #define BUZZER_CHANNEL 0 /* LEDC allocation: stark_hal.h */
-#define BUZZER_DUTY    50
 #define BUZZER_MIN_HZ  200
 #define BUZZER_MAX_HZ  10000
 #define BUZZER_MAX_MS  10000
@@ -36,6 +36,7 @@ static SemaphoreHandle_t s_lock;
 static esp_timer_handle_t s_timer;
 static bool s_ready;
 static bool s_has_pin;
+static uint8_t s_duty = 50; /* buzzer_volume_duty(BUZZER_VOLUME_MAX); under s_lock */
 static stark_buzzer_note_t s_seq[STARK_BUZZER_MAX_NOTES];
 static size_t s_len;
 static size_t s_next;         /* index of the note to start next */
@@ -46,12 +47,12 @@ static void sound(uint16_t hz)
     if (!s_has_pin) {
         return;
     }
-    if (hz == 0) {
+    if (hz == 0 || s_duty == 0) { /* volume Off: the sequence still runs, silently */
         (void)stark_hal_pwm_set_duty_pct(BUZZER_CHANNEL, 0);
         return;
     }
     (void)stark_hal_pwm_set_freq(BUZZER_CHANNEL, hz);
-    (void)stark_hal_pwm_set_duty_pct(BUZZER_CHANNEL, BUZZER_DUTY);
+    (void)stark_hal_pwm_set_duty_pct(BUZZER_CHANNEL, s_duty);
 }
 
 /* Caller holds s_lock: starts note s_next (or goes silent past the end)
@@ -138,6 +139,21 @@ stark_err_t stark_buzzer_tone(uint16_t hz, uint16_t ms)
         return STARK_ERR_INVALID_ARG; /* a tone, not a rest */
     }
     return stark_buzzer_play(&note, 1);
+}
+
+stark_err_t stark_buzzer_set_volume(uint8_t level)
+{
+    if (level > BUZZER_VOLUME_MAX) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (!s_ready) {
+        s_duty = buzzer_volume_duty(level);
+        return STARK_OK;
+    }
+    (void)xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_duty = buzzer_volume_duty(level); /* takes effect from the next note */
+    (void)xSemaphoreGive(s_lock);
+    return STARK_OK;
 }
 
 void stark_buzzer_stop(void)

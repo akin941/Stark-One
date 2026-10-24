@@ -303,7 +303,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | --- | --- | --- | --- |
 | 1 | `STARK_SYS_DIAG_SAMPLE` | `stark_diag` (STARK-0109) | — |
 | 2 | `STARK_SYS_STORAGE` | `stark_storage` (STARK-0201) | the new `stark_storage_state_t` |
-| 3 | `STARK_SYS_SETTING` | `stark_settings` (STARK-0204, planned) | the `stark_setting_t` that changed |
+| 3 | `STARK_SYS_SETTING` | `stark_settings` (STARK-0204) | the `stark_setting_t` that changed |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -436,7 +436,10 @@ bursts missed repeats, and a release seen after 500 ms without `LONG` yields `LO
 The timings are injected (`input_core_init(c, &timing)`, NULL = the defaults above,
 invalid combinations rejected), so the core stays Kconfig-free; the service passes
 `STARK_INPUT_REPEAT_DELAY_MS` / `_INTERVAL_MS` (Kconfig, ranges 150–1000 / 40–500),
-tuned on hardware at V1. Runtime adjustment arrives with settings at V0.2.
+tuned on hardware at V1. Since STARK-0204 the repeat timing is also a setting:
+`stark_input_set_timing(delay, interval)` (any task) validates with the core's rule and
+hands it to the sampler, which applies it before its next sample through the pure
+`input_core_set_timing()` — keys keep their state.
 
 Service: a 5 ms `esp_timer` samples the six GPIOs (active-low, internal pull-up),
 runs the core, publishes `STARK_EVT_KEY` events. No ISR, no per-pin interrupts —
@@ -451,6 +454,7 @@ stark_err_t stark_buzzer_play(const stark_buzzer_note_t *notes, size_t count); /
 void        stark_buzzer_stop(void);
 void        stark_buzzer_click(void);   /* 20 ms, 2 kHz: menu selection change */
 void        stark_buzzer_reject(void);  /* 60 ms, 300 Hz: BACK at root, nothing to select */
+stark_err_t stark_buzzer_set_volume(uint8_t level); /* 0 Off .. 3 High = 0/5/15/50 % duty (STARK-0204) */
 ```
 
 Non-blocking (STARK-0020): a request starts the first note and returns; a one-shot
@@ -724,12 +728,35 @@ pulls it up before that), and each mount attempt only re-initialises the card
 (`sdmmc_card_init`) and mounts its FAT volume (`esp_vfs_fat_register` + `f_mount`). The
 emulator storage test image substitutes the whole component (ADR-0018 §3).
 
+### 6.9c `stark_settings` (L3) — STARK-0204
+
+```c
+stark_err_t stark_settings_init(void);                       /* never fails the boot */
+uint8_t     stark_settings_get(stark_setting_t key);         /* any task */
+stark_err_t stark_settings_set(stark_setting_t key, uint8_t value); /* UI task */
+stark_err_t stark_settings_commit(void);
+stark_err_t stark_settings_restore_defaults(void);
+```
+
+Four u8 settings in the NVS namespace `stark` — brightness (10–100 step 10, default 100),
+volume (0–3, 3), key repeat (Slow / Normal = Kconfig / Fast, 1), log level (Error … Debug,
+Info) — plus `schema` = 1. The table, validation and load/commit logic are the pure
+`settings_core.c` over an injected store (host-tested against a fake NVS with failure
+switches); `stark_settings.c` maps NVS onto it. Load falls back to the default key by key,
+rewrites invalid values at the next commit, erases and re-creates a full or outdated NVS
+partition (IDF's recovery; NVS holds only settings) and drops to RAM only when the store is
+unusable, logging one `settings: loaded … (nvs|defaults|ram)` line. `set` publishes
+`STARK_SYS_SETTING` only on a change; nothing reaches flash until `commit` (the Settings
+app commits on exit). The composition root (`main/settings_apply.c`) applies every value at
+boot and on each change: backlight, buzzer volume, input repeat timing and log level (the
+`key` tag stays DEBUG at Info/Debug), logging `settings: applied <name>=<v>`.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
 | `stark_storage` | V0.2 | Mount state machine, task, medium port, removal, eject and file helpers are implemented (§6.9b, STARK-0201…0203); the log writer lands with STARK-0206 |
-| `stark_settings` | V0.2 | Typed key/value over NVS with defaults and change notifications — TASKS.md STARK-0204 |
+| `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); the Settings app is STARK-0205 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
@@ -743,10 +770,12 @@ app_main()
  ├─ stark_log_init()                       – early, UART0 console
  ├─ stark_board_init()                     – clocks, GPIO defaults, SPI2 bus
  ├─ stark_event_init()                     – bus + lock + semaphore
+ ├─ stark_settings_init()                  – NVS load, defaults on any failure (STARK-0204)
  ├─ stark_display_init()                   – panel, band buffers, backlight on
  │    └─ on failure: stark_panic()         – nothing else is meaningful without it
  ├─ stark_buzzer_init()                    – LEDC channel
  ├─ stark_input_start()                    – 5 ms sampling timer
+ ├─ settings_apply_init()                  – apply settings to display/buzzer/input/log
  ├─ stark_ui_init()                        – status bar + root menu screen
  ├─ stark_app_init(stark_apps, n)          – log the registry, push the launcher
  ├─ xTaskCreate(stark_ui_task, prio 5, 6 kB stack, core 1)
@@ -835,7 +864,7 @@ to set differently (ADR-0010).
   | L0 | `stark_board` |
   | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018) |
   | L2 | `stark_gfx` (the only all-pure component) |
-  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task) |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port) |
   | L4 | `stark_ui`, `stark_app` |
   | L5 | every `apps/app_*` |
   | root | `main` — the composition root, may require anything |
@@ -843,7 +872,8 @@ to set differently (ADR-0010).
   Same-layer allowlist: `stark_input → stark_event` (the input service publishes key
   events), `stark_app → stark_ui` (the launcher is a `stark_ui` menu) and
   `stark_diag → stark_event` (event-drop counters and the sample event, STARK-0109) and
-  `stark_storage → stark_event` (state-change events, STARK-0201). Pure
+  `stark_storage → stark_event` (state-change events, STARK-0201) and
+  `stark_settings → stark_event` (change events, STARK-0204). Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with
