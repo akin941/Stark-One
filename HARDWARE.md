@@ -74,8 +74,8 @@ deliberately.
 | `SD_CS` | 8 | V0.2 | microSD shares SPI2 with the panel |
 | `I2C_SDA` | 1 | V0.4 | Shared I²C: NFC, module ID EEPROM, sensors, lab I²C |
 | `I2C_SCL` | 2 | V0.4 | |
-| `IR_TX` | 47 | V0.3 | RMT TX → IR LED driver |
-| `IR_RX` | 48 | V0.3 | RMT RX ← 38 kHz demodulator (TSOP-class) |
+| `IR_TX` | 47 | V0.3 | RMT TX → IR LED driver — in `stark_board` since STARK-0303 |
+| `IR_RX` | 48 | V0.3 | RMT RX ← 38 kHz demodulator (TSOP-class) — in `stark_board` since STARK-0303 |
 | `SUBGHZ_CS` | 40 | V0.6 | CC1101-class module on SPI2 |
 | `SUBGHZ_GDO0` | 41 | V0.6 | |
 | `SUBGHZ_GDO2` | 42 | V0.6 | |

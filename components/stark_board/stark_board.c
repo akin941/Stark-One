@@ -14,7 +14,7 @@ stark_err_t stark_board_validate(const stark_board_pins_t *pins)
     }
 
     /* Every scalar/array pin field, upper-bounded generously. */
-    int assigned[7 + STARK_KEY_COUNT + 5];
+    int assigned[7 + STARK_KEY_COUNT + 7];
     int count = 0;
 
 #define STARK_BOARD_COLLECT(pin)                                                                   \
@@ -39,6 +39,8 @@ stark_err_t stark_board_validate(const stark_board_pins_t *pins)
     STARK_BOARD_COLLECT(pins->sd_cs);
     STARK_BOARD_COLLECT(pins->i2c_sda);
     STARK_BOARD_COLLECT(pins->i2c_scl);
+    STARK_BOARD_COLLECT(pins->ir_tx);
+    STARK_BOARD_COLLECT(pins->ir_rx);
 
 #undef STARK_BOARD_COLLECT
 

@@ -37,6 +37,8 @@ static const stark_board_pins_t s_pins = {
     .sd_cs = 8,
     .i2c_sda = 1,
     .i2c_scl = 2,
+    .ir_tx = 47, /* HARDWARE.md §2.2; STARK-0303 */
+    .ir_rx = 48, /* also the DevKitC-1 v1.0 RGB LED: cosmetic flicker only */
     .tft_spi_hz = CONFIG_STARK_DISPLAY_SPI_HZ,
 };
 

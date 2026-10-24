@@ -23,6 +23,8 @@ static stark_board_pins_t good_map(void)
         .sd_cs = 8,
         .i2c_sda = 1,
         .i2c_scl = 2,
+        .ir_tx = 47,
+        .ir_rx = 48,
         .tft_spi_hz = 20000000,
     };
     return p;
@@ -48,6 +50,17 @@ void test_stark_board_validate_rejects_reserved_pin(void)
     TEST_ASSERT_NOT_EQUAL(STARK_OK, stark_board_validate(&p));
 }
 
+void test_stark_board_validate_checks_ir_pins(void)
+{
+    stark_board_pins_t p = good_map();
+    p.ir_rx = p.buzzer; /* STARK-0303: IR pins join the collision check */
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_board_validate(&p));
+    p = good_map();
+    p.ir_tx = -1;
+    p.ir_rx = -1; /* a board without IR */
+    TEST_ASSERT_EQUAL(STARK_OK, stark_board_validate(&p));
+}
+
 void test_stark_board_validate_rejects_null(void)
 {
     TEST_ASSERT_NOT_EQUAL(STARK_OK, stark_board_validate(NULL));
@@ -66,6 +79,7 @@ int main(void)
     RUN_TEST(test_stark_board_validate_accepts_good_map);
     RUN_TEST(test_stark_board_validate_rejects_colliding_map);
     RUN_TEST(test_stark_board_validate_rejects_reserved_pin);
+    RUN_TEST(test_stark_board_validate_checks_ir_pins);
     RUN_TEST(test_stark_board_validate_rejects_null);
     return UNITY_END();
 }

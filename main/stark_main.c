@@ -9,6 +9,7 @@
 #include "stark_display.h"
 #include "stark_event.h"
 #include "stark_input.h"
+#include "stark_ir.h"
 #include "stark_settings.h"
 #include "stark_storage.h"
 #include "settings_apply.h"
@@ -153,5 +154,12 @@ void app_main(void)
     }
     if (err != STARK_OK) {
         STARK_LOGE("boot", "storage init failed: %s", stark_err_str(err));
+    }
+
+    /* Not boot-critical; receive stays off until an app asks (STARK-0303,
+     * SECURITY_SCOPE §4.1). */
+    err = stark_ir_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "ir init failed: %s", stark_err_str(err));
     }
 }

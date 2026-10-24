@@ -53,6 +53,10 @@ Scenario files (test/emu/*.toml):
                                         # channel at at_ms. end_ms applies to the
                                         # last phase; presses / pokes / control
                                         # take an optional `phase` (default 0).
+  rmt_loopback = "0:2"                  # optional; esp-emu --rmt-loopback TX:RX — the
+                                        # first RMT TX channel's baseband into the
+                                        # first RX channel (verified pair on
+                                        # esp32s3; ADR-0019 §2: no carrier, no light)
   image = "storage"                     # optional; the firmware it needs (below)
   pokes = [ { at_ms = 2500, var = "emu_medium_present", value = 0 } ]
                                         # optional, storage image only: a global
@@ -201,6 +205,21 @@ def split_phases(scenario):
     return phases
 
 
+def emu_command(args, scenario, firmware, port, control_port, wall, save_state):
+    """The esp-emu command line for one phase."""
+    cmd = [args.emu, "--chip", "esp32s3", "--firmware", firmware,
+           "--log-color", "never", "--gdb", str(port), "--gdb-halt",
+           "--control-tcp", "127.0.0.1:%d" % control_port, "--timeout", "%ds" % wall]
+    loop = scenario.get("rmt_loopback")
+    if loop is not None:
+        if not re.match(r"^\d+:\d+$", str(loop)):
+            raise SystemExit("%s: rmt_loopback must be \"TX:RX\"" % scenario["name"])
+        cmd += ["--rmt-loopback", str(loop)]
+    if save_state:
+        cmd.append("--save-state")
+    return cmd
+
+
 def image_mismatch(scenario, image):
     """Failure message when a scenario needs another firmware image, else None."""
     want = scenario.get("image", "production")
@@ -323,11 +342,7 @@ def run_scenario(path, args):
         control_port = free_port()
         script_path = Path(args.log_dir) / ("%s.%d.gdb" % (name, k))
         script_path.write_text(gdb_script(phase, port, control_port))
-        cmd = [args.emu, "--chip", "esp32s3", "--firmware", firmware,
-               "--log-color", "never", "--gdb", str(port), "--gdb-halt",
-               "--control-tcp", "127.0.0.1:%d" % control_port, "--timeout", "%ds" % wall]
-        if len(phases) > 1:
-            cmd.append("--save-state")
+        cmd = emu_command(args, scenario, firmware, port, control_port, wall, len(phases) > 1)
         with open(log_path, "a") as log_f, open(gdb_path, "a") as gdb_f:
             log_f.write("--- phase %d ---\n" % k)
             log_f.flush()
