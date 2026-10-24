@@ -189,6 +189,8 @@ that milestone before a scenario depends on them.
 | V0.2 | `v02-settings-store.toml`, `v02-settings-persist.toml` | Set in the Settings app, chip reset over the esp-emu control channel, value loaded and applied (NVS in emulated flash) |
 | V0.2 | `storage/*.toml` (storage test image, ADR-0018) | `v02-storage-mount`, `v02-remove-insert`, `v02-eject`, `v02-files`, `v02-write-under-render`, `v02-remove-mid-write`, `v02-unusable-card`, `v02-log-file` — software logic only; the physical card and shared bus are V1 HIL |
 | V0.2 | `soak/v02-soak.toml` (storage image) | 60 s of V0.2 use: `drops=0`, root heap delta ≤ 1 kB |
+| V0.3 | `v03-ir-rx.toml`, `v03-ir-loopback.toml` (+ a no-loopback run) | Production image: RMT channels created; App Test's IR self-test encodes every protocol → RMT TX → esp-emu `--rmt-loopback 0:2` → RMT RX → decoded to the sent values. Baseband only: no carrier, no light (ADR-0019) |
+| V0.3 | `storage/v03-*.toml`, `soak/v03-soak.toml` | Storage image + loopback: capture → save → browse → replay → captured again, every seeded protocol and a RAW signal; 60 s soak |
 | V0.7 | `v07-i2c-scan.toml` | Scanner finds esp-emu's built-in I²C EEPROM (and nothing else) |
 | V0.7 | `v07-uart-loopback.toml` | UART bridge round-trips via esp-emu's `--uart1-tcp` side channel |
 
@@ -227,6 +229,12 @@ with the worst band-flush stall during SD commands measured on a logic analyser;
 pulled mid-write → error surfaced, no panic, reinsertion remounts; boots with no card, a
 non-FAT card and a faulty card stay usable; panel + SD stable on SPI2 at the chosen
 clocks; SD MISO released when its CS is high.
+
+V0.3 IR gates deferred here (ADR-0019, ROADMAP V1 exit 9, `docs/bringup/v1-ir.md`): LED
+drive and current; carrier frequency and 33 % duty per protocol on a logic analyser;
+receiver demodulation; ≥ 20 vectors per protocol recorded from our own remotes; capture →
+replay → own device responds; raw replay; range, angle, ambient light, noise, echo; GPIO
+47/48 signal integrity.
 
 Radio milestones add their own: IR range and protocol fidelity against our own remotes;
 NFC read reliability over 20 attempts per tag; Sub-GHz RSSI versus distance, and a

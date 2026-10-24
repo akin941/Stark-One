@@ -304,6 +304,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 1 | `STARK_SYS_DIAG_SAMPLE` | `stark_diag` (STARK-0109) | — |
 | 2 | `STARK_SYS_STORAGE` | `stark_storage` (STARK-0201) | the new `stark_storage_state_t` |
 | 3 | `STARK_SYS_SETTING` | `stark_settings` (STARK-0204) | the `stark_setting_t` that changed |
+| 4 | `STARK_SYS_IR` | `stark_ir` (STARK-0303, planned) | `STARK_IR_EVT_RX` / `_TX_DONE` / `_TX_FAILED` |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -774,6 +775,7 @@ boot and on each change: backlight, buzzer volume, input repeat timing and log l
 | --- | --- | --- |
 | `stark_storage` | V0.2 | Implemented (§6.9b, STARK-0201…0203, 0206): mount state machine, task, medium port, removal, eject, file helpers, log file |
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
+| `stark_ir` | V0.3 | RMT RX/TX on GPIO 48/47 with pure codecs (NEC, NECX, RC5, RC6-0, SIRC), a raw `.ir` format and a transmit gate — specified in TASKS.md STARK-0301…0307 (ADR-0019) |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |

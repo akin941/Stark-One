@@ -64,6 +64,7 @@ bump is a deliberate change with a full emulator run — never "latest".
 | In-process chip reset over `--control-tcp` (STARK-0204) | ⚠️ the reset works, but the 0.44.0 GDB stub drops its connection, so key injection cannot continue across it — hence the phase-per-run mechanism above |
 | `erase-region` over `--control-tcp` (STARK-0204) | ✅ `control: erased flash 24576 bytes at 0x9000` — the NVS partition wiped mid-run; sent fire-and-forget, because GDB holds the CPU while the command is written and the emulator answers only once it resumes |
 | A "pulled" card's sector I/O failing (storage test image, STARK-0207) | ✅ the test medium re-registers the volume's diskio with WL calls gated on `emu_medium_present`: a pull mid-write fails the next sector write (`wtest failed: I/O error at 20480`) exactly as a removed card would |
+| RMT TX → RX loopback (`--rmt-loopback`, V0.3 planning) | ✅ `0:2` on esp32s3 (first TX → first RX channel): ESP-IDF's `ir_nec_transceiver` example decodes its own NEC frames; `0:4` delivers nothing. Baseband, exact durations, no carrier (ADR-0019 §2) |
 | GDB writes to a RAM global (`pokes`, storage test image, STARK-0202) | ✅ `emu_medium_present` flips stick; removal and reinsertion land at the scheduled emulated time |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 
@@ -202,6 +203,27 @@ the harness flips with GDB (`pokes`). Its partition table adds that FAT partitio
 exactly that component and the partition-table keys. It is the only firmware other than
 the production merged image that CI runs, and production code contains no reference to
 it (no conditional, no fake path, no test symbol).
+
+### 3.6 V0.3 — infrared (ADR-0019)
+
+V0.3 completion means **IR software / protocol verified**; optical IR is never claimed
+below V1.
+
+**The esp-emu RMT loopback, exactly.** `--rmt-loopback 0:2` on the esp32s3 model feeds
+the first RMT TX channel's symbols into the first RX channel (verified with ESP-IDF's
+`ir_nec_transceiver` example: the sent NEC address/command decoded back; the TRM index
+`0:4` delivers nothing). What arrives is the **pre-carrier baseband** with exact
+durations. It proves the production firmware's encoder, RMT TX, RMT RX, symbol
+conversion, decoder, events, app and storage work together. It does **not** prove a
+carrier was generated, light left an LED, a receiver demodulated it, or that timings
+survive real hardware — tolerance is proven on the host with jittered spec-derived
+vectors.
+
+| Exit criterion | Host | Emulator (production / storage image, loopback) | Physical, deferred to HIL (V1) |
+| --- | --- | --- | --- |
+| 1. ≥ 20 vectors per protocol | ≥ 20 spec-derived vectors per protocol, tolerance edges, malformed frames, exhaustive round trips | every protocol encoded → loopback → decoded | ≥ 20 vectors recorded from our own remotes |
+| 2. Capture, save, replay | name generation, raw format | capture → save → browse → replay → captured again; transmit gated, confirmed, logged | own remote → receiver → save → LED → own device responds |
+| 3. Raw replay | raw format round trip + fuzzing | RAW seed replayed and captured back | an unsupported own remote |
 
 ---
 
