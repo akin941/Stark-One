@@ -462,6 +462,25 @@ target_compile_options(run_ui_settings_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_settings_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_settings_tests PRIVATE unity)
 
+# The log capture ring, the rotation plan and the log file writer (STARK-0206).
+add_executable(run_log_ring_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_log_ring.c
+    ${STARK_COMPONENTS}/stark_log/log_ring.c
+)
+target_include_directories(run_log_ring_tests PRIVATE ${STARK_COMPONENTS}/stark_log)
+target_compile_options(run_log_ring_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_log_ring_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_log_ring_tests PRIVATE unity)
+
+add_executable(run_log_rotate_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_log_rotate.c
+    ${STARK_COMPONENTS}/stark_storage/log_rotate.c
+)
+target_include_directories(run_log_rotate_tests PRIVATE ${STARK_COMPONENTS}/stark_storage)
+target_compile_options(run_log_rotate_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_log_rotate_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_log_rotate_tests PRIVATE unity)
+
 # storage_core.c is linked only for stark_storage_state_str(); this copy is
 # built without coverage so the state machine's own suite owns its figure.
 add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_core.c)
@@ -496,6 +515,24 @@ target_include_directories(run_storage_file_tests PRIVATE ${STARK_COMPONENTS}/st
 target_compile_options(run_storage_file_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_storage_file_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_storage_file_tests PRIVATE unity)
+
+add_library(storage_file_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_file.c
+    ${STARK_COMPONENTS}/stark_storage/storage_io_posix.c ${STARK_COMPONENTS}/stark_storage/log_rotate.c)
+target_include_directories(storage_file_nocov PRIVATE ${STARK_COMPONENTS}/stark_storage
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include)
+target_compile_options(storage_file_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
+add_executable(run_storage_log_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_storage_log.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/fault_io.c
+    ${STARK_COMPONENTS}/stark_storage/storage_log.c
+    $<TARGET_OBJECTS:storage_file_nocov>
+    $<TARGET_OBJECTS:storage_path_nocov>
+)
+target_include_directories(run_storage_log_tests PRIVATE ${STARK_COMPONENTS}/stark_storage
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include)
+target_compile_options(run_storage_log_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_storage_log_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_storage_log_tests PRIVATE unity)
 
 add_executable(run_ui_storage_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_storage.c
@@ -552,6 +589,9 @@ add_test(NAME stark_settings_core_tests COMMAND run_settings_core_tests)
 add_test(NAME stark_buzzer_volume_tests COMMAND run_buzzer_volume_tests)
 add_test(NAME stark_storage_path_tests COMMAND run_storage_path_tests)
 add_test(NAME stark_storage_file_tests COMMAND run_storage_file_tests)
+add_test(NAME stark_storage_log_tests COMMAND run_storage_log_tests)
+add_test(NAME stark_log_ring_tests COMMAND run_log_ring_tests)
+add_test(NAME stark_log_rotate_tests COMMAND run_log_rotate_tests)
 add_test(NAME stark_ui_storage_tests COMMAND run_ui_storage_tests)
 add_test(NAME stark_ui_settings_tests COMMAND run_ui_settings_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)

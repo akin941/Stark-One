@@ -716,6 +716,21 @@ by injection: the firmware passes POSIX over VFS/FATFS, host tests the same POSI
 over a temp directory or a fault-injecting wrapper. Eject is refused while a handle is
 open.
 
+**Log file (STARK-0206).** `stark_log_init()` installs an `esp_log_set_vprintf()` hook
+that passes every console line through unchanged and copies it (truncated at 160
+bytes) into a static ring of `STARK_LOG_RING_BYTES` (4096; 0 = off) under a spinlock —
+no allocation, no blocking; whole oldest lines are dropped and counted when it is full
+(pure `log_ring.c`). `stark_log_ring_take()` drains it. The storage task, outside its
+lock, appends the ring to `logs/stark.log` every `STARK_STORAGE_LOG_FLUSH_MS` while a
+card is mounted and before every eject, through the file helpers (open/append/close per
+flush, so a removal loses at most one flush), marking losses with `--- <n> log lines
+dropped ---`. Before an append would pass `STARK_STORAGE_LOG_FILE_KB` it rotates
+(`stark.log` → `stark.1.log` …, at most `STARK_STORAGE_LOG_FILES` files; pure plan in
+`log_rotate.c`; a failing step appends instead and retries next flush). The writer
+(`storage_log.c`) logs nothing itself; the task announces `storage: logging to
+logs/stark.log` once per mount and an eject reports `storage: ejected log=<bytes>`.
+Boot lines logged before the mount wait in the ring, so they reach the file.
+
 Eject and mount (STARK-0202) are requests the storage task carries out. Eject unmounts
 (`storage: ejected`), bumping the mount generation; it is refused while a file is open
 (`storage: eject refused: <n> open`, unchanged state re-published). An ejected card is
@@ -757,7 +772,7 @@ boot and on each change: backlight, buzzer volume, input repeat timing and log l
 
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
-| `stark_storage` | V0.2 | Mount state machine, task, medium port, removal, eject and file helpers are implemented (§6.9b, STARK-0201…0203); the log writer lands with STARK-0206 |
+| `stark_storage` | V0.2 | Implemented (§6.9b, STARK-0201…0203, 0206): mount state machine, task, medium port, removal, eject, file helpers, log file |
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
@@ -845,6 +860,8 @@ gains options adds its line there in the same change:
 | `STARK_STORAGE_RETRY_MS` / `_PROBE_MS` | 3000 / 1000 | Mount retry and presence probe periods (STARK-0201) |
 | `STARK_STORAGE_TASK_PRIO` / `_TASK_STACK` | 2 / 4096 | Storage task (STARK-0201); at most 4 files open at once (`STORAGE_FILE_SLOTS`, STARK-0203) |
 | `STARK_STORAGE_SD_KHZ` | 20000 | microSD clock ceiling on SPI2 (`stark_storage_medium`) |
+| `STARK_LOG_RING_BYTES` | 4096 | Console capture ring for the log file; 0 = off (STARK-0206) |
+| `STARK_STORAGE_LOG_FLUSH_MS` / `_LOG_FILE_KB` / `_LOG_FILES` | 1000 / 64 / 4 | Log file flush period, rotation size, files kept (STARK-0206) |
 | `STARK_LOG_LEVEL` | INFO | Maps to esp_log level |
 
 No runtime behaviour may depend on a Kconfig symbol that Wokwi and hardware would need

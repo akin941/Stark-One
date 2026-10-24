@@ -1,14 +1,15 @@
 /*
  * stark_log.h — L1 logging facade over esp_log
  * All firmware code uses STARK_LOG* macros instead of ESP_LOG* directly.
- * This allows adding a file sink at V0.2 without touching call sites.
+ * The file sink (STARK-0206) sits below the macros: no call site changes.
  */
 #pragma once
 
 #include "stark_err.h"
 #include "esp_log.h"
-#include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 /**
  * Initializes the logging subsystem.
@@ -16,6 +17,16 @@
  * Sets the default log level from Kconfig (CONFIG_LOG_DEFAULT_LEVEL).
  */
 void stark_log_init(void);
+
+/*
+ * The capture ring (STARK-0206): stark_log_init() also keeps a copy of every
+ * console line in a static ring of CONFIG_STARK_LOG_RING_BYTES (0 = off),
+ * dropping whole oldest lines when it is full. This moves whole lines,
+ * oldest first, into buf (at most max bytes) and returns the count;
+ * *dropped (optional) = lines lost since the previous take. Any task. The
+ * storage service drains it into the log file; nothing else should.
+ */
+size_t stark_log_ring_take(char *buf, size_t max, uint32_t *dropped);
 
 /**
  * Sets the log level for a specific tag.
