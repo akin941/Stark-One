@@ -40,6 +40,7 @@ LAYERS = {
     "stark_diag": 3,
     "stark_storage": 3,  # L2 core + L3 task
     "stark_settings": 3,  # L2 core + L3 NVS port
+    "stark_ir": 3,  # L2 codec core + L3 RMT port (STARK-0301…0304)
     "stark_ui": 4,
     "stark_app": 4,
 }
