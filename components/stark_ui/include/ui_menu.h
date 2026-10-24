@@ -25,11 +25,21 @@ typedef struct {
 /* OK (short press) on the selected item. */
 typedef void (*ui_menu_activate_fn)(size_t index, void *ctx);
 
+/* Optional value column (STARK-0205): text drawn right-aligned on the row,
+ * NULL for none. */
+typedef const char *(*ui_menu_value_fn)(size_t index, void *ctx);
+
+/* Optional LEFT/RIGHT handler (STARK-0205): dir -1 / +1 on the selected
+ * item; true when its value changed (the row is repainted). */
+typedef bool (*ui_menu_adjust_fn)(size_t index, int dir, void *ctx);
+
 typedef struct {
     stark_screen_t screen; /* push this; its name is the menu's title */
     const ui_menu_item_t *items;
     size_t count;
     ui_menu_activate_fn on_activate; /* optional */
+    ui_menu_value_fn value;          /* optional; set after ui_menu_init() */
+    ui_menu_adjust_fn adjust;        /* optional; set after ui_menu_init() */
     void *ctx;
     ui_menu_model_t model; /* private */
 } ui_menu_t;
@@ -41,7 +51,10 @@ typedef struct {
  * accent colour and skipped like disabled ones; when any item has an icon,
  * icons sit at the text inset and every label shifts right past them. Keys: UP/DOWN (press and
  * repeat) move with wrap, LEFT/RIGHT page by one window, OK activates;
- * BACK is left to stark_ui (pop). Every selection change logs
+ * BACK is left to stark_ui (pop). With `adjust` set, LEFT/RIGHT (press and
+ * repeat) adjust the selected item instead of paging (a refusal buzzes);
+ * with `value` set, each row shows its value right-aligned — a menu with
+ * neither renders exactly as before (STARK-0205). Every selection change logs
  * `menu: sel=<n> "<label>"` at INFO and repaints only the two rows involved
  * unless the window scrolled.
  */

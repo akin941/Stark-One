@@ -1,0 +1,57 @@
+# STARK-0205 on the production image (ROADMAP V0.2 exit 1, software half):
+# Settings -> brightness down twice, volume down once -> BACK commits both to
+# NVS -> reboot (phase 1, same flash) -> loaded and applied. Then Restore
+# defaults (confirmed) -> BACK -> reboot (phase 2) -> defaults loaded from
+# NVS. Launcher: UP from About wraps to Storage, UP again is Settings.
+name = "emu-v02-settings-persist"
+end_ms = 4000
+heap_min = 200000
+control = [
+    { at_ms = 3000, command = "reset" },
+    { at_ms = 4000, phase = 1, command = "reset" },
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },
+    { key = "UP", at_ms = 450, hold_ms = 60 },
+    { key = "OK", at_ms = 650, hold_ms = 60 },
+    { key = "LEFT", at_ms = 950, hold_ms = 60 },
+    { key = "LEFT", at_ms = 1150, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1350, hold_ms = 60 },
+    { key = "LEFT", at_ms = 1550, hold_ms = 60 },
+    { key = "BACK", at_ms = 1850, hold_ms = 60 },
+    # phase 1: restore defaults
+    { key = "UP", at_ms = 300, hold_ms = 60, phase = 1 },
+    { key = "UP", at_ms = 450, hold_ms = 60, phase = 1 },
+    { key = "OK", at_ms = 650, hold_ms = 60, phase = 1 },
+    { key = "UP", at_ms = 950, hold_ms = 60, phase = 1 },
+    { key = "OK", at_ms = 1250, hold_ms = 60, phase = 1 },
+    { key = "OK", at_ms = 1650, hold_ms = 60, phase = 1 },
+    { key = "BACK", at_ms = 2050, hold_ms = 60, phase = 1 },
+]
+expect = [
+    "settings: loaded brightness=100 volume=3 repeat=1 loglvl=2 (defaults)",
+    'menu: sel=11 "Settings"',
+    "app: start settings",
+    "settings: brightness=90",
+    "settings: applied brightness=90",
+    "settings: brightness=80",
+    'menu: sel=1 "Volume"',
+    "settings: volume=2",
+    "settings: applied volume=2",
+    "settings: committed n=2",
+    "app: stop settings",
+    "--- phase 1 ---",
+    "settings: loaded brightness=80 volume=2 repeat=1 loglvl=2 (nvs)",
+    "settings: applied brightness=80",
+    "settings: applied volume=2",
+    "app: start settings",
+    'menu: sel=4 "Restore defaults"',
+    'dialog: open "Restore defaults?"',
+    "dialog: ok",
+    "settings: brightness=100",
+    "settings: volume=3",
+    "settings: committed n=2",
+    "app: stop settings",
+    "--- phase 2 ---",
+    "settings: loaded brightness=100 volume=3 repeat=1 loglvl=2 (nvs)",
+]

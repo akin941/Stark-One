@@ -17,6 +17,7 @@ const stark_app_t *const stark_apps[] = {
     &app_apptest,
     &app_hello,
     &app_storage,
+    &app_settings,
 };
 /* clang-format on */
 

@@ -442,6 +442,26 @@ target_compile_options(run_buzzer_volume_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_buzzer_volume_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_buzzer_volume_tests PRIVATE unity)
 
+# The real Settings app on the UI port (STARK-0205), over the real settings
+# core (built without coverage here: its own suite owns that figure).
+add_library(settings_core_nocov OBJECT ${STARK_COMPONENTS}/stark_settings/settings_core.c)
+target_include_directories(settings_core_nocov PRIVATE ${STARK_COMPONENTS}/stark_settings
+    ${STARK_COMPONENTS}/stark_settings/include)
+target_compile_options(settings_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
+add_executable(run_ui_settings_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_settings.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_settings/app_settings.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_settings.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/fake_nvs.c
+    $<TARGET_OBJECTS:settings_core_nocov>
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_settings_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
+    ${STARK_COMPONENTS}/stark_settings ${STARK_COMPONENTS}/stark_settings/include)
+target_compile_options(run_ui_settings_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_settings_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_settings_tests PRIVATE unity)
+
 # storage_core.c is linked only for stark_storage_state_str(); this copy is
 # built without coverage so the state machine's own suite owns its figure.
 add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_core.c)
@@ -533,6 +553,7 @@ add_test(NAME stark_buzzer_volume_tests COMMAND run_buzzer_volume_tests)
 add_test(NAME stark_storage_path_tests COMMAND run_storage_path_tests)
 add_test(NAME stark_storage_file_tests COMMAND run_storage_file_tests)
 add_test(NAME stark_ui_storage_tests COMMAND run_ui_storage_tests)
+add_test(NAME stark_ui_settings_tests COMMAND run_ui_settings_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)
 add_test(NAME stark_ui_format_tests COMMAND run_ui_format_tests)
 

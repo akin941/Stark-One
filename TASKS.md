@@ -2069,6 +2069,12 @@ defaults → OK → BACK → reset → `settings: loaded brightness=100 volume=3
 3. App files ≤ 150 lines each; no edit under `components/` except the `ui_menu`
    extension named here.
 
+**As built.** Settings sorts before Storage in the Device category, so the launcher rows
+become Device header 10, Settings 11, Storage 12; `v01-hello` (three UPs from About) and the
+V0.1 soak (three DOWNs after each Hello visit) follow, as do the `sel=12 "Storage"` lines.
+The host test uses a UI-port `stark_settings` over the real core and the fake NVS
+(`test/host/port/ui_port_settings.c`); the opening frame is pinned after inspection.
+
 **Out of scope.** Wi-Fi/BT/time settings, per-app settings pages, a slider widget.
 
 **Resource limits.** App static RAM ≤ 1 kB; no heap.
