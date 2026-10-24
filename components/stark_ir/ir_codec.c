@@ -26,12 +26,18 @@ stark_err_t ir_encode(const ir_frame_t *f, ir_timings_t *out, uint32_t *carrier_
         case IR_PROTO_NECX:
             *carrier_hz = IR_NEC_CARRIER_HZ;
             return ir_nec_encode(f, out);
-        case IR_PROTO_UNKNOWN:
         case IR_PROTO_RC5:
+            *carrier_hz = IR_RC5_CARRIER_HZ;
+            return ir_rc5_encode(f, out);
         case IR_PROTO_RC6:
+            *carrier_hz = IR_RC6_CARRIER_HZ;
+            return ir_rc6_encode(f, out);
         case IR_PROTO_SIRC12:
         case IR_PROTO_SIRC15:
         case IR_PROTO_SIRC20:
+            *carrier_hz = IR_SIRC_CARRIER_HZ;
+            return ir_sirc_encode(f, out);
+        case IR_PROTO_UNKNOWN:
         case IR_PROTO_COUNT:
             break;
     }
@@ -44,7 +50,10 @@ ir_protocol_t ir_decode(const ir_timings_t *t, ir_frame_t *out)
         return IR_PROTO_UNKNOWN;
     }
     *out = (ir_frame_t){.protocol = IR_PROTO_UNKNOWN};
-    if (ir_nec_decode(t, out)) {
+    /* Fixed order (TASKS.md STARK-0302): the protocols with a distinctive
+     * leader first, RC5 — which has none — last. */
+    if (ir_nec_decode(t, out) || ir_rc6_decode(t, out) || ir_sirc_decode(t, out) ||
+        ir_rc5_decode(t, out)) {
         return out->protocol;
     }
     return IR_PROTO_UNKNOWN;

@@ -2383,7 +2383,7 @@ capture — decoded or not — round-trips through a documented text format for 
 
 **Files.** `components/stark_ir/{ir_rc5.c,ir_rc6.c,ir_sirc.c,ir_raw.{c,h},ir_codec.c,include/ir_codec.h,CMakeLists.txt}`,
 `scripts/gen_ir_vectors.py`, `test/host/vectors/ir_{rc5,rc6,sirc}_vectors.h`,
-`test/host/{test_ir_rc5.c,test_ir_rc6.c,test_ir_sirc.c,test_ir_raw.c,CMakeLists.txt}`,
+`test/host/{test_ir_codecs.c,test_ir_raw.c,CMakeLists.txt}`,
 `scripts/test_host.sh`, `docs/ir-format.md` (new: the `.ir` file format).
 
 **Deps.** STARK-0301.
@@ -2438,6 +2438,15 @@ two protocols — the documented order decides, tested), parser fuzzing.
 2. Exhaustive round trips pass; malformed streams rejected.
 3. `docs/ir-format.md` describes the format; parser fuzzing clean under ASan/UBSan.
 4. 100 % lines of the new core files.
+
+**As built.** One host file covers the five bi-phase/pulse-width tables
+(`test_ir_codecs.c`) instead of one per protocol. Bi-phase decoding classifies each
+duration as k units (k = round(d / unit), then a ± 25 % check against k units); RC6 tries
+the nominal unit first and then a unit estimated from its leader, used only when the
+leader's mark and space agree within 10 % — uniform ± 24 % scaling decodes, one pulse off
+by 26 % does not. The generator's "doubled edge" class was replaced by "over-long pulse":
+splitting a pulse only shifts the bi-phase phase and can produce another valid frame
+(RC5/RC6 carry no checksum), so it is not a malformed-input test.
 
 **Out of scope.** RC6 modes ≠ 0, RC-MM, Samsung, Panasonic/Kaseikyo, JVC, learning
 heuristics, compression of raw timings.

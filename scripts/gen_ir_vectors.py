@@ -43,6 +43,57 @@ def nec_repeat():
     return [9000, 2250, 560]
 
 
+def merge_halves(halves, unit):
+    """Half-bit levels -> durations: leading and trailing spaces dropped."""
+    while halves and halves[0] == 0:
+        halves = halves[1:]
+    out = []
+    i = 0
+    while i < len(halves):
+        j = i
+        while j < len(halves) and halves[j] == halves[i]:
+            j += 1
+        if not (halves[i] == 0 and j == len(halves)):
+            out.append((j - i) * unit)
+        i = j
+    return out
+
+
+def rc5(address, command, toggle=0):
+    """RC5: 14 bits MSB first, S1=1, S2=!cmd bit 6, one = space then mark."""
+    word = (1 << 13) | ((0 if command & 0x40 else 1) << 12) | (toggle << 11) | \
+        (address << 6) | (command & 0x3F)
+    halves = []
+    for i in range(13, -1, -1):
+        bit = (word >> i) & 1
+        halves += [0, 1] if bit else [1, 0]
+    return merge_halves(halves, 889)
+
+
+def rc6(address, command, toggle=0, mode=0, trailer=None, bad_bit=None):
+    """RC6: leader 2666/889, start 1, mode (3 bits), double trailer, 16 bits.
+    trailer / bad_bit build malformed frames for the reject vectors."""
+    halves = [1, 0]
+    for i in range(2, -1, -1):
+        bit = (mode >> i) & 1
+        halves += [1, 0] if bit else [0, 1]
+    halves += trailer if trailer is not None else ([1, 1, 0, 0] if toggle else [0, 0, 1, 1])
+    data = (address << 8) | command
+    for i in range(15, -1, -1):
+        bit = (data >> i) & 1
+        halves += [1, 1] if i == bad_bit else ([1, 0] if bit else [0, 1])
+    return [2666, 889] + merge_halves(halves, 444)
+
+
+def sirc(bits, address, command):
+    """SIRC: start 2400, then per bit a 600 space and a 1200/600 mark, LSB first."""
+    word = command | (address << 7)
+    out = [2400]
+    for i in range(bits):
+        out += [600, 1200 if (word >> i) & 1 else 600]
+    return out
+
+
 # ---- variations ------------------------------------------------------------
 
 def scaled(timings, factor):
@@ -112,7 +163,93 @@ def necx_vectors():
     return v
 
 
-PROTOCOLS = {"nec": nec_vectors, "necx": necx_vectors}
+def index_of(timings, value, start=0):
+    for i in range(start, len(timings)):
+        if timings[i] == value:
+            return i
+    raise ValueError(value)
+
+
+def biphase_vectors(name, proto, encode, frames, unit, seed, extra, max_k):
+    """Shared shape for RC5 and RC6: nominal, jitter, uniform scaling, malformed."""
+    rng = random.Random(seed)
+    v = []
+    for a, c, t in frames:
+        v.append(vec("nominal %02X/%02X t%d" % (a, c, t), encode(a, c, t), proto, a, c, toggle=t))
+    for k, (a, c, t) in enumerate(frames):
+        v.append(vec("jitter15 #%d %02X/%02X t%d" % (k, a, c, t), jittered(encode(a, c, t), rng, 15),
+                     proto, a, c, toggle=t))
+    a, c, t = frames[3]
+    v.append(vec("all +24%", scaled(encode(a, c, t), 1.24), proto, a, c, toggle=t))
+    v.append(vec("all -24%", scaled(encode(a, c, t), 0.76), proto, a, c, toggle=t))
+    base = encode(a, c, t)
+    one = index_of(base, unit, 1)
+    v.append(vec("unit pulse +26% (reject)", with_one(base, one, 1.26)))
+    v.append(vec("unit pulse -26% (reject)", with_one(base, one, 0.74)))
+    v.append(vec("missing half-bit (reject)", base[:one] + base[one + 1:]))
+    # NOTE: splitting a pulse in two would only shift the bi-phase phase and
+    # can yield another valid frame (RC5/RC6 carry no checksum); a pulse
+    # longer than the protocol allows is unambiguously malformed.
+    longer = index_of(base, 2 * unit, 1)
+    v.append(vec("over-long pulse (reject)", with_one(base, longer, (max_k + 1) / 2.0)))
+    v.append(vec("truncated (reject)", base[:len(base) // 2]))
+    v += extra
+    return v
+
+
+def rc5_vectors():
+    frames = [(0x00, 0x00, 0), (0x1F, 0x7F, 1), (0x05, 0x35, 0), (0x14, 0x01, 1),
+              (0x0A, 0x40, 0), (0x15, 0x2A, 1)]
+    extra = [vec("command 0x7F t0", rc5(0x1F, 0x7F, 0), "IR_PROTO_RC5", 0x1F, 0x7F),
+             vec("NEC leader is not RC5 (reject)", [9000, 4500] + rc5(0, 0)[2:])]
+    return biphase_vectors("rc5", "IR_PROTO_RC5", rc5, frames, 889, 0x524335, extra, 2)
+
+
+def rc6_vectors():
+    frames = [(0x00, 0x00, 0), (0xFF, 0xFF, 1), (0x10, 0x20, 0), (0x5A, 0xA5, 1),
+              (0x01, 0x80, 0), (0x80, 0x01, 1)]
+    extra = [vec("mode 6 is raw (reject)", rc6(0x10, 0x20, 0, mode=6)),
+             vec("leader mark +26% (reject)", with_one(rc6(0x10, 0x20), 0, 1.26)),
+             vec("leader space -26% (reject)", with_one(rc6(0x10, 0x20), 1, 0.74)),
+             vec("single-length trailer (reject)", rc6(0x10, 0x20, trailer=[1, 0, 1, 0])),
+             vec("data half-bits equal (reject)", rc6(0x10, 0x20, bad_bit=7))]
+    return biphase_vectors("rc6", "IR_PROTO_RC6", rc6, frames, 444, 0x524336, extra, 3)
+
+
+def sirc_vectors(bits):
+    proto = "IR_PROTO_SIRC%d" % bits
+    amax = (1 << (bits - 7)) - 1
+    rng = random.Random(0x5349524300 + bits)
+    frames = [(0, 0), (amax, 0x7F), (1 % (amax + 1), 0x15), (amax // 2, 0x40), (0x0A & amax, 0x01),
+              (amax ^ 0x05, 0x2A)]
+    v = []
+    for a, c in frames:
+        v.append(vec("nominal %04X/%02X" % (a, c), sirc(bits, a, c), proto, a, c))
+    for k, (a, c) in enumerate(frames):
+        v.append(vec("jitter15 #%d %04X/%02X" % (k, a, c), jittered(sirc(bits, a, c), rng, 15),
+                     proto, a, c))
+    a, c = frames[1]
+    v.append(vec("all +24%", scaled(sirc(bits, a, c), 1.24), proto, a, c))
+    v.append(vec("all -24%", scaled(sirc(bits, a, c), 0.76), proto, a, c))
+    base = sirc(bits, amax, 0x7F)  # every mark is a "one" mark
+    v.append(vec("one mark -26% (reject)", with_one(base, 2, 0.74)))
+    v.append(vec("one mark +26% (reject)", with_one(base, 2, 1.26)))
+    v.append(vec("space +26% (reject)", with_one(base, 1, 1.26)))
+    v.append(vec("start -26% (reject)", with_one(base, 0, 0.74)))
+    v.append(vec("truncated (reject)", base[:-2]))
+    v.append(vec("extra bit is another length (reject)", base + [600, 600, 600, 600]))
+    return v
+
+
+PROTOCOLS = {
+    "nec": nec_vectors,
+    "necx": necx_vectors,
+    "rc5": rc5_vectors,
+    "rc6": rc6_vectors,
+    "sirc12": lambda: sirc_vectors(12),
+    "sirc15": lambda: sirc_vectors(15),
+    "sirc20": lambda: sirc_vectors(20),
+}
 
 
 # ---- output ---------------------------------------------------------------
