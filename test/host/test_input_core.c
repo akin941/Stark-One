@@ -466,6 +466,37 @@ void test_null_out_advances_state_and_null_core_is_ignored(void)
     TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, input_core_init(NULL, NULL));
 }
 
+/* STARK-0204: key repeat is a setting — the timing changes under a held key. */
+void test_set_timing_keeps_a_held_key(void)
+{
+    uint32_t t0 = press(STARK_KEY_DOWN);
+    run(BIT(STARK_KEY_DOWN), INPUT_REPEAT_DELAY_MS + INPUT_REPEAT_INTERVAL_MS); /* 2 repeats */
+    TEST_ASSERT_EQUAL_size_t(2, count(STARK_KEY_DOWN, STARK_KEY_REPEAT));
+    const input_core_timing_t fast = {INPUT_DEBOUNCE_MS, INPUT_LONG_PRESS_MS, 250, 60};
+    TEST_ASSERT_EQUAL(STARK_OK, input_core_set_timing(&s_core, &fast));
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_DOWN, STARK_KEY_PRESS)); /* still the same press */
+    run(BIT(STARK_KEY_DOWN), 600);
+    size_t reps = count(STARK_KEY_DOWN, STARK_KEY_REPEAT);
+    TEST_ASSERT_TRUE(reps > 2 + 600 / INPUT_REPEAT_INTERVAL_MS); /* faster than before */
+    uint32_t a = when(STARK_KEY_DOWN, STARK_KEY_REPEAT, reps - 2);
+    uint32_t b = when(STARK_KEY_DOWN, STARK_KEY_REPEAT, reps - 1);
+    TEST_ASSERT_EQUAL_UINT32(60, b - a);
+    TEST_ASSERT_TRUE(t0 < a);
+    TEST_ASSERT_EQUAL_size_t(1, count(STARK_KEY_DOWN, STARK_KEY_PRESS));
+}
+
+void test_set_timing_rejects_what_init_rejects(void)
+{
+    const input_core_timing_t bad = {INPUT_DEBOUNCE_MS, INPUT_LONG_PRESS_MS, 250, 10};
+    input_core_t before = s_core;
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, input_core_set_timing(&s_core, &bad));
+    TEST_ASSERT_EQUAL_MEMORY(&before, &s_core, sizeof s_core);
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, input_core_set_timing(NULL, &bad));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, input_core_set_timing(&s_core, NULL));
+    TEST_ASSERT_FALSE(input_core_timing_valid(NULL));
+    TEST_ASSERT_TRUE(input_core_timing_valid(&s_core.t));
+}
+
 void test_init_forgets_a_held_key(void)
 {
     press(STARK_KEY_OK);
@@ -505,5 +536,7 @@ int main(void)
     RUN_TEST(test_small_out_discards_excess_but_state_advances);
     RUN_TEST(test_null_out_advances_state_and_null_core_is_ignored);
     RUN_TEST(test_init_forgets_a_held_key);
+    RUN_TEST(test_set_timing_keeps_a_held_key);
+    RUN_TEST(test_set_timing_rejects_what_init_rejects);
     return UNITY_END();
 }

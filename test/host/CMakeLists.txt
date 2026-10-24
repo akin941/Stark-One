@@ -421,6 +421,27 @@ target_link_libraries(run_storage_core_tests PRIVATE unity)
 
 # Storage on the UI port (STARK-0202): the status-bar glyph, the composition
 # root's storage bridge and the real Storage app, with a settable stark_storage.
+# stark_settings' pure core over a fake NVS, and the buzzer volume table (STARK-0204).
+add_executable(run_settings_core_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_settings_core.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/fake_nvs.c
+    ${STARK_COMPONENTS}/stark_settings/settings_core.c
+)
+target_include_directories(run_settings_core_tests PRIVATE ${STARK_COMPONENTS}/stark_settings
+    ${STARK_COMPONENTS}/stark_settings/include)
+target_compile_options(run_settings_core_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_settings_core_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_settings_core_tests PRIVATE unity)
+
+add_executable(run_buzzer_volume_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_buzzer_volume.c
+    ${STARK_COMPONENTS}/stark_buzzer/buzzer_volume.c
+)
+target_include_directories(run_buzzer_volume_tests PRIVATE ${STARK_COMPONENTS}/stark_buzzer)
+target_compile_options(run_buzzer_volume_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_buzzer_volume_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_buzzer_volume_tests PRIVATE unity)
+
 # storage_core.c is linked only for stark_storage_state_str(); this copy is
 # built without coverage so the state machine's own suite owns its figure.
 add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_core.c)
@@ -507,6 +528,8 @@ add_test(NAME stark_app_fault_tests COMMAND run_app_fault_tests)
 add_test(NAME stark_ui_fault_tests COMMAND run_ui_fault_tests)
 add_test(NAME stark_diag_core_tests COMMAND run_diag_core_tests)
 add_test(NAME stark_storage_core_tests COMMAND run_storage_core_tests)
+add_test(NAME stark_settings_core_tests COMMAND run_settings_core_tests)
+add_test(NAME stark_buzzer_volume_tests COMMAND run_buzzer_volume_tests)
 add_test(NAME stark_storage_path_tests COMMAND run_storage_path_tests)
 add_test(NAME stark_storage_file_tests COMMAND run_storage_file_tests)
 add_test(NAME stark_ui_storage_tests COMMAND run_ui_storage_tests)

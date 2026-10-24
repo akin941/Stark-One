@@ -81,6 +81,16 @@ typedef struct {
  */
 stark_err_t input_core_init(input_core_t *c, const input_core_timing_t *t);
 
+/* The rule input_core_init() applies to a timing. */
+bool input_core_timing_valid(const input_core_timing_t *t);
+
+/*
+ * Replaces the timing without touching key state (STARK-0204: key repeat is
+ * a setting): a key held across the change keeps its press, and the next
+ * repeat is scheduled with the new interval. Same rejections as init.
+ */
+stark_err_t input_core_set_timing(input_core_t *c, const input_core_timing_t *t);
+
 /*
  * Advances every key to now_ms given the raw levels in raw_bitmap (bit k set
  * = key k physically pressed; bits above STARK_KEY_COUNT are ignored) and

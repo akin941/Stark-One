@@ -45,3 +45,11 @@ typedef enum {
  * esp_timer failure is translated with stark_err_from_esp().
  */
 stark_err_t stark_input_start(void);
+
+/*
+ * Changes the key-repeat delay and interval at run time (STARK-0204), from
+ * any task: validated at once (STARK_ERR_INVALID_ARG, as input_core_init()
+ * would reject it), applied by the sampler before its next sample — keys
+ * keep their state. STARK_ERR_STATE before stark_input_start().
+ */
+stark_err_t stark_input_set_timing(uint16_t repeat_delay_ms, uint16_t repeat_interval_ms);

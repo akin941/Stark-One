@@ -7,6 +7,7 @@
  */
 #include "stark_input.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
 #include "input_core.h"
 #include "input_sample.h"
 #include "sdkconfig.h"
@@ -22,6 +23,9 @@ static const char *const k_key_names[STARK_KEY_COUNT] = {"UP",    "DOWN", "LEFT"
 
 static input_core_t s_core;
 static esp_timer_handle_t s_timer;
+static portMUX_TYPE s_timing_lock = portMUX_INITIALIZER_UNLOCKED;
+static input_core_timing_t s_pending; /* under s_timing_lock */
+static bool s_has_pending;            /* under s_timing_lock */
 
 static const char *action_name(stark_key_action_t action)
 {
@@ -47,6 +51,12 @@ static void sample_cb(void *arg)
     (void)arg;
     uint64_t now_us = stark_hal_now_us();
     uint8_t raw = input_sample_raw(stark_board_pins());
+    portENTER_CRITICAL(&s_timing_lock);
+    if (s_has_pending) {
+        (void)input_core_set_timing(&s_core, &s_pending); /* validated by the setter */
+        s_has_pending = false;
+    }
+    portEXIT_CRITICAL(&s_timing_lock);
 
     input_action_t out[INPUT_CORE_MAX_ACTIONS];
     size_t n =
@@ -65,6 +75,23 @@ static void sample_cb(void *arg)
             STARK_LOGD("key", "%s %s", k_key_names[out[i].key], action_name(out[i].action));
         }
     }
+}
+
+stark_err_t stark_input_set_timing(uint16_t repeat_delay_ms, uint16_t repeat_interval_ms)
+{
+    const input_core_timing_t t = {INPUT_DEBOUNCE_MS, INPUT_LONG_PRESS_MS, repeat_delay_ms,
+                                   repeat_interval_ms};
+    if (!input_core_timing_valid(&t)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (s_timer == NULL) {
+        return STARK_ERR_STATE;
+    }
+    portENTER_CRITICAL(&s_timing_lock);
+    s_pending = t;
+    s_has_pending = true;
+    portEXIT_CRITICAL(&s_timing_lock);
+    return STARK_OK;
 }
 
 stark_err_t stark_input_start(void)

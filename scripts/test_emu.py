@@ -41,6 +41,18 @@ Scenario files (test/emu/*.toml):
   heap_min = 200000                     # optional; first `diag: heap=` gate
   heap_delta_max = 1024                 # optional; first vs last stark_diag heap
   wall_limit_s = 1500                   # optional; host wall-clock cap (default 600)
+  control = [ { at_ms = 2500, command = "reset" } ]
+                                        # optional. "reset" ends the current phase
+                                        # at at_ms and reboots: the next phase is
+                                        # a new esp-emu run over the same flash
+                                        # image (saved with --save-state, so NVS
+                                        # survives; the 0.44.0 GDB stub does not
+                                        # survive an in-process chip reset).
+                                        # Other commands ("erase-region <off>
+                                        # <len>") go to the esp-emu control
+                                        # channel at at_ms. end_ms applies to the
+                                        # last phase; presses / pokes / control
+                                        # take an optional `phase` (default 0).
   image = "storage"                     # optional; the firmware it needs (below)
   pokes = [ { at_ms = 2500, var = "emu_medium_present", value = 0 } ]
                                         # optional, storage image only: a global
@@ -104,8 +116,18 @@ def inject_line():
 POKE_VARS = ("emu_medium_present", "emu_medium_formatted")  # the test medium's switches
 
 
-def gdb_script(scenario, port):
+def control_shell(port, command):
+    """A GDB `shell` line that sends one command to esp-emu's control channel.
+    Fire and forget: GDB holds the CPU at the breakpoint while the shell runs,
+    so the emulator only reads (and answers) the command once it resumes."""
+    return ("shell python3 -c \"import socket; s = socket.create_connection(('127.0.0.1', %d)); "
+            "s.sendall(b'%s\\n'); s.close()\"" % (port, command))
+
+
+def gdb_script(scenario, port, control_port=0):
+    """The GDB schedule for one phase (see split_phases)."""
     pokes = scenario.get("pokes", [])
+    control = [c for c in scenario.get("control", []) if c["command"] != "reset"]
     if pokes and scenario.get("image") != "storage":
         raise SystemExit("%s: pokes need image = \"storage\"" % scenario["name"])
     out = [
@@ -119,7 +141,15 @@ def gdb_script(scenario, port):
     # One GDB convenience variable per poke: it fires once, at the first
     # breakpoint hit at or after at_ms.
     out += ["set $poke%d = 0" % i for i in range(len(pokes))]
+    out += ["set $ctl%d = 0" % i for i in range(len(control))]
     out.append("while now_ms < %d" % int(scenario["end_ms"]))
+    for i, c in enumerate(control):
+        out += [
+            "  if $ctl%d == 0 && now_ms >= %d" % (i, int(c["at_ms"])),
+            "    " + control_shell(control_port, c["command"]),
+            "    set $ctl%d = 1" % i,
+            "  end",
+        ]
     for i, poke in enumerate(pokes):
         if poke["var"] not in POKE_VARS:
             raise SystemExit("%s: unknown poke variable %r" % (scenario["name"], poke["var"]))
@@ -149,6 +179,26 @@ def gdb_script(scenario, port):
         "quit",
     ]
     return "\n".join(out) + "\n"
+
+
+def split_phases(scenario):
+    """One scenario dict per phase: phase k ends at the at_ms of the k-th
+    "reset" (the last at end_ms) and holds the presses, pokes and other
+    control commands whose `phase` is k."""
+    resets = sorted((int(c.get("phase", 0)), int(c["at_ms"]))
+                    for c in scenario.get("control", []) if c["command"] == "reset")
+    for k, (phase, _) in enumerate(resets):
+        if phase != k:
+            raise SystemExit("%s: reset %d must be in phase %d" % (scenario["name"], k, k))
+    phases = []
+    for k in range(len(resets) + 1):
+        one = {key: v for key, v in scenario.items() if key not in ("presses", "pokes", "control")}
+        one["end_ms"] = resets[k][1] if k < len(resets) else int(scenario["end_ms"])
+        for key in ("presses", "pokes", "control"):
+            one[key] = [x for x in scenario.get(key, [])
+                        if int(x.get("phase", 0)) == k and x.get("command") != "reset"]
+        phases.append(one)
+    return phases
 
 
 def image_mismatch(scenario, image):
@@ -256,35 +306,53 @@ def run_scenario(path, args):
         return False
     log_path = Path(args.log_dir) / (name + ".log")
     gdb_path = Path(args.log_dir) / (name + ".gdb.log")
-    script_path = Path(args.log_dir) / (name + ".gdb")
-    port = free_port()
     wall = int(scenario.get("wall_limit_s", WALL_LIMIT_S))
-    script_path.write_text(gdb_script(scenario, port))
+    phases = split_phases(scenario)
+    firmware = args.firmware
+    if len(phases) > 1:
+        # One flash image for every phase: esp-emu --save-state writes the
+        # flash (NVS included) back into it when the run ends.
+        firmware = str(Path(args.log_dir) / (name + ".flash.bin"))
+        shutil.copyfile(args.firmware, firmware)
     print("=== %s" % name, flush=True)
     started = time.monotonic()
-    with open(log_path, "w") as log_f:
-        emu = subprocess.Popen(
-            [args.emu, "--chip", "esp32s3", "--firmware", args.firmware,
-             "--log-color", "never", "--gdb", str(port), "--gdb-halt",
-             "--timeout", "%ds" % wall],
-            stdout=log_f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
-        try:
-            time.sleep(0.5)
-            with open(gdb_path, "w") as gdb_f:
+    log_path.write_text("")
+    gdb_path.write_text("")
+    for k, phase in enumerate(phases):
+        port = free_port()
+        control_port = free_port()
+        script_path = Path(args.log_dir) / ("%s.%d.gdb" % (name, k))
+        script_path.write_text(gdb_script(phase, port, control_port))
+        cmd = [args.emu, "--chip", "esp32s3", "--firmware", firmware,
+               "--log-color", "never", "--gdb", str(port), "--gdb-halt",
+               "--control-tcp", "127.0.0.1:%d" % control_port, "--timeout", "%ds" % wall]
+        if len(phases) > 1:
+            cmd.append("--save-state")
+        with open(log_path, "a") as log_f, open(gdb_path, "a") as gdb_f:
+            log_f.write("--- phase %d ---\n" % k)
+            log_f.flush()
+            emu = subprocess.Popen(cmd, stdout=log_f, stderr=subprocess.STDOUT,
+                                   stdin=subprocess.DEVNULL)
+            try:
+                time.sleep(0.5)
                 subprocess.run([args.gdb, "-q", "-batch", "-x", str(script_path), args.elf],
                                stdout=gdb_f, stderr=subprocess.STDOUT,
                                timeout=wall, check=False)
-            time.sleep(1.0)  # let the firmware run on briefly: late panics still count
-        except subprocess.TimeoutExpired:
-            pass
-        finally:
-            emu.terminate()
-            try:
-                emu.wait(timeout=10)
+                time.sleep(1.0)  # let the firmware run on briefly: late panics still count
             except subprocess.TimeoutExpired:
-                emu.kill()
+                pass
+            finally:
+                emu.terminate()  # --save-state writes the flash back on exit
+                try:
+                    emu.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    emu.kill()
     log = log_path.read_text(errors="replace")
-    failures = check_log(scenario, log, gdb_path.read_text(errors="replace"))
+    gdb_log = gdb_path.read_text(errors="replace")
+    failures = check_log(scenario, log, gdb_log)
+    if len(phases) > 1 and gdb_log.count(END_MARK) != len(phases):
+        failures.append("only %d of %d phases reached their end" % (gdb_log.count(END_MARK),
+                                                                     len(phases)))
     for f in failures:
         print("FAIL: %s — %s (serial log: %s)" % (name, f, log_path), file=sys.stderr)
     if not failures:

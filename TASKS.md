@@ -1975,7 +1975,10 @@ live; the emulator proves they survive a chip reset.
   emulated time restarts. `end_ms` applies to the last phase. If the 0.44.0 GDB stub
   does not survive a chip reset, phases run as successive esp-emu processes over one
   copied flash image with `--save-state`; either way record the mechanism in
-  docs/VALIDATION.md §2 with the evidence.
+  docs/VALIDATION.md §2 with the evidence. **As built:** the stub does not survive, so the
+  key is `control = [ { at_ms, command, phase } ]`: a `"reset"` ends the phase and the next
+  phase is a new run over the saved image; any other command (`erase-region …`) goes to
+  the control channel, fire-and-forget.
 * Boot order (ARCHITECTURE §7): `stark_settings_init()` right after `stark_event_init()`
   (log level takes effect early); appliers run after `stark_input_start()`.
 * `check_layers.py`: `stark_settings` L3, sideways edge `stark_settings → stark_event`;

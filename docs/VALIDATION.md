@@ -60,6 +60,9 @@ bump is a deliberate change with a full emulator run — never "latest".
 | GDB remote stub (breakpoint, `set var`, continue) on core 0 | ✅ used for key injection (below) |
 | Emulated-time scheduling independent of host speed | ✅ presses land at the same `now_ms` on every run |
 | SPI2 with a second device attached and nothing behind it (STARK-0201) | ✅ `sdmmc_card_init` fails at once: every production boot logs `storage: no card`, retries are silent, the UI stays responsive |
+| Flash persistence across a reboot (STARK-0204) | ✅ `--save-state` writes the emulated flash (NVS included) back into the image when the run is terminated; booting it again loads `settings: … (nvs)`. A scenario's `control` "reset" therefore ends a phase and the next phase is a new esp-emu run over the same image |
+| In-process chip reset over `--control-tcp` (STARK-0204) | ⚠️ the reset works, but the 0.44.0 GDB stub drops its connection, so key injection cannot continue across it — hence the phase-per-run mechanism above |
+| `erase-region` over `--control-tcp` (STARK-0204) | ✅ `control: erased flash 24576 bytes at 0x9000` — the NVS partition wiped mid-run; sent fire-and-forget, because GDB holds the CPU while the command is written and the emulator answers only once it resumes |
 | GDB writes to a RAM global (`pokes`, storage test image, STARK-0202) | ✅ `emu_medium_present` flips stick; removal and reinsertion land at the scheduled emulated time |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 

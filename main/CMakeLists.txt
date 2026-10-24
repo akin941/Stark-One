@@ -32,6 +32,7 @@ idf_component_register(
         stark_main.c
         app_registry.c
         storage_ui.c
+        settings_apply.c
     INCLUDE_DIRS
         "."
         ${CMAKE_CURRENT_BINARY_DIR}
@@ -45,6 +46,7 @@ idf_component_register(
         stark_display
         stark_event
         stark_input
+        stark_settings
         stark_storage
         stark_ui
 )

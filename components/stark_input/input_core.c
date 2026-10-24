@@ -99,6 +99,21 @@ static void update_key(sink_t *s, size_t k, input_key_state_t *st, bool raw, uin
     }
 }
 
+bool input_core_timing_valid(const input_core_timing_t *t)
+{
+    return t != NULL && t->repeat_interval_ms >= INPUT_REPEAT_MIN_MS &&
+           t->repeat_delay_ms >= t->debounce_ms && t->long_ms > t->debounce_ms;
+}
+
+stark_err_t input_core_set_timing(input_core_t *c, const input_core_timing_t *t)
+{
+    if (c == NULL || !input_core_timing_valid(t)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    c->t = *t;
+    return STARK_OK;
+}
+
 stark_err_t input_core_init(input_core_t *c, const input_core_timing_t *t)
 {
     static const input_core_timing_t k_default = {
@@ -110,8 +125,7 @@ stark_err_t input_core_init(input_core_t *c, const input_core_timing_t *t)
     if (t == NULL) {
         t = &k_default;
     }
-    if (c == NULL || t->repeat_interval_ms < INPUT_REPEAT_MIN_MS ||
-        t->repeat_delay_ms < t->debounce_ms || t->long_ms <= t->debounce_ms) {
+    if (c == NULL || !input_core_timing_valid(t)) {
         return STARK_ERR_INVALID_ARG;
     }
     *c = (input_core_t){.t = *t};

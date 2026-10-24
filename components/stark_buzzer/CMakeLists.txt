@@ -2,6 +2,7 @@
 idf_component_register(
     SRCS
         "buzzer.c"
+        "buzzer_volume.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
