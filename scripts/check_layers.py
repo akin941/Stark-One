@@ -54,6 +54,7 @@ SIDEWAYS = {
     ("stark_diag", "stark_event"),  # event-drop counters + the sample event (STARK-0109)
     ("stark_storage", "stark_event"),  # state-change events (STARK-0201)
     ("stark_settings", "stark_event"),  # change events (STARK-0204)
+    ("stark_ir", "stark_event"),  # capture / transmit events (STARK-0303)
 }
 
 PURE = {"stark_err", "stark_gfx"}

@@ -46,6 +46,7 @@ idf_component_register(
         stark_display
         stark_event
         stark_input
+        stark_ir
         stark_settings
         stark_storage
         stark_ui

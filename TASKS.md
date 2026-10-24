@@ -2535,6 +2535,12 @@ ring overflow. Emulator: none beyond boot until TX exists.
    `grep -rIiE 'wokwi|qemu|esp_emu|loopback' components/ apps/ main/` empty.
 4. ARCHITECTURE documents `stark_ir` RX, the event id and the task.
 
+**As built.** The RX hardware memory is 64 symbols (the driver ping-pongs it into a
+130-symbol buffer; no DMA). Boot heap dropped 9 568 B, not the ≤ 4 kB estimated above:
+≈ 6.3 kB is static (capture ring 2.1 kB, IR task stack 3 kB, symbol buffer and work
+signal ≈ 1 kB) and ≈ 3.2 kB the RMT driver's own allocation; free heap stays at 279 kB
+(gate 200 kB). The port is target-only (as `stark_storage.c`); the pure parts are 100 %.
+
 **Out of scope.** TX and carrier (STARK-0304), the app (STARK-0305), learning across
 multiple frames, protocol auto-repeat merging beyond NEC's repeat code.
 

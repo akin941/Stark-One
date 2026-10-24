@@ -1,0 +1,17 @@
+# STARK-0303 on the production image: the RMT RX channel for IR_RX is
+# created at boot without disturbing anything else; receive stays off
+# until an app turns it on (SECURITY_SCOPE §4.1). No frames are injected:
+# the emulator offers no pad stimulus — frames arrive from STARK-0304 on,
+# through esp-emu's RMT loopback (ADR-0019 §2).
+name = "emu-v03-ir-rx"
+end_ms = 2500
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },
+]
+expect = [
+    "boot: ui_ready in ",
+    "ir: init rx=48 tx=47",
+    'menu: sel=2 "Diagnostics"',
+]
+forbid = ["ir: rx on", "ir init failed", "ir: not fitted"]

@@ -206,6 +206,25 @@ class ExpectRe(unittest.TestCase):
         self.assertTrue(self.check("ok frames=3\nstart\n"))
 
 
+class EmuCommand(unittest.TestCase):
+    class A:
+        emu = "/emu"
+
+    def test_loopback_flag(self):
+        cmd = emu.emu_command(self.A, {"name": "t", "rmt_loopback": "0:2"}, "fw", 1, 2, 60, False)
+        self.assertEqual(cmd[cmd.index("--rmt-loopback") + 1], "0:2")
+        self.assertNotIn("--save-state", cmd)
+
+    def test_no_loopback_and_save_state(self):
+        cmd = emu.emu_command(self.A, {"name": "t"}, "fw", 1, 2, 60, True)
+        self.assertNotIn("--rmt-loopback", cmd)
+        self.assertIn("--save-state", cmd)
+
+    def test_bad_loopback(self):
+        with self.assertRaises(SystemExit):
+            emu.emu_command(self.A, {"name": "t", "rmt_loopback": "zero"}, "fw", 1, 2, 60, False)
+
+
 class Images(unittest.TestCase):
     def test_mismatch(self):
         self.assertIsNone(emu.image_mismatch({}, "production"))

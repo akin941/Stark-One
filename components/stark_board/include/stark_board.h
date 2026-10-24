@@ -26,6 +26,7 @@ typedef struct {
     int buzzer, led_status;
     int sd_cs;            /* -1 when absent */
     int i2c_sda, i2c_scl; /* -1 when absent */
+    int ir_tx, ir_rx; /* RMT TX -> IR LED driver, RMT RX <- 38 kHz demodulator; -1 when absent */
     uint32_t tft_spi_hz;
 } stark_board_pins_t;
 

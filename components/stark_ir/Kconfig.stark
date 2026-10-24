@@ -1,0 +1,14 @@
+# stark_ir options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). STARK-0303.
+
+config STARK_IR_TASK_PRIO
+    int "IR task priority"
+    range 1 4
+    default 3
+    help
+        Below the app worker (4) and the UI task (5).
+
+config STARK_IR_TASK_STACK
+    int "IR task stack (bytes)"
+    range 2048 8192
+    default 3072

@@ -172,6 +172,7 @@ typedef struct {
     int      buzzer, led_status;
     int      sd_cs;                     /* -1 when absent */
     int      i2c_sda, i2c_scl;          /* -1 when absent */
+    int      ir_tx, ir_rx;              /* RMT TX -> IR LED, RX <- demodulator (V0.3); -1 when absent */
     uint32_t tft_spi_hz;
 } stark_board_pins_t;
 
@@ -304,7 +305,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 1 | `STARK_SYS_DIAG_SAMPLE` | `stark_diag` (STARK-0109) | — |
 | 2 | `STARK_SYS_STORAGE` | `stark_storage` (STARK-0201) | the new `stark_storage_state_t` |
 | 3 | `STARK_SYS_SETTING` | `stark_settings` (STARK-0204) | the `stark_setting_t` that changed |
-| 4 | `STARK_SYS_IR` | `stark_ir` (STARK-0303, planned) | `STARK_IR_EVT_RX` / `_TX_DONE` / `_TX_FAILED` |
+| 4 | `STARK_SYS_IR` | `stark_ir` (STARK-0303) | `STARK_IR_EVT_RX` / `_TX_DONE` / `_TX_FAILED` |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -769,13 +770,33 @@ app commits on exit). The composition root (`main/settings_apply.c`) applies eve
 boot and on each change: backlight, buzzer volume, input repeat timing and log level (the
 `key` tag stays DEBUG at Info/Debug), logging `settings: applied <name>=<v>`.
 
+### 6.9d `stark_ir` (L3) — STARK-0301…0304, ADR-0019
+
+```c
+stark_err_t stark_ir_init(void);           /* RX channel + IR task; RX stays off */
+stark_err_t stark_ir_rx_start(void);       /* receive-first: an app turns RX on */
+stark_err_t stark_ir_rx_stop(void);
+stark_err_t stark_ir_take(ir_signal_t *out);
+stark_err_t stark_ir_stats(stark_ir_stats_t *out);
+```
+
+The pure core (`ir_codec.h`, `ir_raw.h`, `ir_symbols.c`, `ir_capture.c`; 100 % host
+coverage) owns every decision; `stark_ir.c` is the RMT port. RX: `rmt_new_rx_channel`
+on `IR_RX` at 1 MHz, a 1.25 µs glitch filter and 12 ms of idle ending a frame; the done
+callback (ISR) only queues the symbol count; the IR task (`stark_ir`, prio 3, 3 kB,
+core 0) converts symbols to timings (level-agnostic: the first level seen is the mark,
+so an active-low TSOP output and the emulator's active-high loopback decode alike),
+decodes, pushes into a 4-slot ring (drop-oldest, counted), publishes `STARK_SYS_IR` /
+`STARK_IR_EVT_RX`, logs `ir: rx <proto> addr=… cmd=…` (or `ir: rx RAW n=…`) and
+re-arms. Frames longer than 256 durations are counted as overflows and dropped.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
 | `stark_storage` | V0.2 | Implemented (§6.9b, STARK-0201…0203, 0206): mount state machine, task, medium port, removal, eject, file helpers, log file |
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
-| `stark_ir` | V0.3 | RMT RX/TX on GPIO 48/47 with pure codecs (NEC, NECX, RC5, RC6-0, SIRC), a raw `.ir` format and a transmit gate (ADR-0019). Implemented so far: the pure codec core — timing model (`ir_types.h`, `ir_match` ± max(25 %, 60 µs)), NEC/NECX, RC5, RC6-0, SIRC-12/15/20 (`ir_codec.h`, decode order NEC → RC6 → SIRC → RC5) and the `.ir` text format (`ir_raw.h`, docs/ir-format.md) (STARK-0301/0302); the RMT port per TASKS.md STARK-0303…0307 |
+| `stark_ir` | V0.3 | Codec core and RX implemented (§6.9d, STARK-0301…0303); TX, the IR app and replay per TASKS.md STARK-0304…0307 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
@@ -800,7 +821,8 @@ app_main()
  ├─ xTaskCreate(stark_ui_task, prio 5, 6 kB stack, core 1)
  │      loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
  ├─ stark_diag_init(ui adapter)            – 1 s diagnostics sampler (STARK-0109)
- └─ stark_storage_init()                   – storage task; mounts in the background (STARK-0201)
+ ├─ stark_storage_init()                   – storage task; mounts in the background (STARK-0201)
+ └─ stark_ir_init()                        – RMT RX channel + IR task, RX off (STARK-0303)
 ```
 
 Since STARK-0017 the UI task (`stark_ui_task`, created by `main`) is the event bus's one
@@ -821,6 +843,7 @@ asserts on the **presence and ordering** of that line, never on the number in it
 | --- | --- | --- | --- |
 | `stark_ui` | 5 | 6 kB | Event dispatch, app ticks, rendering. Owns SPI2 and the band buffers. |
 | `app_worker` | 4 | 4 kB (static) | The running app's optional background worker, core 0 (STARK-0108); joined before the app's `on_stop` |
+| `stark_ir` | 3 | 3 kB (static) | IR captures: symbols → timings → decode → ring → event (STARK-0303), core 0 |
 | `stark_storage` | 2 | 4 kB (static) | Card mount/probe/retry (STARK-0201), core 0. The only caller of the storage medium |
 | `esp_timer` (input) | high | – | 5 ms key sample → publish events. Never blocks. |
 | `esp_timer` (led/buzzer) | high | – | Heartbeat blink, tone sequence steps. |
@@ -862,6 +885,7 @@ gains options adds its line there in the same change:
 | `STARK_STORAGE_RETRY_MS` / `_PROBE_MS` | 3000 / 1000 | Mount retry and presence probe periods (STARK-0201) |
 | `STARK_STORAGE_TASK_PRIO` / `_TASK_STACK` | 2 / 4096 | Storage task (STARK-0201); at most 4 files open at once (`STORAGE_FILE_SLOTS`, STARK-0203) |
 | `STARK_STORAGE_SD_KHZ` | 20000 | microSD clock ceiling on SPI2 (`stark_storage_medium`) |
+| `STARK_IR_TASK_PRIO` / `_TASK_STACK` | 3 / 3072 | IR task (STARK-0303) |
 | `STARK_LOG_RING_BYTES` | 4096 | Console capture ring for the log file; 0 = off (STARK-0206) |
 | `STARK_STORAGE_LOG_FLUSH_MS` / `_LOG_FILE_KB` / `_LOG_FILES` | 1000 / 64 / 4 | Log file flush period, rotation size, files kept (STARK-0206) |
 | `STARK_LOG_LEVEL` | INFO | Maps to esp_log level |
@@ -894,7 +918,8 @@ to set differently (ADR-0010).
   events), `stark_app → stark_ui` (the launcher is a `stark_ui` menu) and
   `stark_diag → stark_event` (event-drop counters and the sample event, STARK-0109) and
   `stark_storage → stark_event` (state-change events, STARK-0201) and
-  `stark_settings → stark_event` (change events, STARK-0204). Pure
+  `stark_settings → stark_event` (change events, STARK-0204) and
+  `stark_ir → stark_event` (capture and transmit events, STARK-0303). Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with

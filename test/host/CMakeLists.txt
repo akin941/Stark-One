@@ -492,10 +492,12 @@ set(IR_CORE_SOURCES
     ${STARK_COMPONENTS}/stark_ir/ir_rc6.c
     ${STARK_COMPONENTS}/stark_ir/ir_sirc.c
     ${STARK_COMPONENTS}/stark_ir/ir_raw.c
+    ${STARK_COMPONENTS}/stark_ir/ir_symbols.c
+    ${STARK_COMPONENTS}/stark_ir/ir_capture.c
 )
 set(IR_INCLUDES ${STARK_COMPONENTS}/stark_ir ${STARK_COMPONENTS}/stark_ir/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vectors)
-foreach(ir_test ir_timing ir_nec ir_codecs ir_raw)
+foreach(ir_test ir_timing ir_nec ir_codecs ir_raw ir_symbols)
     add_executable(run_${ir_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${ir_test}.c
         ${IR_CORE_SOURCES})
     target_include_directories(run_${ir_test}_tests PRIVATE ${IR_INCLUDES})
