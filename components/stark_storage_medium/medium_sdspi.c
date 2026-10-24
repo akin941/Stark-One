@@ -145,6 +145,20 @@ stark_err_t stark_storage_medium_probe(void)
     return sdmmc_get_status(&s_card) == ESP_OK ? STARK_OK : STARK_ERR_NOT_FOUND;
 }
 
+stark_err_t stark_storage_medium_present(void)
+{
+    if (s_mounted) {
+        return STARK_ERR_STATE;
+    }
+    if (attach() != ESP_OK) {
+        return STARK_ERR_IO;
+    }
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    host.slot = s_dev;
+    host.max_freq_khz = CONFIG_STARK_STORAGE_SD_KHZ;
+    return sdmmc_card_init(&host, &s_card) == ESP_OK ? STARK_OK : STARK_ERR_NOT_FOUND;
+}
+
 stark_err_t stark_storage_medium_space(stark_medium_space_t *out)
 {
     if (out == NULL) {

@@ -29,10 +29,19 @@ Scenario files (test/emu/*.toml):
   forbid_after = [ { after = "ui: chord reserved", text = "app: start" } ]
                                         # optional; text must not follow the
                                         # first line containing `after`
+  forbid_between = [ { after = "storage: ejected", before = "mount requested",
+                       text = "storage: mounted" } ]
+                                        # optional; text must not appear between
+                                        # the first `after` line and the next
+                                        # `before` line
   heap_min = 200000                     # optional; first `diag: heap=` gate
   heap_delta_max = 1024                 # optional; first vs last stark_diag heap
   wall_limit_s = 1500                   # optional; host wall-clock cap (default 600)
   image = "storage"                     # optional; the firmware it needs (below)
+  pokes = [ { at_ms = 2500, var = "emu_medium_present", value = 0 } ]
+                                        # optional, storage image only: a global
+                                        # of the test medium set over GDB once
+                                        # emulated time reaches at_ms
   (always: every `diag:` line carrying drops= must read drops=0)
 
 Images (ADR-0018): "production" (default) is build/merged-binary.bin;
@@ -88,7 +97,13 @@ def inject_line():
     raise SystemExit("cannot find input_core_update() in %s" % INJECT_SOURCE)
 
 
+POKE_VARS = ("emu_medium_present", "emu_medium_formatted")  # the test medium's switches
+
+
 def gdb_script(scenario, port):
+    pokes = scenario.get("pokes", [])
+    if pokes and scenario.get("image") != "storage":
+        raise SystemExit("%s: pokes need image = \"storage\"" % scenario["name"])
     out = [
         "set pagination off",
         "set confirm off",
@@ -96,8 +111,20 @@ def gdb_script(scenario, port):
         "target remote 127.0.0.1:%d" % port,
         "break input_core.c:%d" % inject_line(),
         "continue",
-        "while now_ms < %d" % int(scenario["end_ms"]),
     ]
+    # One GDB convenience variable per poke: it fires once, at the first
+    # breakpoint hit at or after at_ms.
+    out += ["set $poke%d = 0" % i for i in range(len(pokes))]
+    out.append("while now_ms < %d" % int(scenario["end_ms"]))
+    for i, poke in enumerate(pokes):
+        if poke["var"] not in POKE_VARS:
+            raise SystemExit("%s: unknown poke variable %r" % (scenario["name"], poke["var"]))
+        out += [
+            "  if $poke%d == 0 && now_ms >= %d" % (i, int(poke["at_ms"])),
+            "    set var %s = %d" % (poke["var"], int(poke["value"])),
+            "    set $poke%d = 1" % i,
+            "  end",
+        ]
     for p in scenario.get("presses", []):
         key = p["key"].upper()
         if key not in KEYS:
@@ -163,6 +190,19 @@ def check_log(scenario, log, gdb_log):
         hit = next((line for line in lines[anchor + 1:] if rule["text"] in line), None)
         if hit is not None:
             failures.append("%r after %r: %s" % (rule["text"], rule["after"], hit.strip()))
+    for rule in scenario.get("forbid_between", []):
+        start = next((i for i, line in enumerate(lines) if rule["after"] in line), None)
+        if start is None:
+            failures.append("forbid_between anchor not found: %r" % rule["after"])
+            continue
+        end = next((i for i in range(start + 1, len(lines)) if rule["before"] in lines[i]), None)
+        if end is None:
+            failures.append("forbid_between end not found: %r" % rule["before"])
+            continue
+        hit = next((line for line in lines[start + 1:end] if rule["text"] in line), None)
+        if hit is not None:
+            failures.append("%r between %r and %r: %s" % (rule["text"], rule["after"],
+                                                         rule["before"], hit.strip()))
     if "heap_delta_max" in scenario:
         # stark_diag's periodic lines (they carry min=), not main's boot line
         heaps = [int(m.group(1)) for m in re.finditer(r"diag: heap=(\d+) min=", log)]

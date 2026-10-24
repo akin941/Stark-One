@@ -1,0 +1,25 @@
+# STARK-0202 on the storage test image (ADR-0018): the mounted "card" is
+# pulled (the harness clears the test medium's presence flag over GDB): the
+# next presence probe reports it, the volume is released, the status bar
+# turns to the error glyph and the "SD card removed" alert opens — no panic.
+# Put back, it is mounted again at the next retry. Software logic only; a
+# real card pull is a V1 check.
+name = "emu-v02-remove-insert"
+image = "storage"
+end_ms = 7500
+heap_min = 200000
+pokes = [
+    { at_ms = 1500, var = "emu_medium_present", value = 0 },
+    { at_ms = 4000, var = "emu_medium_present", value = 1 },
+]
+presses = [
+    { key = "OK", at_ms = 3500, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    "storage: card removed",
+    'dialog: open "SD card removed"',
+    "dialog: ok",
+    "storage: mounted emu-flashfat",
+]
+forbid = ["storage: no card"]

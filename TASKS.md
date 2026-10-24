@@ -1692,17 +1692,19 @@ state; a Storage app shows status and offers Eject / Mount.
 `scripts/test_emu.py` (GDB `pokes`), `scripts/test_emu_harness.py`,
 `test/host/{test_storage_core.c,test_ui_statusbar.c,test_ui_storage.c,CMakeLists.txt}`,
 `test/emu/storage/v02-remove-insert.toml`, `test/emu/storage/v02-eject.toml`,
-existing scenarios' `app: registry` lines, ARCHITECTURE §6.7/§6.9, TESTING §4.
+existing scenarios' `app: registry` lines (and the Hello/soak key paths: Storage is now
+the launcher's last row), `test/host/port/ui_port_storage.{c,h}`, ARCHITECTURE
+§6.7/§6.9b, TESTING §4, docs/VALIDATION.md §2.
 
 **Deps.** STARK-0201.
 
 **Notes.**
 * **Removal** (both paths converge on one core transition): (a) a probe returns
   `NOT_FOUND`/`IO`; (b) a file operation fails with an I/O error (STARK-0203 reports it
-  via `IO_ERROR`) and the immediate probe confirms. Then, under the mutex: every open
-  handle is closed at the VFS level and marked stale, the volume is unmounted, the
-  mount generation increments, state → `REMOVED`, event published, `storage: card
-  removed`. Retries resume at the retry cadence; a successful mount → `MOUNTED`.
+  via `IO_ERROR`) and the immediate probe confirms. Then, under the mutex: the volume is
+  unmounted, the mount generation increments, state → `REMOVED`, event published,
+  `storage: card removed`. (As built: handles do not exist before STARK-0203, which
+  closes them at the VFS level and marks them stale on every generation bump.) Retries resume at the retry cadence; a successful mount → `MOUNTED`.
 * **Eject** — `stark_err_t stark_storage_request_eject(void)` and
   `stark_storage_request_mount(void)`: non-blocking requests handled by the storage task
   (safe from the UI task). Eject with open handles (other than the log writer's) is
@@ -1724,8 +1726,11 @@ existing scenarios' `app: registry` lines, ARCHITECTURE §6.7/§6.9, TESTING §4
 * **Storage app** (`apps/app_storage`, id `storage`, title `Storage`, category `Device`,
   registry position after `hello`): a status row (`No card`, `Mounted · <free> free of
   <total>`, `Card removed`, `Ejected`, `Card not usable`, `Not fitted`) refreshed on
-  `STARK_SYS_STORAGE`; items `Eject` (confirm dialog "Eject card?") and `Mount`
-  (enabled when ejected/absent/removed). Logs `storageapp: status <state>`.
+  `STARK_SYS_STORAGE`; items `Eject` (confirm dialog "Eject card?"; when not mounted it
+  only logs `storageapp: eject: not mounted`) and `Mount` (always a request; the core
+  ignores it while mounted). Logs `storageapp: status <state>`. As built: the mounted
+  status shows `stark_storage_space()`, which caches the figures at mount so the UI task
+  never touches the card.
   ≤ 150 lines per file.
 * **Harness** — `pokes = [ { at_ms = 2500, var = "emu_medium_present", value = 0 } ]`:
   applied at the existing core-0 breakpoint when `now_ms` first reaches `at_ms`
@@ -1734,10 +1739,11 @@ existing scenarios' `app: registry` lines, ARCHITECTURE §6.7/§6.9, TESTING §4
 
 **Host tests.** `test_storage_core.c` extended: removal from probe and from `IO_ERROR`,
 generation bump, eject refused/accepted, `EJECTED → ABSENT → MOUNTED`, `REQ_MOUNT` in
-each state; 100 % lines kept. `test_ui_statusbar.c`: each icon state pixel-identical to
-its inspected golden, `NONE` identical to the V0.1 status bar, only the icon rectangle
-damaged on change. `test_ui_storage.c` (host UI port with a settable fake
-`stark_storage`): each status text, `Mount` enabled/disabled per state, the eject confirm.
+each state; 100 % lines kept. `test_ui_storage.c` (host UI port with a settable fake
+`stark_storage`; as built, one file for both): each glyph state pixel-identical to its
+bitmap, `NONE` identical to the V0.1 status bar, only the glyph rectangle damaged on
+change; the bridge's alert only on `MOUNTED → REMOVED`; each status text, the eject
+confirm/cancel, the mount request; the mounted frame pinned after inspection.
 
 **Emulator** (storage image). `v02-remove-insert.toml`: mounted → poke `present = 0` →
 `storage: card removed`, `dialog: open "SD card removed"`, OK → poke `present = 1` →

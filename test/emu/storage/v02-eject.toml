@@ -1,0 +1,46 @@
+# STARK-0202 on the storage test image (ADR-0018): Storage app -> Eject ->
+# confirm -> `storage: ejected`. While the ejected card still answers it is
+# never mounted by itself; Mount mounts it at once. Ejected again and then
+# pulled, the state becomes `no card`, so putting it back mounts it.
+# Launcher: UP from About wraps to the last row, Storage (Device category).
+name = "emu-v02-eject"
+image = "storage"
+end_ms = 12500
+heap_min = 200000
+pokes = [
+    { at_ms = 6200, var = "emu_medium_present", value = 0 },
+    { at_ms = 9200, var = "emu_medium_present", value = 1 },
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },
+    { key = "OK", at_ms = 600, hold_ms = 60 },
+    { key = "OK", at_ms = 900, hold_ms = 60 },
+    { key = "OK", at_ms = 1200, hold_ms = 60 },
+    { key = "DOWN", at_ms = 4700, hold_ms = 60 },
+    { key = "OK", at_ms = 5000, hold_ms = 60 },
+    { key = "UP", at_ms = 5300, hold_ms = 60 },
+    { key = "OK", at_ms = 5600, hold_ms = 60 },
+    { key = "OK", at_ms = 5900, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    'menu: sel=11 "Storage"',
+    "storageapp: status mounted",  # built with the screen, before the launch is logged
+    "app: start storage",
+    'dialog: open "Eject card?"',
+    "dialog: ok",
+    "storageapp: eject requested",
+    "storage: ejected",
+    "storageapp: status ejected",
+    'menu: sel=2 "Mount"',
+    "storageapp: mount requested",
+    "storage: mounted emu-flashfat",
+    'menu: sel=1 "Eject"',
+    'dialog: open "Eject card?"',
+    "storage: ejected",
+    "storage: no card",
+    "storage: mounted emu-flashfat",
+]
+forbid_between = [
+    { after = "storage: ejected", before = "storageapp: mount requested", text = "storage: mounted" },
+]

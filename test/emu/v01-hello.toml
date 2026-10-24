@@ -1,17 +1,18 @@
 # STARK-0104: the hello app — added in one new directory plus one registry
-# line in main/ (ADR-0016) — is listed, launches (the last launcher row,
-# under Examples: UP from About wraps to it), refreshes its uptime once a
+# line in main/ (ADR-0016) — is listed, launches (under Examples: UP from
+# About wraps to the last row, Storage, and UP again reaches it), refreshes its uptime once a
 # second on the production image, and leaves cleanly.
 name = "emu-v01-hello"
 end_ms = 3300
 heap_min = 200000
 presses = [
-    { key = "UP", at_ms = 300, hold_ms = 60 },     # from About, wrap to Hello
-    { key = "OK", at_ms = 500, hold_ms = 60 },
+    { key = "UP", at_ms = 300, hold_ms = 60 },     # from About, wrap to Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },     # past the Device header to Hello
+    { key = "OK", at_ms = 650, hold_ms = 60 },
     { key = "BACK", at_ms = 2900, hold_ms = 60 },
 ]
 expect = [
-    "app: registry n=7 about,diagnostics,inputtest,displaytest,buzzertest,apptest,hello",
+    "app: registry n=8 about,diagnostics,inputtest,displaytest,buzzertest,apptest,hello,storage",
     'menu: sel=9 "Hello"',
     "hello: uptime=00:00:00",    # on_start, before the launch is logged
     "app: start hello",

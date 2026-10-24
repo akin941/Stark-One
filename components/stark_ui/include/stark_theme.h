@@ -20,6 +20,8 @@
 /* Status bar */
 #define STARK_THEME_STATUS_BG    GFX_RGB565(0, 64, 128)
 #define STARK_THEME_STATUS_FG    GFX_RGB565(255, 255, 255)
+#define STARK_THEME_STATUS_DIM   GFX_RGB565(96, 128, 160) /* an inactive indicator (STARK-0202) */
+#define STARK_THEME_ERROR        GFX_RGB565(255, 64, 64)  /* a fault the user should notice */
 
 /* List menu (STARK-0018): the selected row is drawn inverted */
 #define STARK_THEME_SEL_BG       STARK_THEME_FG

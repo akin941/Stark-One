@@ -16,6 +16,7 @@ extern const stark_app_t app_displaytest;
 extern const stark_app_t app_inputtest;
 extern const stark_app_t app_hello;
 extern const stark_app_t app_apptest;
+extern const stark_app_t app_storage;
 
 /* The registry, in registry order, and its length (for stark_app_init()). */
 extern const stark_app_t *const stark_apps[];

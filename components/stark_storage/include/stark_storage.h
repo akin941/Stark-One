@@ -36,11 +36,38 @@ typedef enum {
  */
 stark_err_t stark_storage_init(void);
 
+/*
+ * Requests, safe from any task (the UI task included): both return at once
+ * and the storage task acts on them; the outcome arrives as a
+ * STARK_SYS_STORAGE event. Eject unmounts a mounted card (`storage: ejected`)
+ * unless a file is open — then it is refused (`storage: eject refused: <n>
+ * open`) and the unchanged state is published again so the UI can say so.
+ * Mount tries a mount now instead of at the next retry. STARK_ERR_STATE
+ * before init or without a card slot. (STARK-0202)
+ */
+stark_err_t stark_storage_request_eject(void);
+stark_err_t stark_storage_request_mount(void);
+
+/*
+ * Requests, safe from any task (the UI task included): both return at once
+ * and the storage task acts on them; the outcome arrives as a
+ * STARK_SYS_STORAGE event. Eject unmounts a mounted card (`storage: ejected`)
+ * unless a file is open — then it is refused (`storage: eject refused: <n>
+ * open`) and the unchanged state is published again so the UI can say so.
+ * An ejected card is never remounted by itself: pulling it out moves the
+ * state to ABSENT, so the next insertion mounts again. Mount tries a mount
+ * now instead of at the next retry. STARK_ERR_STATE before init or without
+ * a card slot. (STARK-0202)
+ */
+stark_err_t stark_storage_request_eject(void);
+stark_err_t stark_storage_request_mount(void);
+
 /* Current state; any task. STARK_STORAGE_NOT_FITTED before init. */
 stark_storage_state_t stark_storage_state(void);
 
-/* Capacity of the mounted volume. STARK_ERR_INVALID_ARG for NULL,
- * STARK_ERR_STATE unless mounted. Blocks on the card: not from the UI task. */
+/* Capacity of the mounted volume as the storage task last read it (at
+ * mount): never touches the card, so any task may call it, the UI task
+ * included. STARK_ERR_INVALID_ARG for NULL, STARK_ERR_STATE unless mounted. */
 stark_err_t stark_storage_space(stark_medium_space_t *out);
 
 /* Stable lower-case name of a state ("no card", "mounted", ...), for logs. */

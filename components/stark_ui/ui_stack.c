@@ -103,6 +103,22 @@ void stark_ui_invalidate(stark_screen_t *s, gfx_rect_t area)
     }
 }
 
+void stark_ui_status_set_storage(stark_ui_storage_icon_t icon)
+{
+    if (!ui_statusbar_set_storage((int)icon)) {
+        return;
+    }
+    gfx_rect_t r = ui_statusbar_storage_rect();
+    if (rect_empty(s_status_damage)) {
+        s_status_damage = r;
+    } else { /* already pending: cover both */
+        s_status_damage =
+            rect_make(min32(s_status_damage.x, r.x), min32(s_status_damage.y, r.y),
+                      max32((int32_t)s_status_damage.x + s_status_damage.w, (int32_t)r.x + r.w),
+                      max32((int32_t)s_status_damage.y + s_status_damage.h, (int32_t)r.y + r.h));
+    }
+}
+
 stark_err_t stark_ui_push(stark_screen_t *screen)
 {
     if (!s_ready) {

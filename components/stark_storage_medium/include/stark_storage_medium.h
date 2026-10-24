@@ -37,5 +37,10 @@ void stark_storage_medium_unmount(void);
  * or STARK_ERR_STATE when nothing is mounted. */
 stark_err_t stark_storage_medium_probe(void);
 
+/* While unmounted (ejected): does a card answer at all? Initialises the
+ * card without mounting it. STARK_OK, STARK_ERR_NOT_FOUND, or STARK_ERR_STATE
+ * while mounted. (STARK-0202) */
+stark_err_t stark_storage_medium_present(void);
+
 /* Capacity of the mounted volume; STARK_ERR_STATE when nothing is mounted. */
 stark_err_t stark_storage_medium_space(stark_medium_space_t *out);

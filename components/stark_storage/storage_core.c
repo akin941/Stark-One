@@ -51,8 +51,13 @@ static storage_step_t on_tick(storage_core_t *c, uint32_t now_ms)
             schedule(c, now_ms, c->timing.probe_ms);
             step.action = STORAGE_ACT_PROBE;
             break;
-        case STARK_STORAGE_NOT_FITTED:
         case STARK_STORAGE_EJECTED:
+            /* Never mounts by itself: it only notices the card being pulled,
+             * so the next insertion mounts again (ADR-0018 §5). */
+            schedule(c, now_ms, c->timing.retry_ms);
+            step.action = STORAGE_ACT_PRESENT_CHECK;
+            break;
+        case STARK_STORAGE_NOT_FITTED:
             break;
     }
     return step;
@@ -89,12 +94,43 @@ static storage_step_t on_probe_result(storage_core_t *c, stark_err_t result, uin
     return step;
 }
 
+static storage_step_t on_present_result(storage_core_t *c, stark_err_t result)
+{
+    storage_step_t step = {STORAGE_ACT_NONE, false};
+    if (c->state == STARK_STORAGE_EJECTED && result != STARK_OK) {
+        step.changed = enter(c, STARK_STORAGE_ABSENT); /* the user pulled it */
+    }
+    return step;
+}
+
+static storage_step_t on_req_mount(storage_core_t *c, uint32_t now_ms)
+{
+    storage_step_t step = {STORAGE_ACT_NONE, false};
+    if (c->state != STARK_STORAGE_MOUNTED) {
+        schedule(c, now_ms, c->timing.retry_ms);
+        step.action = STORAGE_ACT_TRY_MOUNT;
+    }
+    return step;
+}
+
+static storage_step_t on_req_eject(storage_core_t *c, uint32_t now_ms)
+{
+    storage_step_t step = {STORAGE_ACT_NONE, false};
+    if (c->state == STARK_STORAGE_MOUNTED) {
+        c->generation++;
+        step.changed = enter(c, STARK_STORAGE_EJECTED);
+        step.action = STORAGE_ACT_UNMOUNT;
+        schedule(c, now_ms, c->timing.retry_ms);
+    }
+    return step;
+}
+
 storage_step_t storage_core_step(storage_core_t *c, storage_input_t in, stark_err_t result,
                                  uint32_t now_ms)
 {
     storage_step_t none = {STORAGE_ACT_NONE, false};
-    if (c->state == STARK_STORAGE_NOT_FITTED) {
-        return none;
+    if (c->state == STARK_STORAGE_NOT_FITTED && in != STORAGE_IN_TICK) {
+        return none; /* a tick in NOT_FITTED is a no-op of its own (on_tick) */
     }
     switch (in) {
         case STORAGE_IN_TICK:
@@ -103,6 +139,12 @@ storage_step_t storage_core_step(storage_core_t *c, storage_input_t in, stark_er
             return on_mount_result(c, result, now_ms);
         case STORAGE_IN_PROBE_RESULT:
             return on_probe_result(c, result, now_ms);
+        case STORAGE_IN_PRESENT_RESULT:
+            return on_present_result(c, result);
+        case STORAGE_IN_REQ_MOUNT:
+            return on_req_mount(c, now_ms);
+        case STORAGE_IN_REQ_EJECT:
+            return on_req_eject(c, now_ms);
         case STORAGE_IN_IO_ERROR:
             if (c->state == STARK_STORAGE_MOUNTED) {
                 c->due_now = true; /* confirm with a probe at once */

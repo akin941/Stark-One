@@ -518,8 +518,10 @@ pop, so it may open another dialog; a dialog removed any other way reports CANCE
 `dialog: open "<title>"`, `dialog: ok`, `dialog: cancel`. It is the transmit
 confirmation of the radio milestones (docs/SECURITY_SCOPE.md §4.2).
 
-Widgets in V0: **status bar** (title; battery/SD/clock arrive with their tasks — V0 draws
-nothing there rather than placeholders) and
+Widgets in V0: **status bar** (title; since STARK-0202 an 8×10 storage glyph at the right
+end, `stark_ui_status_set_storage()` — none, absent, mounted, error, ejected — set by the
+composition root, repainting only its own rectangle; battery and clock arrive with their
+tasks) and
 **list menu** (`ui_menu_t` in `ui_menu.h`: items, scroll window, selection,
 wrap-around; since STARK-0107 also category header rows and 16×16 icons). The menu
 *model* (selection movement, scroll window arithmetic, paging) lives in `ui_menu_model.c` as pure code with host tests; the
@@ -664,12 +666,15 @@ gated in simulation (ADR-0011). Local only.
 /* stark_storage.h */
 stark_err_t           stark_storage_init(void);      /* starts the storage task, returns at once */
 stark_storage_state_t stark_storage_state(void);     /* any task */
-stark_err_t           stark_storage_space(stark_medium_space_t *out); /* not from the UI task */
+stark_err_t           stark_storage_space(stark_medium_space_t *out); /* cached at mount; any task */
+stark_err_t           stark_storage_request_eject(void);  /* non-blocking, any task (STARK-0202) */
+stark_err_t           stark_storage_request_mount(void);
 
 /* stark_storage_medium.h — the hardware port; only stark_storage calls it, under its mutex */
 stark_err_t stark_storage_medium_mount(const char *mount_point, size_t max_files);
 void        stark_storage_medium_unmount(void);
 stark_err_t stark_storage_medium_probe(void);
+stark_err_t stark_storage_medium_present(void);  /* unmounted: card init only (STARK-0202) */
 stark_err_t stark_storage_medium_space(stark_medium_space_t *out);
 ```
 
@@ -685,6 +690,14 @@ published as `STARK_SYS_STORAGE` and logged once (`storage: no card`, `storage: 
 removed`, `storage: not fitted`); retries that change nothing are silent. The volume is
 mounted at `STARK_STORAGE_ROOT` (`/sd`).
 
+Eject and mount (STARK-0202) are requests the storage task carries out. Eject unmounts
+(`storage: ejected`), bumping the mount generation; it is refused while a file is open
+(`storage: eject refused: <n> open`, unchanged state re-published). An ejected card is
+never remounted by itself: a presence check (card init, no mount) every retry period
+notices it being pulled (→ `ABSENT`), so the next insertion mounts it; `request_mount`
+mounts at once. The composition root (`main/storage_ui.c`) maps every state onto the
+status-bar glyph and opens the "SD card removed" alert on `MOUNTED → REMOVED` only.
+
 The production medium (`medium_sdspi.c`) attaches the card to `SPI2_HOST` **once** and
 keeps it attached (its CS is driven high whenever it is not addressed; `stark_board`
 pulls it up before that), and each mount attempt only re-initialises the card
@@ -695,7 +708,7 @@ emulator storage test image substitutes the whole component (ADR-0018 §3).
 
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
-| `stark_storage` | V0.2 | Mount state machine, task and medium port are implemented (§6.9b, STARK-0201); eject, file helpers and the log writer land with STARK-0202/0203/0206 |
+| `stark_storage` | V0.2 | Mount state machine, task, medium port, removal and eject are implemented (§6.9b, STARK-0201/0202); file helpers and the log writer land with STARK-0203/0206 |
 | `stark_settings` | V0.2 | Typed key/value over NVS with defaults and change notifications — TASKS.md STARK-0204 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
