@@ -481,6 +481,25 @@ target_compile_options(run_log_rotate_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_log_rotate_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_log_rotate_tests PRIVATE unity)
 
+# stark_ir's pure codec core (STARK-0301) against spec-derived vectors
+# (scripts/gen_ir_vectors.py, ADR-0019 §3).
+set(IR_CORE_SOURCES
+    ${STARK_COMPONENTS}/stark_ir/ir_timing.c
+    ${STARK_COMPONENTS}/stark_ir/ir_nec.c
+    ${STARK_COMPONENTS}/stark_ir/ir_codec.c
+)
+set(IR_INCLUDES ${STARK_COMPONENTS}/stark_ir ${STARK_COMPONENTS}/stark_ir/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/vectors)
+foreach(ir_test ir_timing ir_nec)
+    add_executable(run_${ir_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${ir_test}.c
+        ${IR_CORE_SOURCES})
+    target_include_directories(run_${ir_test}_tests PRIVATE ${IR_INCLUDES})
+    target_compile_options(run_${ir_test}_tests PRIVATE ${OUR_C_FLAGS})
+    target_link_options(run_${ir_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+    target_link_libraries(run_${ir_test}_tests PRIVATE unity)
+    add_test(NAME stark_${ir_test}_tests COMMAND run_${ir_test}_tests)
+endforeach()
+
 # storage_core.c is linked only for stark_storage_state_str(); this copy is
 # built without coverage so the state machine's own suite owns its figure.
 add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_core.c)

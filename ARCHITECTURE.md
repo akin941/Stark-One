@@ -775,7 +775,7 @@ boot and on each change: backlight, buzzer volume, input repeat timing and log l
 | --- | --- | --- |
 | `stark_storage` | V0.2 | Implemented (§6.9b, STARK-0201…0203, 0206): mount state machine, task, medium port, removal, eject, file helpers, log file |
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
-| `stark_ir` | V0.3 | RMT RX/TX on GPIO 48/47 with pure codecs (NEC, NECX, RC5, RC6-0, SIRC), a raw `.ir` format and a transmit gate — specified in TASKS.md STARK-0301…0307 (ADR-0019) |
+| `stark_ir` | V0.3 | RMT RX/TX on GPIO 48/47 with pure codecs (NEC, NECX, RC5, RC6-0, SIRC), a raw `.ir` format and a transmit gate (ADR-0019). Implemented so far: the protocol-independent timing model (`ir_types.h`, `ir_match` with ± max(25 %, 60 µs)) and NEC/NECX (`ir_codec.h`, STARK-0301); the rest per TASKS.md STARK-0302…0307 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
@@ -885,7 +885,7 @@ to set differently (ADR-0010).
   | L0 | `stark_board` |
   | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018) |
   | L2 | `stark_gfx` (the only all-pure component) |
-  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port) |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port) |
   | L4 | `stark_ui`, `stark_app` |
   | L5 | every `apps/app_*` |
   | root | `main` — the composition root, may require anything |
