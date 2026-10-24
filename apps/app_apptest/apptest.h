@@ -9,3 +9,7 @@
 /* Runs worker/fault item `which`: 0 Worker demo, 1 Fail, 2 Fail from
  * worker, 3 Worker ignores stop. */
 void apptest_run(size_t which);
+
+/* Asks for confirmation, then runs the IR self-test on the worker
+ * (app_apptest_ir.c, STARK-0304). */
+void apptest_ir_self_test(void);

@@ -5,9 +5,9 @@
  * here by bit position so no ESP-IDF header is needed.
  *
  * Received timings are level-agnostic: the first level seen is the mark.
- * A TSOP-class receiver's output is active low while the emulator's
- * loopback delivers the transmitter's active-high baseband (ADR-0019 §2);
- * both decode the same.
+ * A TSOP-class receiver's output is active low, while a transmitter wired
+ * straight to the receiver delivers the active-high baseband (the validation
+ * setup of ADR-0019 §2); both decode the same.
  */
 #pragma once
 

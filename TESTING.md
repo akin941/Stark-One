@@ -157,7 +157,7 @@ commit. Reserved prefixes:
 | `dialog:` | `stark_ui` dialogs | `dialog: open "Confirm"` / `dialog: ok` / `dialog: cancel` (STARK-0105) |
 | `storage:` | `stark_storage` | `storage: no card` / `storage: mounted sdspi total=<kB> free=<kB>` / `storage: card removed` / `storage: ejected log=<bytes>` (STARK-0201/0202/0206; one line per state change) / `storage: logging to logs/stark.log` (once per mount, STARK-0206) |
 | `settings:` | `stark_settings`, `main/settings_apply.c` | `settings: loaded brightness=100 volume=3 repeat=1 loglvl=2 (nvs)` / `settings: brightness=80` / `settings: committed n=2` / `settings: applied brightness=80` (STARK-0204) |
-| `ir:` | `stark_ir` | `ir: init rx=48 tx=47` / `ir: rx on` / `ir: rx NEC addr=0x10 cmd=0x12` / `ir: rx RAW n=67` (STARK-0303) |
+| `ir:` | `stark_ir` | `ir: init rx=48 tx=47` / `ir: rx on` / `ir: rx NEC addr=0x10 cmd=0x12` / `ir: rx RAW n=67` (STARK-0303) / `ir: tx NEC addr=0x00 cmd=0x12 carrier=38000 dur=68 repeats=0` / `ir: tx done` (STARK-0304) |
 | `storageapp:` | Storage app | `storageapp: status mounted` / `storageapp: eject requested` / `storageapp: mount requested` (STARK-0202) / `storageapp: wtest ok bytes=102400 crc=<hex> frames=<n>` / `storageapp: wtest failed: <err> at <offset>` (STARK-0203) |
 
 **Scenario budget:** ≤ 20 s of emulated time each. Emulator scenarios are free and

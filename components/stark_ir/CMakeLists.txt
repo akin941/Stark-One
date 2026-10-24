@@ -12,6 +12,7 @@ idf_component_register(
         "ir_raw.c"
         "ir_symbols.c"
         "ir_capture.c"
+        "ir_tx_guard.c"
         "stark_ir.c"
     INCLUDE_DIRS
         "include"
@@ -22,5 +23,6 @@ idf_component_register(
         stark_event
         stark_log
         esp_driver_rmt
+        esp_timer
         freertos
 )

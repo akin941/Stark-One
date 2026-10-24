@@ -777,6 +777,7 @@ stark_err_t stark_ir_init(void);           /* RX channel + IR task; RX stays off
 stark_err_t stark_ir_rx_start(void);       /* receive-first: an app turns RX on */
 stark_err_t stark_ir_rx_stop(void);
 stark_err_t stark_ir_take(ir_signal_t *out);
+stark_err_t stark_ir_transmit(const ir_signal_t *s, uint8_t repeats); /* STARK-0304 */
 stark_err_t stark_ir_stats(stark_ir_stats_t *out);
 ```
 
@@ -790,13 +791,23 @@ decodes, pushes into a 4-slot ring (drop-oldest, counted), publishes `STARK_SYS_
 `STARK_IR_EVT_RX`, logs `ir: rx <proto> addr=… cmd=…` (or `ir: rx RAW n=…`) and
 re-arms. Frames longer than 256 durations are counted as overflows and dropped.
 
+TX (STARK-0304): `rmt_new_tx_channel` on `IR_TX` at 1 MHz with a copy encoder; the
+carrier (frequency from the signal, 33 % duty) is applied per transmission. Every
+transmission first passes the pure gate `ir_tx_guard.c` — 1…256 durations ending on a
+mark, each ≥ 50 µs, 30–60 kHz, ≤ 3 repeats, ≤ 1 s of signal in all, and
+`STARK_IR_TX_MIN_INTERVAL_MS` (≥ 1000) since the previous one ended — then is logged
+(`ir: tx <proto> addr= cmd= carrier= dur= repeats=`) and sent by the IR task at the
+protocol's frame period; `ir: tx done` / `ir: tx failed` and `STARK_SYS_IR`
+`TX_DONE`/`TX_FAILED` follow. The API has no repeat-forever and nothing transmits without
+an app's confirmed action (SECURITY_SCOPE §4).
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
 | `stark_storage` | V0.2 | Implemented (§6.9b, STARK-0201…0203, 0206): mount state machine, task, medium port, removal, eject, file helpers, log file |
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
-| `stark_ir` | V0.3 | Codec core and RX implemented (§6.9d, STARK-0301…0303); TX, the IR app and replay per TASKS.md STARK-0304…0307 |
+| `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app and replay per TASKS.md STARK-0305…0307 |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
@@ -886,6 +897,7 @@ gains options adds its line there in the same change:
 | `STARK_STORAGE_TASK_PRIO` / `_TASK_STACK` | 2 / 4096 | Storage task (STARK-0201); at most 4 files open at once (`STORAGE_FILE_SLOTS`, STARK-0203) |
 | `STARK_STORAGE_SD_KHZ` | 20000 | microSD clock ceiling on SPI2 (`stark_storage_medium`) |
 | `STARK_IR_TASK_PRIO` / `_TASK_STACK` | 3 / 3072 | IR task (STARK-0303) |
+| `STARK_IR_TX_MIN_INTERVAL_MS` | 1000 (range 1000–60000) | Minimum gap between IR transmissions (STARK-0304) |
 | `STARK_LOG_RING_BYTES` | 4096 | Console capture ring for the log file; 0 = off (STARK-0206) |
 | `STARK_STORAGE_LOG_FLUSH_MS` / `_LOG_FILE_KB` / `_LOG_FILES` | 1000 / 64 / 4 | Log file flush period, rotation size, files kept (STARK-0206) |
 | `STARK_LOG_LEVEL` | INFO | Maps to esp_log level |

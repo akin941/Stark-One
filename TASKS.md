@@ -2628,6 +2628,14 @@ loopback **off** (scenario without `rmt_loopback`) → every protocol reports
 4. `ir_tx_guard.c` 100 % lines; gate boundaries tested.
 5. Heap unchanged across three self-test runs (± 256 B).
 
+**As built.** App Test's self-test is item 7 (`IR self-test`, reached with UP from the
+first item). Its worker retries a `BUSY` from the interval rule every 50 ms, so the
+"immediate second run is refused" check lives in the host gate tests rather than the
+scenario. The three-run heap check is a throwaway run (heap 276 084 → 276 084 B, Δ 0),
+like V0.2's remove/insert check. The host UI port gained a fake `stark_ir`
+(`test/host/port/ui_port_ir.c`), and the host build caught a missing `<stddef.h>` in
+`ir_tx_guard.c` that the firmware build had hidden.
+
 **Out of scope.** Transmit power control, carrier sweeps, TX from anywhere but a
 confirmed user action, sequences of different signals in one transmission.
 

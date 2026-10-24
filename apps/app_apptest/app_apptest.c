@@ -17,6 +17,7 @@ static char s_worker_label[24] = "Worker demo";
 static const ui_menu_item_t k_items[] = {
     {.label = "Confirm dialog"}, {.label = "Alert dialog"},     {.label = s_worker_label},
     {.label = "Fail"},           {.label = "Fail from worker"}, {.label = "Worker ignores stop"},
+    {.label = "IR self-test"},
 };
 
 static ui_menu_t s_menu;
@@ -50,6 +51,8 @@ static void activate(size_t index, void *ctx)
     } else if (index == 1) {
         (void)stark_ui_dialog_alert("Alert", "This is an alert. OK or BACK closes it.",
                                     alert_closed, "alert closed");
+    } else if (index == 6) {
+        apptest_ir_self_test(); /* STARK-0304 */
     } else {
         apptest_run(index - 2); /* the worker and fault items */
     }

@@ -255,6 +255,17 @@ target_link_libraries(run_ui_damage_tests PRIVATE unity)
 # target — the pure-core tests above keep building with no ESP-IDF-shaped
 # header on their include path (TESTING.md §2 rule 1).
 set(STARK_COMPONENTS ${CMAKE_CURRENT_SOURCE_DIR}/../../components)
+# The IR codec core for apps on the UI port, without coverage (the codec
+# suites own that figure).
+add_library(ir_core_nocov OBJECT ${STARK_COMPONENTS}/stark_ir/ir_timing.c
+    ${STARK_COMPONENTS}/stark_ir/ir_nec.c ${STARK_COMPONENTS}/stark_ir/ir_codec.c
+    ${STARK_COMPONENTS}/stark_ir/ir_biphase.c ${STARK_COMPONENTS}/stark_ir/ir_rc5.c
+    ${STARK_COMPONENTS}/stark_ir/ir_rc6.c ${STARK_COMPONENTS}/stark_ir/ir_sirc.c
+    ${STARK_COMPONENTS}/stark_ir/ir_raw.c)
+target_include_directories(ir_core_nocov PRIVATE ${STARK_COMPONENTS}/stark_ir
+    ${STARK_COMPONENTS}/stark_ir/include)
+target_compile_options(ir_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
+
 set(UI_PORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_display.c
     ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_event.c
@@ -284,6 +295,7 @@ set(UI_PORT_SOURCES
 )
 set(UI_PORT_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/port/include
+    ${STARK_COMPONENTS}/stark_ir/include
     ${CMAKE_CURRENT_SOURCE_DIR}/port
     ${CMAKE_CURRENT_SOURCE_DIR}/support
     ${STARK_COMPONENTS}/stark_log/include
@@ -326,6 +338,9 @@ add_executable(run_ui_apps_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_buzzertest/app_buzzertest.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_displaytest/app_displaytest.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest_ir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_ir.c
+    $<TARGET_OBJECTS:ir_core_nocov>
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest_worker.c
     ${UI_PORT_SOURCES}
 )
@@ -353,6 +368,9 @@ target_link_libraries(run_dialog_layout_tests PRIVATE unity)
 add_executable(run_ui_dialog_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_dialog.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest_ir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_ir.c
+    $<TARGET_OBJECTS:ir_core_nocov>
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest_worker.c
     ${UI_PORT_SOURCES}
 )
@@ -365,6 +383,9 @@ target_link_libraries(run_ui_dialog_tests PRIVATE unity)
 add_executable(run_ui_navigation_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_navigation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest_ir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_ir.c
+    $<TARGET_OBJECTS:ir_core_nocov>
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest_worker.c
     ${UI_PORT_SOURCES}
 )
@@ -388,6 +409,9 @@ target_link_libraries(run_app_fault_tests PRIVATE unity)
 add_executable(run_ui_fault_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_fault.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest_ir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_ir.c
+    $<TARGET_OBJECTS:ir_core_nocov>
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_apptest/app_apptest_worker.c
     ${UI_PORT_SOURCES}
 )
@@ -494,10 +518,11 @@ set(IR_CORE_SOURCES
     ${STARK_COMPONENTS}/stark_ir/ir_raw.c
     ${STARK_COMPONENTS}/stark_ir/ir_symbols.c
     ${STARK_COMPONENTS}/stark_ir/ir_capture.c
+    ${STARK_COMPONENTS}/stark_ir/ir_tx_guard.c
 )
 set(IR_INCLUDES ${STARK_COMPONENTS}/stark_ir ${STARK_COMPONENTS}/stark_ir/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vectors)
-foreach(ir_test ir_timing ir_nec ir_codecs ir_raw ir_symbols)
+foreach(ir_test ir_timing ir_nec ir_codecs ir_raw ir_symbols ir_tx_guard)
     add_executable(run_${ir_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${ir_test}.c
         ${IR_CORE_SOURCES})
     target_include_directories(run_${ir_test}_tests PRIVATE ${IR_INCLUDES})
