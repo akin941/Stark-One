@@ -1,0 +1,7 @@
+# spec-derived lab signal, not recorded (ADR-0019 §3)
+stark-ir 1
+protocol SIRC12
+address 0x0001
+command 0x0015
+carrier 40000
+timings 2400 600 1200 600 600 600 1200 600 600 600 1200 600 600 600 600 600 1200 600 600 600 600 600 600 600 600
