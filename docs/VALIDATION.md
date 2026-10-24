@@ -221,6 +221,9 @@ carrier was generated, light left an LED, a receiver demodulated it, or that tim
 survive real hardware — tolerance is proven on the host with jittered spec-derived
 vectors.
 
+**Status (STARK-0307): every software half met** — evidence in docs/measurements.md
+"V0.3 exit criteria"; every physical half open in `docs/bringup/v1-ir.md`.
+
 | Exit criterion | Host | Emulator (production / storage image, loopback) | Physical, deferred to HIL (V1) |
 | --- | --- | --- | --- |
 | 1. ≥ 20 vectors per protocol | ≥ 20 spec-derived vectors per protocol, tolerance edges, malformed frames, exhaustive round trips | every protocol encoded → loopback → decoded | ≥ 20 vectors recorded from our own remotes |

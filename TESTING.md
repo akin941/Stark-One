@@ -169,7 +169,9 @@ set, it runs in its own `esp-emulator-soak` CI job on every pull request (and ma
 dispatch) — about eight minutes of wall time, in parallel, and free. Since STARK-0207 the
 same job also builds the storage test image and runs the V0.2 soak
 (`test/emu/soak/v02-soak.toml`: write tests, eject/mount, settings, a pull and
-reinsertion).
+reinsertion), and since STARK-0307 the V0.3 soak (`test/emu/soak/v03-soak.toml`, with the
+RMT loopback: ten confirmed replays across every protocol, saves, browse, App Test's IR
+self-test, a write test and settings).
 
 **Planned scenarios by milestone**
 

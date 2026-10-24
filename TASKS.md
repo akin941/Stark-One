@@ -2866,6 +2866,28 @@ TESTING §4/§5.
 3. No simulator names in production code; no scenario asserts a wall-clock value.
 4. No document describes the loopback as optical evidence (grep for "optical" reviewed).
 
+**As built.**
+* `storage/v03-protocols.toml` replays the eight seeded files (seven protocol variants
+  and the RAW signal); each `ir: rx` carries the sent fields. `forbid_between` keeps any
+  `ir: tx` from appearing before the first confirmation.
+* `storage/v03-capture-replay.toml` has no remote to capture from, so a seeded RC6 replay
+  stands in for one: its capture is saved (`ir_0001.ir`), listed first, parsed back
+  (the logged confirm text names the same fields), replayed and captured again. RAW goes
+  through the same steps as `ir_0002.ir`, with the same 13 durations.
+* `soak/v03-soak.toml` passes with root heap Δ 44 B. The CI soak job gained one step.
+* Stack headroom was measured the way STARK-0206 did it: a GDB fill-pattern dump after
+  every protocol was sent and received, saves included. The IR task leaves 1 152 of
+  3 072 B untouched and the app worker 2 356 of 4 096 B.
+* **Static RAM corrections, recorded where they belong:** STARK-0305's app holds
+  5 984 B, not ≤ 4 kB, and STARK-0306's browse and send add 1 014 B after sharing the worker
+  buffer. See those tasks' "As built" notes and docs/measurements.md.
+* **AC3 correction:** the simulator-name grep was not empty after STARK-0303/0304. Two
+  comments named the loopback; they were reworded in STARK-0304 (PR akin941/Stark-One#46),
+  and the grep is now empty.
+* `docs/bringup/v1-ir.md` lists 17 checks with every result blank. Check 12, the self-test
+  with the LED facing the board's own receiver, would be the first optical end-to-end
+  evidence.
+
 **Out of scope.** Hardware work; V0.4.
 
 **CI.** The soak job runs the V0.3 soak too. **Security.** None new. **Physical HIL

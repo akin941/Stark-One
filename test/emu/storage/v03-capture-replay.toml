@@ -1,0 +1,72 @@
+# STARK-0307 (ROADMAP V0.3 exits 2 and 3, software half) on the storage test
+# image with esp-emu's RMT loopback (`--rmt-loopback 0:2`, ADR-0019 §2). The
+# emulator has no remote, so the seeded lab_rc6.ir stands in for one: its
+# replay is captured by the IR app's receiver -> saved as ir_0001.ir ->
+# listed first -> parsed back to the same fields -> replayed -> captured
+# again. The same for a signal no decoder accepts: lab_raw.ir -> captured as
+# RAW -> saved as ir_0002.ir -> replayed -> captured back with the same 13
+# durations. Baseband only: no carrier, LED, light or receiver is proven.
+name = "emu-v03-capture-replay"
+image = "storage"
+end_ms = 12000
+heap_min = 200000
+rmt_loopback = "0:2"
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },     # IR
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1100, hold_ms = 60 },  # Browse saved
+    { key = "OK", at_ms = 1300, hold_ms = 60 },    # 9 files, on lab_nec.ir
+    { key = "DOWN", at_ms = 1700, hold_ms = 60 },  # lab_necx
+    { key = "DOWN", at_ms = 1850, hold_ms = 60 },  # lab_raw
+    { key = "DOWN", at_ms = 2000, hold_ms = 60 },  # lab_rc5
+    { key = "DOWN", at_ms = 2150, hold_ms = 60 },  # lab_rc6
+    { key = "OK", at_ms = 2400, hold_ms = 60 },
+    { key = "OK", at_ms = 2800, hold_ms = 60 },    # confirm: the "remote"
+    { key = "BACK", at_ms = 3600, hold_ms = 60 },  # receive view
+    { key = "OK", at_ms = 3900, hold_ms = 60 },    # Save last -> ir_0001.ir
+    { key = "DOWN", at_ms = 4400, hold_ms = 60 },
+    { key = "OK", at_ms = 4600, hold_ms = 60 },    # 10 files, on ir_0001.ir
+    { key = "OK", at_ms = 5100, hold_ms = 60 },
+    { key = "OK", at_ms = 5500, hold_ms = 60 },    # confirm: replay the capture
+    { key = "DOWN", at_ms = 6300, hold_ms = 60 },  # lab_nec (lab_bad skipped)
+    { key = "DOWN", at_ms = 6450, hold_ms = 60 },  # lab_necx
+    { key = "DOWN", at_ms = 6600, hold_ms = 60 },  # lab_raw
+    { key = "OK", at_ms = 6900, hold_ms = 60 },
+    { key = "OK", at_ms = 7300, hold_ms = 60 },    # confirm: the unknown "remote"
+    { key = "BACK", at_ms = 8100, hold_ms = 60 },
+    { key = "OK", at_ms = 8400, hold_ms = 60 },    # Save last -> ir_0002.ir
+    { key = "DOWN", at_ms = 8900, hold_ms = 60 },
+    { key = "OK", at_ms = 9100, hold_ms = 60 },    # 11 files, on ir_0002.ir
+    { key = "OK", at_ms = 9600, hold_ms = 60 },
+    { key = "OK", at_ms = 10000, hold_ms = 60 },   # confirm: replay the RAW capture
+    { key = "BACK", at_ms = 10800, hold_ms = 60 }, # list -> view
+    { key = "BACK", at_ms = 11200, hold_ms = 60 }, # leave the app
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    "app: start ir",
+    "irapp: browse 9 files",
+    "irapp: confirm lab_rc6.ir: RC6 10/20, 36000 Hz",
+    "ir: tx RC6 addr=0x10 cmd=0x20 carrier=36000",
+    "ir: rx RC6 addr=0x10 cmd=0x20",
+    "irapp: saved ir_0001.ir",
+    "irapp: browse 10 files",
+    "irapp: confirm ir_0001.ir: RC6 10/20, 36000 Hz",
+    "ir: tx RC6 addr=0x10 cmd=0x20 carrier=36000",
+    "irapp: sent ir_0001.ir",
+    "ir: rx RC6 addr=0x10 cmd=0x20",
+    "irapp: confirm lab_raw.ir: RAW 13, 38000 Hz, 13 pulses",
+    "ir: tx RAW n=13 carrier=38000",
+    "ir: rx RAW n=13",
+    "irapp: saved ir_0002.ir",
+    "irapp: browse 11 files",
+    "irapp: confirm ir_0002.ir: RAW 13, 38000 Hz, 13 pulses",
+    "ir: tx RAW n=13 carrier=38000",
+    "irapp: sent ir_0002.ir",
+    "ir: rx RAW n=13",
+    "ir: rx off",
+    "app: stop ir",
+]
+forbid = ["irapp: send refused", "irapp: send failed", "irapp: save failed", "ir: tx failed"]
