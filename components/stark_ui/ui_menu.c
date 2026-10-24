@@ -107,6 +107,13 @@ static void menu_render(stark_screen_t *self, gfx_surface_t *s)
         }
         (void)gfx_text(s, &gfx_font_mono16, text_x, (int16_t)(r.y + STARK_THEME_ROW_TEXT_Y),
                        it->label, fg, bg, true);
+        const char *value = m->value != NULL ? m->value(i, m->ctx) : NULL;
+        if (value != NULL) {
+            int16_t vx =
+                (int16_t)(r.x + r.w - STARK_THEME_TEXT_X - gfx_text_width(&gfx_font_mono16, value));
+            (void)gfx_text(s, &gfx_font_mono16, vx, (int16_t)(r.y + STARK_THEME_ROW_TEXT_Y), value,
+                           fg, bg, true);
+        }
     }
     if (overflows(m)) {
         draw_scrollbar(m, s);
@@ -150,6 +157,17 @@ static bool menu_event(stark_screen_t *self, const stark_event_t *e)
         case STARK_KEY_LEFT:
         case STARK_KEY_RIGHT:
             if (!press_or_repeat) {
+                return true;
+            }
+            if (m->adjust != NULL) {
+                size_t sel = ui_menu_model_selected(&m->model);
+                if (ui_menu_model_has_selection(&m->model) &&
+                    m->adjust(sel, e->key.key == STARK_KEY_LEFT ? -1 : +1, m->ctx)) {
+                    stark_ui_invalidate(&m->screen, row_rect(m, sel));
+                    stark_buzzer_click();
+                } else {
+                    stark_buzzer_reject(); /* not adjustable, or at its limit */
+                }
                 return true;
             }
             moved = ui_menu_model_page(&m->model, e->key.key == STARK_KEY_LEFT ? -1 : +1);

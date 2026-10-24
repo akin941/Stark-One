@@ -528,7 +528,9 @@ end, `stark_ui_status_set_storage()` — none, absent, mounted, error, ejected �
 composition root, repainting only its own rectangle; battery and clock arrive with their
 tasks) and
 **list menu** (`ui_menu_t` in `ui_menu.h`: items, scroll window, selection,
-wrap-around; since STARK-0107 also category header rows and 16×16 icons). The menu
+wrap-around; since STARK-0107 also category header rows and 16×16 icons; since STARK-0205 an
+optional right-aligned value column (`value`) and LEFT/RIGHT `adjust` hook — menus without
+them render exactly as before). The menu
 *model* (selection movement, scroll window arithmetic, paging) lives in `ui_menu_model.c` as pure code with host tests; the
 rendering lives beside it (`ui_menu.c`) and is verified visually in Wokwi.
 
@@ -756,7 +758,7 @@ boot and on each change: backlight, buzzer volume, input repeat timing and log l
 | Component | Milestone | One-line contract |
 | --- | --- | --- |
 | `stark_storage` | V0.2 | Mount state machine, task, medium port, removal, eject and file helpers are implemented (§6.9b, STARK-0201…0203); the log writer lands with STARK-0206 |
-| `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); the Settings app is STARK-0205 |
+| `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
