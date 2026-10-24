@@ -12,3 +12,12 @@ config STARK_IR_TASK_STACK
     int "IR task stack (bytes)"
     range 2048 8192
     default 3072
+
+config STARK_IR_TX_MIN_INTERVAL_MS
+    int "IR: minimum time between transmissions (ms)"
+    range 1000 60000
+    default 1000
+    help
+        A transmission is refused (busy) until this long after the previous
+        one ended — no transmit loops (SECURITY_SCOPE §4.4). The floor of
+        1000 ms cannot be configured away.

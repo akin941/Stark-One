@@ -1,0 +1,25 @@
+# STARK-0304 fault injection on the production image: the same IR
+# self-test with esp-emu's RMT loopback OFF — every transmission completes
+# but nothing comes back, so each protocol reports a timeout; nothing
+# panics and IR stays usable (RX is turned off again at the end).
+name = "emu-v03-ir-noloop"
+end_ms = 14000
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 450, hold_ms = 60 },
+    { key = "OK", at_ms = 650, hold_ms = 60 },
+    { key = "UP", at_ms = 900, hold_ms = 60 },
+    { key = "OK", at_ms = 1100, hold_ms = 60 },
+    { key = "OK", at_ms = 1400, hold_ms = 60 },
+]
+expect = [
+    'dialog: open "Transmit IR test frames?"',
+    "ir: tx NEC addr=0x00 cmd=0x12",
+    "ir: tx done",
+    "apptest: ir self-test NEC timeout",
+    "apptest: ir self-test SIRC20 timeout",
+    "ir: rx off",
+    "apptest: ir self-test done 0/7",
+]
+forbid = ["ir: rx NEC", "ir: tx failed"]

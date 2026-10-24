@@ -40,6 +40,20 @@ stark_err_t stark_ir_init(void);
 stark_err_t stark_ir_rx_start(void);
 stark_err_t stark_ir_rx_stop(void);
 
+/*
+ * Starts a transmission of s (and `repeats` more frames at the protocol's
+ * period) and returns at once; STARK_SYS_IR TX_DONE or TX_FAILED follows.
+ * Call only after the user confirmed (SECURITY_SCOPE §4.2). The gate
+ * (ir_tx_guard.h) refuses with STARK_ERR_INVALID_ARG anything outside its
+ * limits — at most 1 s of signal, 3 repeats, a 30–60 kHz carrier — and
+ * with STARK_ERR_BUSY a transmission still running or one started less than
+ * CONFIG_STARK_IR_TX_MIN_INTERVAL_MS after the previous one ended. Each one
+ * is logged (`ir: tx <proto> addr= cmd= carrier= dur= repeats=`, then
+ * `ir: tx done` / `ir: tx failed: <err>`). STARK_ERR_NOT_SUPPORTED without
+ * IR. (STARK-0304)
+ */
+stark_err_t stark_ir_transmit(const ir_signal_t *s, uint8_t repeats);
+
 /* The oldest capture; STARK_ERR_NOT_FOUND when there is none. Any task. */
 stark_err_t stark_ir_take(ir_signal_t *out);
 

@@ -1,0 +1,50 @@
+# STARK-0304 on the production image, with esp-emu's RMT loopback
+# (`--rmt-loopback 0:2`: the first RMT TX channel's baseband into the first
+# RX channel; ADR-0019 §2). App Test -> IR self-test -> confirm: every
+# protocol variant is encoded, gated, logged, sent through RMT TX, received
+# by RMT RX, converted and decoded back to the sent address and command.
+# This proves the firmware's IR software path end to end. It does NOT prove
+# a carrier, an LED, light or a receiver — those are V1 hardware checks.
+name = "emu-v03-ir-loopback"
+end_ms = 14000
+heap_min = 200000
+rmt_loopback = "0:2"
+presses = [
+    { key = "DOWN", at_ms = 300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 450, hold_ms = 60 },   # App Test
+    { key = "OK", at_ms = 650, hold_ms = 60 },
+    { key = "UP", at_ms = 900, hold_ms = 60 },     # wraps to IR self-test
+    { key = "OK", at_ms = 1100, hold_ms = 60 },
+    { key = "OK", at_ms = 1400, hold_ms = 60 },    # confirm
+]
+expect = [
+    "ir: init rx=48 tx=47",
+    "app: start apptest",
+    'menu: sel=6 "IR self-test"',
+    'dialog: open "Transmit IR test frames?"',
+    "dialog: ok",
+    "ir: rx on",
+    "ir: tx NEC addr=0x00 cmd=0x12 carrier=38000",
+    "ir: rx NEC addr=0x00 cmd=0x12",
+    "apptest: ir self-test NEC ok",
+    "ir: tx NECX addr=0x1234 cmd=0x56 carrier=38000",
+    "ir: rx NECX addr=0x1234 cmd=0x56",
+    "apptest: ir self-test NECX ok",
+    "ir: tx RC5 addr=0x05 cmd=0x35 carrier=36000",
+    "apptest: ir self-test RC5 ok",
+    "ir: tx RC6 addr=0x10 cmd=0x20 carrier=36000",
+    "apptest: ir self-test RC6 ok",
+    "ir: tx SIRC12 addr=0x01 cmd=0x15 carrier=40000",
+    "apptest: ir self-test SIRC12 ok",
+    "ir: tx SIRC15 addr=0x42 cmd=0x2A carrier=40000",
+    "apptest: ir self-test SIRC15 ok",
+    "ir: tx SIRC20 addr=0x1A5 cmd=0x33 carrier=40000",
+    "apptest: ir self-test SIRC20 ok",
+    "ir: rx off",
+    "apptest: ir self-test done 7/7",
+]
+forbid = ["mismatch", "timeout", "ir: tx failed"]
+# the confirmation precedes every transmission
+forbid_between = [
+    { after = "app: start apptest", before = "dialog: ok", text = "ir: tx " },
+]
