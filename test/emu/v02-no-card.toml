@@ -1,11 +1,11 @@
 # STARK-0207 on the production image (ROADMAP V0.2 exit 4, software half):
 # esp-emu models no SD card, so this boot has none — and every app is still
 # reachable and works: About, Diagnostics, App Test, Buzzer Test, Display
-# Test, Input Test, Hello, Settings (a value changed and changed back,
+# Test, Input Test, Hello, IR (receiving), Settings (a value changed and changed back,
 # committed) and Storage (shows no card; the write test refuses). No drops,
 # heap above the gate.
 name = "emu-v02-no-card"
-end_ms = 12500
+end_ms = 13400
 heap_min = 200000
 presses = [
     { key = "OK", at_ms = 400, hold_ms = 60 },
@@ -28,17 +28,20 @@ presses = [
     { key = "DOWN", at_ms = 7100, hold_ms = 60 },
     { key = "OK", at_ms = 7400, hold_ms = 60 },
     { key = "BACK", at_ms = 8100, hold_ms = 60 },
-    { key = "DOWN", at_ms = 8400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 8400, hold_ms = 60 },   # IR (STARK-0305)
     { key = "OK", at_ms = 8700, hold_ms = 60 },
-    { key = "LEFT", at_ms = 9000, hold_ms = 60 },
-    { key = "RIGHT", at_ms = 9300, hold_ms = 60 },
-    { key = "BACK", at_ms = 9600, hold_ms = 60 },
-    { key = "DOWN", at_ms = 9900, hold_ms = 60 },
-    { key = "OK", at_ms = 10200, hold_ms = 60 },
-    { key = "DOWN", at_ms = 10500, hold_ms = 60 },
-    { key = "DOWN", at_ms = 10700, hold_ms = 60 },
-    { key = "OK", at_ms = 11000, hold_ms = 60 },
-    { key = "BACK", at_ms = 11300, hold_ms = 60 },
+    { key = "BACK", at_ms = 9000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 9300, hold_ms = 60 },
+    { key = "OK", at_ms = 9600, hold_ms = 60 },
+    { key = "LEFT", at_ms = 9900, hold_ms = 60 },
+    { key = "RIGHT", at_ms = 10200, hold_ms = 60 },
+    { key = "BACK", at_ms = 10500, hold_ms = 60 },
+    { key = "DOWN", at_ms = 10800, hold_ms = 60 },
+    { key = "OK", at_ms = 11100, hold_ms = 60 },
+    { key = "DOWN", at_ms = 11400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 11600, hold_ms = 60 },
+    { key = "OK", at_ms = 11900, hold_ms = 60 },
+    { key = "BACK", at_ms = 12200, hold_ms = 60 },
 ]
 expect = [
     "storage: no card",
@@ -56,6 +59,10 @@ expect = [
     "app: stop inputtest",
     "app: start hello",
     "app: stop hello",
+    "ir: rx on",          # on_start runs before the launch is logged
+    "app: start ir",
+    "ir: rx off",         # on_stop runs before the stop is logged
+    "app: stop ir",
     "app: start settings",
     "settings: brightness=90",
     "settings: applied brightness=90",

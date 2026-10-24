@@ -261,7 +261,7 @@ add_library(ir_core_nocov OBJECT ${STARK_COMPONENTS}/stark_ir/ir_timing.c
     ${STARK_COMPONENTS}/stark_ir/ir_nec.c ${STARK_COMPONENTS}/stark_ir/ir_codec.c
     ${STARK_COMPONENTS}/stark_ir/ir_biphase.c ${STARK_COMPONENTS}/stark_ir/ir_rc5.c
     ${STARK_COMPONENTS}/stark_ir/ir_rc6.c ${STARK_COMPONENTS}/stark_ir/ir_sirc.c
-    ${STARK_COMPONENTS}/stark_ir/ir_raw.c)
+    ${STARK_COMPONENTS}/stark_ir/ir_raw.c ${STARK_COMPONENTS}/stark_ir/ir_names.c)
 target_include_directories(ir_core_nocov PRIVATE ${STARK_COMPONENTS}/stark_ir
     ${STARK_COMPONENTS}/stark_ir/include)
 target_compile_options(ir_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
@@ -519,10 +519,11 @@ set(IR_CORE_SOURCES
     ${STARK_COMPONENTS}/stark_ir/ir_symbols.c
     ${STARK_COMPONENTS}/stark_ir/ir_capture.c
     ${STARK_COMPONENTS}/stark_ir/ir_tx_guard.c
+    ${STARK_COMPONENTS}/stark_ir/ir_names.c
 )
 set(IR_INCLUDES ${STARK_COMPONENTS}/stark_ir ${STARK_COMPONENTS}/stark_ir/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vectors)
-foreach(ir_test ir_timing ir_nec ir_codecs ir_raw ir_symbols ir_tx_guard)
+foreach(ir_test ir_timing ir_nec ir_codecs ir_raw ir_symbols ir_tx_guard ir_names)
     add_executable(run_${ir_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${ir_test}.c
         ${IR_CORE_SOURCES})
     target_include_directories(run_${ir_test}_tests PRIVATE ${IR_INCLUDES})
@@ -601,6 +602,24 @@ target_compile_options(run_ui_storage_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_storage_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_storage_tests PRIVATE unity)
 
+# The real IR app on the UI port (STARK-0305) with fake stark_ir / stark_storage.
+add_executable(run_ui_ir_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_ir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_ir/app_ir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_ir/ir_save.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_ir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_storage.c
+    $<TARGET_OBJECTS:ir_core_nocov>
+    $<TARGET_OBJECTS:storage_core_nocov>
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_ir_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_ir)
+target_compile_options(run_ui_ir_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_ir_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_ir_tests PRIVATE unity)
+
 # The real Diagnostics screen on the UI port, with a settable fake stark_diag.
 add_executable(run_ui_diagnostics_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_diagnostics.c
@@ -645,6 +664,7 @@ add_test(NAME stark_log_ring_tests COMMAND run_log_ring_tests)
 add_test(NAME stark_log_rotate_tests COMMAND run_log_rotate_tests)
 add_test(NAME stark_ui_storage_tests COMMAND run_ui_storage_tests)
 add_test(NAME stark_ui_settings_tests COMMAND run_ui_settings_tests)
+add_test(NAME stark_ui_ir_tests COMMAND run_ui_ir_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)
 add_test(NAME stark_ui_format_tests COMMAND run_ui_format_tests)
 

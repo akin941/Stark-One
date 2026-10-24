@@ -2699,6 +2699,21 @@ in the emulator that is the app's own replay through the loopback, covered by ST
 3. `ir_names.c` 100 %; app files ≤ 150 lines each.
 4. Earlier scenarios pass with updated key paths only.
 
+**As built.** The IR app is registered before Storage and Settings, so the **Lab**
+category sits ahead of Device: rows Lab header 10, IR 11, Device header 12, Settings 13,
+Storage 14. Storage stays the last row, so the storage scenarios' UP-wrap paths are
+unchanged; only `sel=` numbers, `v01-hello` (four UPs), the V0.1 soak (four DOWNs after
+Hello) and `v02-no-card` (now visits IR too) move. Rows: `Save last`, `Browse saved`,
+then six fixed capture rows (blank and disabled until filled — the menu model counts
+rows once); OK on a capture row saves that capture. The save runs on the app worker.
+
+* **Static RAM is 5 984 B, not ≤ 4 kB** (measured at STARK-0307 with `nm`). The
+  limit above assumed compact summaries plus one full signal, but the goal and notes
+  have the *selected* capture saved, so all six keep their full timings (`s_caps`,
+  3 192 B); the `.ir` text and the signal handed to the worker add 2 332 B (shared with
+  Browse from STARK-0306); labels, values, rows and the menu 460 B. Boot heap stays far
+  above the 200 kB gate.
+
 **Out of scope.** Editing captures, renaming files, live waveform plots, protocol
 "learning" across frames.
 

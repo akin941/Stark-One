@@ -13,6 +13,7 @@ idf_component_register(
         "ir_symbols.c"
         "ir_capture.c"
         "ir_tx_guard.c"
+        "ir_names.c"
         "stark_ir.c"
     INCLUDE_DIRS
         "include"

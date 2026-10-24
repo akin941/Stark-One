@@ -1,0 +1,28 @@
+# STARK-0305 on the storage test image: opening the IR app turns the
+# receiver on and leaving it turns it off (receive-first, SECURITY_SCOPE
+# §4.1); with nothing captured `Save last` is refused; the launcher reaches
+# IR on row 11 (Lab). Capturing a real frame needs a transmitter — in the
+# emulator that is the app's own replay through the RMT loopback
+# (STARK-0306).
+name = "emu-v03-ir-app"
+image = "storage"
+end_ms = 3500
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },     # IR
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "OK", at_ms = 1200, hold_ms = 60 },    # Save last
+    { key = "BACK", at_ms = 2500, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    'menu: sel=11 "IR"',
+    "ir: rx on",
+    "app: start ir",
+    "irapp: save refused: nothing captured",
+    "ir: rx off",
+    "app: stop ir",
+]
+forbid = ["ir: tx "]
