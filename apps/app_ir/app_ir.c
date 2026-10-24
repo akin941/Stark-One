@@ -1,98 +1,73 @@
 /*
- * app_ir.c — IR (TASKS.md STARK-0305): receive-first. While the app is open
- * the receiver listens; each capture is listed newest first with its
- * protocol, address and command (or RAW and its length) and its carrier and
- * duration count. `Save last` or OK on a capture writes it to the card;
- * `Browse saved` lists the files (STARK-0306). Leaving the app turns the
- * receiver off.
+ * app_ir.c — IR (TASKS.md STARK-0305/0306): receive-first. While the app is
+ * open the receiver listens. One menu shows either the receive view
+ * (ir_view.c) or the saved files (ir_browse.c, sent through ir_send.c); BACK
+ * on the files returns to the view. Leaving the app turns the receiver off.
  */
-#include <stdio.h>
-#include "ir_codec.h"
 #include "irapp.h"
 #include "stark_app.h"
+#include "stark_input.h"
 #include "stark_ir.h"
 #include "stark_log.h"
+#include "stark_storage.h"
 #include "ui_menu.h"
 
-enum { ROW_SAVE, ROW_BROWSE, ROW_FIRST_CAPTURE };
+typedef enum { MODE_VIEW, MODE_BROWSE } mode_t;
 
-static ir_signal_t s_caps[IRAPP_RECENT]; /* [0] is the newest */
-static size_t s_count;
-static char s_labels[IRAPP_RECENT][24];
-static char s_values[IRAPP_RECENT][16];
-static ui_menu_item_t s_items[ROW_FIRST_CAPTURE + IRAPP_RECENT];
+static ui_menu_item_t s_files[IRAPP_BROWSE_MAX];
+static mode_t s_mode;
 static ui_menu_t s_menu;
 static bool (*s_menu_event)(stark_screen_t *self, const stark_event_t *e);
-
-static void describe(const ir_signal_t *s, char *label, size_t len)
-{
-    const ir_frame_t *f = &s->frame;
-    if (f->protocol == IR_PROTO_UNKNOWN) {
-        snprintf(label, len, "RAW %u", (unsigned)s->timings.n);
-    } else if (f->repeat) {
-        snprintf(label, len, "%s repeat", ir_protocol_name(f->protocol));
-    } else {
-        snprintf(label, len, "%s %02X/%02X", ir_protocol_name(f->protocol), (unsigned)f->address,
-                 (unsigned)f->command);
-    }
-}
-
-static void rebuild(void)
-{
-    s_items[ROW_SAVE] = (ui_menu_item_t){.label = "Save last"};
-    s_items[ROW_BROWSE] = (ui_menu_item_t){.label = "Browse saved"};
-    /* Fixed rows (the menu model counts them once): unused ones blank and
-     * never selectable. */
-    for (size_t i = 0; i < IRAPP_RECENT; i++) {
-        s_labels[i][0] = '\0';
-        if (i < s_count) {
-            describe(&s_caps[i], s_labels[i], sizeof s_labels[i]);
-            snprintf(s_values[i], sizeof s_values[i], "%uk n%u",
-                     (unsigned)(s_caps[i].carrier_hz / 1000u), (unsigned)s_caps[i].timings.n);
-        }
-        s_items[ROW_FIRST_CAPTURE + i] =
-            (ui_menu_item_t){.label = s_labels[i], .disabled = i >= s_count};
-    }
-}
 
 static const char *value_of(size_t index, void *ctx)
 {
     (void)ctx;
-    return index >= ROW_FIRST_CAPTURE && index - ROW_FIRST_CAPTURE < s_count
-               ? s_values[index - ROW_FIRST_CAPTURE]
-               : NULL;
+    if (s_mode == MODE_BROWSE) {
+        size_t n = 0;
+        const irbrowse_entry_t *e = irbrowse_entries(&n);
+        return index < n ? e[index].what : NULL;
+    }
+    return irview_value(index);
 }
+
+static void show(mode_t mode);
 
 static void activate(size_t index, void *ctx)
 {
     (void)ctx;
-    if (index == ROW_SAVE) {
-        irapp_save(s_count > 0 ? &s_caps[0] : NULL);
-    } else if (index == ROW_BROWSE) {
-        STARK_LOGI("irapp", "browse");
+    if (s_mode == MODE_BROWSE) {
+        irbrowse_activate(index);
     } else {
-        irapp_save(&s_caps[index - ROW_FIRST_CAPTURE]);
+        irview_activate(index);
     }
 }
 
 static bool ir_event(stark_screen_t *self, const stark_event_t *e)
 {
+    irsend_event(e); /* logs a transmission's result; the view still sees it */
+    if (irbrowse_event(e)) {
+        return true;
+    }
+    if (s_mode == MODE_BROWSE && e->type == STARK_EVT_SYSTEM && e->system.id == STARK_SYS_STORAGE &&
+        e->system.arg != (int32_t)STARK_STORAGE_MOUNTED) {
+        STARK_LOGI("irapp", "browse: card gone");
+        irbrowse_forget();
+        show(MODE_BROWSE);
+        return false; /* the status bar still wants it */
+    }
+    if (s_mode == MODE_BROWSE && e->type == STARK_EVT_KEY && e->key.key == STARK_KEY_BACK &&
+        e->key.action == STARK_KEY_SHORT) {
+        show(MODE_VIEW); /* BACK leaves the list, not the app */
+        return true;
+    }
     if (e->type == STARK_EVT_SYSTEM && e->system.id == STARK_SYS_IR &&
         e->system.arg == STARK_IR_EVT_RX) {
-        ir_signal_t s;
-        while (stark_ir_take(&s) == STARK_OK) {
-            size_t keep = s_count < IRAPP_RECENT ? s_count : IRAPP_RECENT - 1;
-            for (size_t i = keep; i > 0; i--) {
-                s_caps[i] = s_caps[i - 1];
-            }
-            s_caps[0] = s;
-            s_count = keep + 1;
-            char label[24];
-            describe(&s, label, sizeof label);
-            STARK_LOGI("irapp", "view %s", label);
+        irview_drain();
+        if (s_mode == MODE_VIEW) {
+            size_t n = 0;
+            (void)irview_items(&n); /* rows rebuilt in place: the selection stays */
+            stark_ui_invalidate(self, stark_ui_content_rect());
         }
-        rebuild();
-        stark_ui_invalidate(self, stark_ui_content_rect());
         return true;
     }
     return s_menu_event(self, e);
@@ -101,7 +76,7 @@ static bool ir_event(stark_screen_t *self, const stark_event_t *e)
 static stark_err_t ir_start(void **state)
 {
     (void)state;
-    s_count = 0;
+    irview_reset();
     return stark_ir_rx_start(); /* receive-first: listening while the app is open */
 }
 
@@ -109,16 +84,46 @@ static void ir_stop(void *state)
 {
     (void)state;
     (void)stark_ir_rx_stop();
+    irbrowse_stop(); /* the worker is joined before on_stop: nothing is in flight */
+    irsend_stop();
+}
+
+/* Re-initialises the one menu for a mode (selection starts at the top).
+ * NOTE: the app manager hooks the running screen's on_exit to stop the app
+ * (app_manager.c); ui_menu_init() rewrites the whole screen, so a mode switch
+ * must carry that hook over or BACK would pop the screen without on_stop. */
+static void show(mode_t mode)
+{
+    void (*on_exit)(stark_screen_t *) = s_menu.screen.on_exit;
+    s_mode = mode;
+    if (mode == MODE_VIEW) {
+        size_t n = 0;
+        const ui_menu_item_t *items = irview_items(&n);
+        ui_menu_init(&s_menu, "IR", items, n, activate, NULL);
+    } else {
+        size_t n = 0;
+        const irbrowse_entry_t *e = irbrowse_entries(&n);
+        for (size_t i = 0; i < n; i++) {
+            s_files[i] = (ui_menu_item_t){.label = e[i].name, .disabled = !e[i].valid};
+        }
+        ui_menu_init(&s_menu, "IR files", s_files, n, activate, NULL);
+    }
+    s_menu.value = value_of;
+    s_menu_event = s_menu.screen.on_event;
+    s_menu.screen.on_event = ir_event;
+    s_menu.screen.on_exit = on_exit;
+    stark_ui_invalidate(&s_menu.screen, stark_ui_content_rect());
+}
+
+void irapp_show_browse(void)
+{
+    show(MODE_BROWSE);
 }
 
 static stark_screen_t *ir_screen(void *state)
 {
     (void)state;
-    rebuild();
-    ui_menu_init(&s_menu, "IR", s_items, sizeof s_items / sizeof s_items[0], activate, NULL);
-    s_menu.value = value_of;
-    s_menu_event = s_menu.screen.on_event;
-    s_menu.screen.on_event = ir_event;
+    show(MODE_VIEW);
     return &s_menu.screen;
 }
 

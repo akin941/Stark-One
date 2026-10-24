@@ -48,3 +48,8 @@ bool ui_port_log_contains(const char *needle);
 void ui_port_key(stark_key_t key, stark_key_action_t action);
 /* A full short press: PRESS then SHORT (what the core emits on release). */
 void ui_port_short(stark_key_t key);
+
+/* Worker (ui_port_worker.c): off by default, stark_app_worker_start()
+ * reports STARK_ERR_NOT_SUPPORTED; on, it runs the worker to completion
+ * inside the call (STARK-0306 host tests). */
+void ui_port_worker_inline(bool on);

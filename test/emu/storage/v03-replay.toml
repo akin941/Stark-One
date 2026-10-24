@@ -1,0 +1,73 @@
+# STARK-0306 on the storage test image (its FAT partition is seeded with
+# the spec-derived lab_*.ir files, ADR-0019 §3) with esp-emu's RMT loopback
+# (`--rmt-loopback 0:2`, ADR-0019 §2). IR -> Browse saved -> lab_nec.ir ->
+# confirm: the file is parsed, gated, confirmed, sent through RMT TX and
+# received back by the app's own receiver as the same NEC frame. That
+# capture is saved as ir_0001.ir and replayed; the RAW seed replays as RAW;
+# lab_bad.ir is listed as invalid and cannot be sent; BACK on the confirm
+# cancels; a second send inside the 1 s interval is refused with an alert.
+# This proves the browse/replay software path; it does NOT prove a carrier,
+# an LED, light or a receiver (V1 hardware checks).
+name = "emu-v03-replay"
+image = "storage"
+end_ms = 11500
+heap_min = 200000
+rmt_loopback = "0:2"
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },     # IR
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1100, hold_ms = 60 },  # Browse saved
+    { key = "OK", at_ms = 1300, hold_ms = 60 },    # 9 files; lab_bad disabled
+    { key = "OK", at_ms = 1800, hold_ms = 60 },    # lab_nec.ir (first enabled)
+    { key = "OK", at_ms = 2200, hold_ms = 60 },    # confirm
+    { key = "BACK", at_ms = 3000, hold_ms = 60 },  # back to the receive view
+    { key = "OK", at_ms = 3300, hold_ms = 60 },    # Save last
+    { key = "DOWN", at_ms = 3800, hold_ms = 60 },
+    { key = "OK", at_ms = 4000, hold_ms = 60 },    # 10 files, ir_0001.ir first
+    { key = "OK", at_ms = 4500, hold_ms = 60 },
+    { key = "OK", at_ms = 4900, hold_ms = 60 },    # confirm
+    { key = "DOWN", at_ms = 5600, hold_ms = 60 },  # lab_nec (lab_bad skipped)
+    { key = "DOWN", at_ms = 5750, hold_ms = 60 },  # lab_necx
+    { key = "DOWN", at_ms = 5900, hold_ms = 60 },  # lab_raw
+    { key = "OK", at_ms = 6200, hold_ms = 60 },
+    { key = "OK", at_ms = 6600, hold_ms = 60 },    # confirm
+    { key = "OK", at_ms = 7500, hold_ms = 60 },
+    { key = "BACK", at_ms = 7900, hold_ms = 60 },  # cancel
+    { key = "OK", at_ms = 8400, hold_ms = 60 },
+    { key = "OK", at_ms = 8700, hold_ms = 60 },    # confirm: sent
+    { key = "OK", at_ms = 8900, hold_ms = 60 },
+    { key = "OK", at_ms = 9200, hold_ms = 60 },    # confirm: inside 1 s
+    { key = "OK", at_ms = 9700, hold_ms = 60 },    # dismiss the alert
+    { key = "BACK", at_ms = 10300, hold_ms = 60 }, # list -> view
+    { key = "BACK", at_ms = 10700, hold_ms = 60 }, # leave the app
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    "app: start ir",
+    "irapp: browse 9 files",
+    'dialog: open "Transmit IR?"',
+    "dialog: ok",
+    "ir: tx NEC addr=0x00 cmd=0x12",
+    "ir: tx done",
+    "irapp: sent lab_nec.ir",
+    "ir: rx NEC addr=0x00 cmd=0x12",
+    "irapp: saved ir_0001.ir",
+    "irapp: browse 10 files",
+    "ir: tx NEC addr=0x00 cmd=0x12",
+    "irapp: sent ir_0001.ir",
+    "ir: rx NEC addr=0x00 cmd=0x12",
+    'menu: sel=4 "lab_raw.ir"',
+    "ir: tx RAW",
+    "irapp: sent lab_raw.ir",
+    "ir: rx RAW n=13",
+    "dialog: cancel",
+    "irapp: send cancelled",
+    "irapp: sent lab_raw.ir",
+    "irapp: send refused: busy",
+    'dialog: open "Wait a moment"',
+    "ir: rx off",
+    "app: stop ir",
+]
+forbid = ["irapp: sent lab_bad.ir", "ir: tx failed"]
