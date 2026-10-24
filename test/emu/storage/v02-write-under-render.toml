@@ -1,0 +1,29 @@
+# STARK-0207 on the storage test image (ROADMAP V0.2 exit 2, software half;
+# ADR-0018): the 100 kB write test runs on the app worker while the UI task
+# keeps rendering and handling input — a DOWN pressed during the test moves
+# the selection before the test ends — and reads back byte-identical (byte
+# compare + CRC-32), with a non-zero count of frames rendered meanwhile.
+# The physical half (real card, shared SPI2, band-flush stalls) is V1.
+name = "emu-v02-write-under-render"
+image = "storage"
+end_ms = 5000
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },
+    { key = "OK", at_ms = 600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 900, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1100, hold_ms = 60 },
+    { key = "OK", at_ms = 1400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    'menu: sel=3 "Write test (100 kB)"',
+    "storageapp: wtest start",
+    'menu: sel=1 "Eject"',      # input handled while the worker writes
+    "storageapp: wtest ok bytes=102400 crc=f9541b81 frames=",
+]
+forbid = ["wtest failed", "storage: card removed"]
+forbid_between = [
+    { after = "storageapp: wtest start", before = 'menu: sel=1 "Eject"', text = "wtest ok" },
+]

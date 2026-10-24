@@ -63,6 +63,7 @@ bump is a deliberate change with a full emulator run — never "latest".
 | Flash persistence across a reboot (STARK-0204) | ✅ `--save-state` writes the emulated flash (NVS included) back into the image when the run is terminated; booting it again loads `settings: … (nvs)`. A scenario's `control` "reset" therefore ends a phase and the next phase is a new esp-emu run over the same image |
 | In-process chip reset over `--control-tcp` (STARK-0204) | ⚠️ the reset works, but the 0.44.0 GDB stub drops its connection, so key injection cannot continue across it — hence the phase-per-run mechanism above |
 | `erase-region` over `--control-tcp` (STARK-0204) | ✅ `control: erased flash 24576 bytes at 0x9000` — the NVS partition wiped mid-run; sent fire-and-forget, because GDB holds the CPU while the command is written and the emulator answers only once it resumes |
+| A "pulled" card's sector I/O failing (storage test image, STARK-0207) | ✅ the test medium re-registers the volume's diskio with WL calls gated on `emu_medium_present`: a pull mid-write fails the next sector write (`wtest failed: I/O error at 20480`) exactly as a removed card would |
 | GDB writes to a RAM global (`pokes`, storage test image, STARK-0202) | ✅ `emu_medium_present` flips stick; removal and reinsertion land at the scheduled emulated time |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 
