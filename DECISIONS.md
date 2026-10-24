@@ -607,3 +607,70 @@ a worker writes through the same code path, not that the real bus shares well.
 **Revisit trigger:** an esp-emu release with an SD-over-SPI model (move exit 2/3
 evidence onto the production image and retire the storage test image), or the V1
 prototype (run the deferred physical gates).
+
+---
+
+## ADR-0019 — V0.3 infrared: protocol-verified in simulation, optical IR at V1; RMT loopback as evidence
+
+**Status:** accepted (owner decision, 2026-10-24). Applies ADR-0017 to V0.3 the way
+ADR-0018 applied it to V0.2.
+
+**Context.** ROADMAP V0.3 needs a receiver, an IR LED and our own remotes for its
+physical claims, and SECURITY_SCOPE §4.7 asks for test vectors from our own hardware.
+None exists before the V1 prototype. Paid Wokwi is excluded, and Wokwi's RMT is
+transmit-only (WOKWI.md §5). esp-emu 0.44.0 offers `--rmt-loopback TX:RX`, which feeds a
+TX channel's symbols into an RX channel.
+
+**Decision.**
+1. **Two levels of completion.** *V0.3 complete* means **software / protocol
+   verified**: codecs, the raw format, the RMT RX/TX integration, transmit gating, the
+   capture → save → browse → replay data flow, the app, storage and diagnostics. It
+   never means physical IR verified. Each exit criterion is split into a V0.3 software
+   half and a V1 physical half (ROADMAP V0.3). Open until V1: IR LED drive and its
+   transistor driver, carrier frequency and duty on a logic analyser, the receiver
+   module's demodulation and electrical behaviour, reception from real remotes, a real
+   device responding, range, angle, ambient-light and noise sensitivity, LED output
+   power, timing accuracy on silicon, GPIO/RMT signal integrity.
+2. **What the RMT loopback proves — and only that.** Verified with ESP-IDF's
+   `ir_nec_transceiver` example on the esp32s3 model: `--rmt-loopback 0:2` (the first TX
+   channel into the first RX channel; the TRM's absolute index `0:4` delivers nothing)
+   makes the RX channel receive the transmitted symbols, decoded back to the sent
+   address and command. The looped waveform is the **pre-carrier baseband** with exact
+   durations: no carrier, no jitter, no optics, no receiver. A loopback pass therefore
+   proves the production firmware's RMT TX path, encoder, RX path, symbol conversion,
+   decoder, events, app and storage work together — never that light left an LED or
+   that a receiver could demodulate it. Timing tolerance is proven on the host with
+   jittered vectors, not by the loopback.
+3. **Test vectors.** SECURITY_SCOPE §4.7's intent is that vectors never come from other
+   people's devices. Before hardware, every vector is **spec-derived**: generated
+   deterministically from the published protocol timings (with seeded jitter and
+   tolerance-edge cases) by `scripts/gen_ir_vectors.py`, committed, and labelled
+   "spec-derived, not recorded". Vectors **recorded from our own remotes** join at V1;
+   until then ROADMAP V0.3 exit 1's "recorded" half is open.
+4. **Transmit guardrails apply to IR.** SECURITY_SCOPE §4 is written for radio; IR
+   follows it: receive-first (transmit is a separate, confirmed action naming protocol,
+   carrier, duration and payload), no unattended loops (at most 3 repeats per
+   confirmation, at least 1 s between transmissions, at most 1 s of signal per
+   transmission — a pure, host-tested gate in `stark_ir`), every transmission logged.
+   No brute lists, no code databases, no "universal remote" sweeps.
+5. **Loopback and seeding live in the harness and the test tree.** The scenario key
+   `rmt_loopback` makes the runner pass the flag; captures used for replay scenarios are
+   seeded into the storage test image's FAT partition at build time
+   (`test/emu/storage_image/seed/`). Production code has no loopback mode, no
+   simulator branch and no test signal.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| A physical breadboard as a V0.3 prerequisite | Owner decision; hardware is V1 |
+| A firmware loopback/self-receive mode for tests | A test path in production firmware (ADR-0010) |
+| Vectors taken from public capture collections | Other people's devices (SECURITY_SCOPE §4.7) and licensing; spec-derived vectors are exact and reproducible |
+| Claiming loopback as transmit evidence | It carries no carrier and no light (item 2) |
+
+**Consequences.** V0.3's report separates software, emulator/loopback, host and
+deferred physical evidence. ROADMAP V1 exit 9 and the V1 hardware table collect the IR
+gates. `docs/bringup/v1-ir.md` (STARK-0307) is written now and filled in at V1.
+
+**Revisit trigger:** an esp-emu release modelling carrier modulation or an IR
+receiver; the V1 prototype.

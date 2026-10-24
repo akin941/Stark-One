@@ -150,23 +150,28 @@ deferred to V1:
 **Scope**
 
 * `stark_ir` driver on the ESP-IDF v6 RMT driver (`rmt_rx` / `rmt_tx` + carrier)
-* Pure codec layer (host-tested against recorded vectors): NEC, NEC-extended, RC5,
-  RC6, Sony SIRC, plus a raw timing capture/replay format
+* Pure codec layer (host-tested against deterministic vectors): NEC, NEC-extended, RC5,
+  RC6 (mode 0), Sony SIRC (12/15/20-bit), plus a raw timing capture/replay format
 * IR app: live receive view (protocol, address, command, raw timings), save to SD,
   browse saved signals, transmit a saved signal
 * Universal-remote-style brute lists are **out of scope** (SECURITY_SCOPE.md)
 
-**Verification split** (Wokwi models RMT TX only, LED-strip oriented — WOKWI.md §5):
+**Completion levels (ADR-0019).** *V0.3 complete* = IR **software / protocol verified**
+(host vectors and fault injection, the ESP-IDF build, the production firmware in esp-emu
+with its RMT TX looped into RX). The emulator loopback carries the baseband signal only —
+no carrier, no light, no receiver — so it is never evidence of optical IR. Physical IR is
+verified at the **V1 prototype**.
 
-* Simulated: app navigation, file I/O, UI. Codecs: host tests.
-* Hardware: TSOP38238 receive from our own remotes; transmit verified with a second
-  receiver and with the target device responding.
+**Exit criteria** — each split into the evidence V0.3 requires and the physical evidence
+deferred to V1:
 
-**Exit criteria**
+| # | Criterion (unchanged) | V0.3 software evidence (required) | V1 physical HIL evidence (deferred) |
+| --- | --- | --- | --- |
+| 1 | Codec host tests pass on ≥ 20 recorded vectors per supported protocol | ≥ 20 deterministic **spec-derived** vectors per protocol (NEC, NEC-ext, RC5, RC6-0, SIRC-12/15/20) incl. jitter, tolerance edges and malformed frames, host-tested; every protocol encoded → RMT loopback → decoded on the production firmware | ≥ 20 vectors **recorded from our own remotes** per protocol (SECURITY_SCOPE §4.7), decoded |
+| 2 | Capture from an own remote, save, replay, device responds | Capture → save to SD → browse → replay → captured again, end to end through the RMT loopback on the storage test image; transmit gated, confirmed and logged | A real remote captured through a TSOP-class receiver, replayed through the IR LED, the own device responding; carrier and duty on a logic analyser |
+| 3 | Raw capture/replay works for an unsupported protocol | Raw format round trip on the host; a raw-only signal replayed through the loopback and captured back within tolerance | The same with a real remote of an unsupported protocol |
 
-1. Codec host tests pass on ≥ 20 recorded vectors per supported protocol.
-2. On hardware: capture from an own remote, save, replay, device responds.
-3. Raw capture/replay works for an unsupported protocol.
+**Out of V0.3:** IR learning databases, brute or sweep transmission, devices we do not own.
 
 ---
 
@@ -302,6 +307,14 @@ simulated milestones (ADR-0011):
    surfaces an error without a panic and reinsertion remounts; no card, a non-FAT card
    and a faulty card leave the device usable; SPI2 shared by panel and SD is stable at
    the chosen clocks (logic-analyser capture of interleaved transactions).
+9. **Deferred V0.3 IR gates** (ADR-0019): IR LED drive through its transistor driver at
+   the designed current; carrier frequency and duty per protocol on a logic analyser
+   (36/38/40 kHz, 33 %); TSOP-class receiver demodulation and timing on silicon;
+   ≥ 20 vectors per protocol recorded from our own remotes and decoded; capture from an
+   own remote → save → replay → the own device responds; raw replay of an unsupported
+   protocol; range, angle, ambient-light and noise behaviour recorded; own-echo
+   behaviour while transmitting recorded; GPIO 47/48 signal integrity (and the
+   DevKitC-1 v1.0 RGB LED on GPIO 48) checked.
 
 ---
 

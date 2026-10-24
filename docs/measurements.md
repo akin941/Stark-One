@@ -117,6 +117,13 @@ simulated figure above kept alongside for reference.
 | Card pulled mid-write: error, no panic, remount (V0.2) | pass | | |
 | No card / non-FAT / faulty card: device usable (V0.2) | pass | | |
 | Panel + SD stable on SPI2 at the chosen clocks; SD MISO released when deselected (V0.2) | pass | | |
+| IR carrier frequency per protocol on a logic analyser (V0.3) | 36 / 38 / 40 kHz ± 1 % | | |
+| IR carrier duty (V0.3) | 33 % ± 3 % | | |
+| IR LED current through the NPN driver (V0.3) | (record vs design) | | |
+| ≥ 20 vectors per protocol recorded from our own remotes, decoded (V0.3) | pass | | |
+| Own remote captured → saved → replayed → own device responds (V0.3) | pass | | |
+| Raw replay of an unsupported own remote (V0.3) | pass | | |
+| IR range / angle / ambient light / echo while transmitting (V0.3) | (record) | | |
 
 ## V0 exit criteria — evidence (ROADMAP.md "V0")
 
