@@ -1,0 +1,27 @@
+# STARK-0207 on the storage test image (ROADMAP V0.2 exit 4, software half;
+# ADR-0018): the card is pulled and a card without a FAT volume put back —
+# `storage: unusable card: Not supported`, never formatted — and the device
+# stays fully usable.
+name = "emu-v02-unusable-card"
+image = "storage"
+end_ms = 7500
+heap_min = 200000
+pokes = [
+    { at_ms = 1000, var = "emu_medium_formatted", value = 0 },
+    { at_ms = 1000, var = "emu_medium_present", value = 0 },
+    { at_ms = 2500, var = "emu_medium_present", value = 1 },
+]
+presses = [
+    { key = "OK", at_ms = 3000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 6000, hold_ms = 60 },
+    { key = "OK", at_ms = 6300, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    "storage: card removed",
+    'dialog: open "SD card removed"',
+    "dialog: ok",
+    "storage: unusable card: Not supported",
+    'menu: sel=2 "Diagnostics"',
+    "app: start diagnostics",
+]

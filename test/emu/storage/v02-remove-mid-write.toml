@@ -1,0 +1,37 @@
+# STARK-0207 on the storage test image (ROADMAP V0.2 exit 3, software half;
+# ADR-0018): the "card" is pulled while the write test streams (emulated
+# time is deterministic: 20480 B are in when the sector writes start to fail) — its sector
+# writes fail as a removed card's would — so the write fails with an I/O
+# error, the probe confirms the loss, the volume is released, the alert
+# opens and nothing panics. Put back, it is mounted again, the orphaned
+# temp file is swept, and a fresh write test passes. A real pull is V1.
+name = "emu-v02-remove-mid-write"
+image = "storage"
+end_ms = 10000
+heap_min = 200000
+pokes = [
+    { at_ms = 1500, var = "emu_medium_present", value = 0 },
+    { at_ms = 3500, var = "emu_medium_present", value = 1 },
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },
+    { key = "OK", at_ms = 600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 900, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1100, hold_ms = 60 },
+    { key = "OK", at_ms = 1400, hold_ms = 60 },
+    { key = "OK", at_ms = 3000, hold_ms = 60 },
+    { key = "OK", at_ms = 6500, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    "storageapp: wtest start",
+    "storageapp: wtest failed: I/O error at ",
+    "storage: card removed",
+    'dialog: open "SD card removed"',
+    "dialog: ok",
+    "storage: mounted emu-flashfat",
+    "storage: swept 1 tmp",
+    "storageapp: wtest start",
+    "storageapp: wtest ok bytes=102400 crc=f9541b81 frames=",
+]
+forbid = ["wtest failed: I/O error at 0"]  # a pull before the first byte proves nothing

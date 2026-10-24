@@ -150,12 +150,13 @@ Additional circuits live beside the root diagram and are selected by copying or 
 
 | File | Milestone | Adds |
 | --- | --- | --- |
-| `sim/diagram.storage.json` | V0.2 | `wokwi-microsd-card` on SPI2 with CS = GPIO 8 |
+| ~~`sim/diagram.storage.json`~~ | V0.2 | Not created (ADR-0018 §8): V0.2 storage is verified on the emulator storage test image instead |
 | `sim/diagram.i2c.json` | V0.7 | I²C peripherals (e.g. `wokwi-ds1307`, `wokwi-mpu6050`) for the scanner app |
 | `sim/diagram.logic.json` | any | Root diagram + `wokwi-logic-analyzer` on the SPI lines |
 
-Wokwi's microSD part mounts a FAT filesystem seeded from project files (up to 8 MB),
-which makes V0.2 storage work genuinely testable in simulation.
+Wokwi's microSD part mounts a FAT filesystem seeded from project files (up to 8 MB). It
+would make storage testable in Wokwi, but Wokwi is optional (ADR-0017), so V0.2 uses the
+free emulator storage test image (ADR-0018) and leaves the real card to V1 HIL.
 
 ---
 

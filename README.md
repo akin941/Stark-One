@@ -8,18 +8,16 @@ built on a clean, extensible firmware architecture. It is inspired by the class 
 portable multi-tools such as the Flipper Zero, but it is **not a clone**: own firmware
 architecture, own module standard, own PCB, own enclosure.
 
-> **Status: V0.1 complete** (STARK-0100 … STARK-0110, on V0: STARK-0001 … 0021). The
-> firmware boots on the ESP32-S3 N16R8 in Espressif's free esp-emulator: event bus,
-> debounced six-key input with an OK+BACK reservation and long-BACK home, band-rendered
-> UI with multi-rect damage and frame statistics, a modal confirm/alert dialog, a
-> launcher with category headers and icons, Latin-1/Turkish text in two fonts with
-> wrapping, an app worker helper with fault containment, `stark_diag`, and seven apps
-> (About, Diagnostics, App Test, Buzzer Test, Display Test, Input Test, Hello). CI runs
-> the host suite (with a host UI test port), the pinned build and the emulator
-> scenarios including a 60 s soak — all free ([docs/VALIDATION.md](docs/VALIDATION.md)).
-> Evidence: [docs/measurements.md](docs/measurements.md). Next: V0.2 (storage &
-> settings), once it is specified; the performance gates live at the V1 hardware
-> prototype.
+> **Status: V0.2 complete — software-verified; physical microSD at V1** (STARK-0201 …
+> STARK-0207, ADR-0018; on V0.1: STARK-0100 … 0110, V0: STARK-0001 … 0021). On top of
+> V0.1's event bus, input, band-rendered UI, dialogs, launcher, fonts, app workers and
+> `stark_diag`: microSD storage behind a medium port (background mount, removal and
+> reinsertion, safe eject, status-bar indicator), validated file helpers with atomic
+> writes under `/sd/stark/`, typed settings in NVS applied live and kept across reboots,
+> a Settings app, a rotating log file, and nine apps. Validation is free and local: host
+> tests, the pinned ESP-IDF build, the production image in Espressif's esp-emulator and
+> an emulator storage test image; real-card and shared-bus behaviour are V1 hardware
+> gates (docs/measurements.md).
 
 ## Documents
 

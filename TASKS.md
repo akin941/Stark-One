@@ -2216,6 +2216,13 @@ both soaks), `docs/measurements.md`, `docs/VALIDATION.md` §3.5, `README.md`, TE
 5. ADR-0008's risk recorded as open in ARCHITECTURE §13 with the V1 measurement that
    closes it.
 
+**As built.** The test medium re-registers the mounted volume's diskio with
+wear-levelling calls gated on `emu_medium_present`, so a pull fails the next sector
+read/write (ADR-0018 §3); `v02-remove-mid-write` pulls at 1 500 ms emulated, 20 480 B
+into the stream (deterministic), and forbids a failure at offset 0. The V0.2 soak runs on
+the storage image (it lives in `test/emu/soak/`; the harness unit test allows storage
+scenarios there), and the `esp-emulator-soak` job builds that image too.
+
 **Out of scope.** Any hardware work; V0.3 tasks.
 
 **CI.** Scenarios in the existing jobs; the soak job runs the V0.2 soak too.

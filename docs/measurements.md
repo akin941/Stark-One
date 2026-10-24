@@ -59,6 +59,42 @@ with `espressif/idf:v6.1` from a clean `sdkconfig`. Host figures: `scripts/test_
 | 3 | Event drops zero over a 60 s scenario; overruns reported, gated only on hardware | `test/emu/soak/v01-soak.toml`: 60 s emulated, 16 app visits (dialogs, a worker, a contained fault, long-BACK), `drops=0` on every `diag:` line, root heap Δ 36 B; 2 overruns reported, not asserted |
 | 4 | Diagnostics app displays live heap and FPS | `test/emu/v01-diag.toml` (live refresh on the production image); `test_ui_diagnostics.c` (rows pixel-identical to the values) |
 
+### V0.2 (esp-emulator 0.44.0; production image and storage test image)
+
+Same environment as V0.1. The **storage test image** (ADR-0018) is the production
+firmware with only `stark_storage_medium` replaced by a wear-levelled FAT volume on an
+internal-flash partition; its figures describe software logic, never a microSD card.
+
+| Date | Task | Metric | Value | Source |
+| --- | --- | --- | --- | --- |
+| 2026-10-24 | STARK-0207 | Free internal heap at boot, production image — **gate ≥ 200 kB** | 288 832 B (V0.1: 308 176 B) | every production scenario |
+| 2026-10-24 | STARK-0207 | Boot heap change per task, measured at each merge: 0201 storage task −5 072 B; 0202 Storage app −468 B; 0203 file slots + 4 kB write buffer −4 880 B; 0204 NVS + settings −3 544 B; 0205 Settings app −196 B; 0206 log ring 4 kB + 1 kB chunk −5 184 B (total −19 344 B) | — | `diag: heap=` at boot, per PR |
+| 2026-10-24 | STARK-0201 | Heap cost of a mounted volume (storage image, flash-FAT medium — the SD figure is V1) | −9 824 B | storage image root heap |
+| 2026-10-24 | STARK-0207 | Root heap, first vs last stark_diag line over the 60 s V0.2 soak (3 write tests, eject/mount, settings, pull/insert) — **gate ≤ 1 kB** | 285 468 → 285 512 B (Δ 44 B) | `soak/v02-soak` (storage image) |
+| 2026-10-24 | STARK-0207 | Root heap over the V0.1 soak on the V0.2 production image — **gate ≤ 1 kB** | 292 072 → 292 108 B (Δ 36 B) | `soak/v01-soak` |
+| 2026-10-24 | STARK-0202 | Root heap after 10 remove/insert cycles — **gate ± 256 B** | 296 928 → 296 812 B (Δ 116 B) | throwaway scenario, storage image |
+| 2026-10-24 | STARK-0207 | Event drops over both soaks and every scenario — **gate 0** | 0 | `test_emu.py` drops gate |
+| 2026-10-24 | STARK-0203 | 100 kB write + read-back (storage image, informational): UI frames rendered during the test | 17 (CRC-32 `f9541b81`, byte-identical) | `storage/v02-files`, `v02-write-under-render` |
+| 2026-10-24 | STARK-0206 | Task stack never touched (fill-pattern dump, storage image): esp_timer task / storage task | 2 500 of 3 584 B / 2 024 of 4 096 B | GDB dump |
+| 2026-10-24 | STARK-0207 | Application binary (`stark-one.bin`) | 376 576 B (V0.1: 272 000 B; FATFS + SDSPI +76 kB, NVS +24 kB) | `idf.py build` |
+| 2026-10-24 | STARK-0207 | Host line coverage, pure sources | 1 282 / 1 286 (99.7 %); every V0.2 pure file 100 % (storage core/path/file/log, log ring/rotate, settings core, buzzer volume, input core) | `test_host.sh --coverage` |
+
+### V0.2 exit criteria — evidence (ROADMAP.md "V0.2", ADR-0018)
+
+V0.2 completion is **software logic verified**. Every physical half is open until the V1
+prototype (ROADMAP V1 exit 8) and is **not claimed** here.
+
+| # | Criterion | Software evidence (V0.2) | Physical evidence |
+| --- | --- | --- | --- |
+| 1 | Settings survive reboot | `v02-settings-store.toml` (defaults → reboot → NVS → `erase-region` → reboot → defaults) and `v02-settings-persist.toml` (set in the app → BACK commits → reboot → loaded and applied; restore defaults → reboot), production image; `test_settings_core.c` (every fake-NVS failure) | **Deferred to V1:** survival across a real power cycle |
+| 2 | 100 kB written and read back byte-identical while the UI renders | `storage/v02-write-under-render.toml` (a key press handled during the write; byte compare + CRC-32; frames rendered meanwhile) and `storage/v02-files.toml`; `test_storage_file.c` | **Deferred to V1:** real microSD on the shared SPI2 bus, worst band-flush stall measured |
+| 3 | Card removed mid-write degrades gracefully | `storage/v02-remove-mid-write.toml` (sector I/O fails 20 480 B in → `wtest failed: I/O error`, `storage: card removed`, alert, no panic; reinsertion remounts, temp swept, next write passes); `test_storage_file.c` (EIO at every step, ENOSPC, short writes) | **Deferred to V1:** real pull, detection latency, reinsertion |
+| 4 | Mount failure leaves the device usable | `v02-no-card.toml` (production image has no card: every app works), `storage/v02-unusable-card.toml` (non-FAT card: `unusable card`, never formatted); `test_storage_core.c` | **Deferred to V1:** no card / non-FAT / faulty card on the breadboard |
+
+The ADR-0008 shared-bus risk stays **open** (ARCHITECTURE §13): the emulator proves the
+UI keeps rendering while a worker writes through the same storage code, not that the real
+bus shares well.
+
 ## Hardware (gated, V1 prototype)
 
 To be filled in at the V1 prototype milestone (ROADMAP.md "V1 prototype"), with the
@@ -75,6 +111,12 @@ simulated figure above kept alongside for reference.
 | Free internal heap at the root menu | ≥ 200 kB | | |
 | Binary size | (record) | | |
 | Current draw, idle / backlight on | (record) | | |
+| Settings survive a power cycle (V0.2) | pass | | |
+| 100 kB microSD write test byte-identical while rendering (V0.2) | pass | | |
+| Worst display band-flush stall during SD commands (V0.2) | (record) | | |
+| Card pulled mid-write: error, no panic, remount (V0.2) | pass | | |
+| No card / non-FAT / faulty card: device usable (V0.2) | pass | | |
+| Panel + SD stable on SPI2 at the chosen clocks; SD MISO released when deselected (V0.2) | pass | | |
 
 ## V0 exit criteria — evidence (ROADMAP.md "V0")
 

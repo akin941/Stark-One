@@ -164,7 +164,10 @@ all run on every push and pull request. (Wokwi's quota once forced a push-only s
 subset; with Wokwi optional that constraint is gone.) The one exception is the V0.1 soak
 (60 s emulated, ROADMAP V0.1 exit 3, `test/emu/soak/v01-soak.toml`): outside the default
 set, it runs in its own `esp-emulator-soak` CI job on every pull request (and manual
-dispatch) — about eight minutes of wall time, in parallel, and free.
+dispatch) — about eight minutes of wall time, in parallel, and free. Since STARK-0207 the
+same job also builds the storage test image and runs the V0.2 soak
+(`test/emu/soak/v02-soak.toml`: write tests, eject/mount, settings, a pull and
+reinsertion).
 
 **Planned scenarios by milestone**
 
@@ -182,9 +185,10 @@ that milestone before a scenario depends on them.
 | V0.1 | `v01-app-lifecycle.toml` | Worker joined before `on_stop`; faults unwind to the launcher with an alert |
 | V0.1 | `v01-diag.toml` | Diagnostics logs live heap and FPS (the screen's pixels: host render check) |
 | V0.1 | `soak/v01-soak.toml` | 60 s of emulated use: `drops=0` throughout, root heap delta ≤ 1 kB |
-| V0.2 | `v02-storage-boot.toml`, `v02-no-card.toml` | Production image (no card modelled): `storage: no card` after `boot: ui_ready`, every app usable |
+| V0.2 | `v02-storage-boot.toml`, `v02-no-card.toml` | Production image (no card modelled): `storage: no card` after `boot: ui_ready`, every app usable, write test refused |
 | V0.2 | `v02-settings-store.toml`, `v02-settings-persist.toml` | Set in the Settings app, chip reset over the esp-emu control channel, value loaded and applied (NVS in emulated flash) |
-| V0.2 | `storage/*.toml` (storage test image, ADR-0018) | Mount, removal/reinsertion, eject, 100 kB write + byte-identical read-back while the UI renders, removal mid-write, unusable card, log file — software logic only; the physical card and shared bus are V1 HIL |
+| V0.2 | `storage/*.toml` (storage test image, ADR-0018) | `v02-storage-mount`, `v02-remove-insert`, `v02-eject`, `v02-files`, `v02-write-under-render`, `v02-remove-mid-write`, `v02-unusable-card`, `v02-log-file` — software logic only; the physical card and shared bus are V1 HIL |
+| V0.2 | `soak/v02-soak.toml` (storage image) | 60 s of V0.2 use: `drops=0`, root heap delta ≤ 1 kB |
 | V0.7 | `v07-i2c-scan.toml` | Scanner finds esp-emu's built-in I²C EEPROM (and nothing else) |
 | V0.7 | `v07-uart-loopback.toml` | UART bridge round-trips via esp-emu's `--uart1-tcp` side channel |
 
@@ -283,7 +287,9 @@ esp-emulator-storage (needs firmware; ADR-0018)
   └─ scripts/test_emu.sh --image storage       (every test/emu/storage/*.toml)
 
 esp-emulator-soak (needs firmware; pull requests + manual dispatch)
-  └─ scripts/test_emu.sh test/emu/soak/v01-soak.toml   (60 s: drops, heap delta)
+  ├─ scripts/test_emu.sh test/emu/soak/v01-soak.toml   (60 s: drops, heap delta)
+  ├─ scripts/build.sh --docker --emu-storage
+  └─ scripts/test_emu.sh --image storage test/emu/soak/v02-soak.toml   (V0.2, STARK-0207)
 
 wokwi.yml — OPTIONAL, never required (ADR-0017): manual dispatch or `wokwi` PR label
   ├─ scripts/wokwi_gate.py       (runtime-relevant change set? else "not applicable")

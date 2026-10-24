@@ -126,6 +126,9 @@ PSRAM, any radio, any new hardware.
   emulator storage test image (internal-flash FAT behind the storage-medium seam) in
   place of the former Wokwi `sim/diagram.storage.json`
 
+**Status: complete (software-verified), 2026-10-24** — evidence in docs/measurements.md;
+the physical halves are ROADMAP V1 exit 8.
+
 **Completion levels (ADR-0018).** *V0.2 complete* = storage and settings **software
 logic verified** (host + esp-emulator + deterministic test doubles). Physical microSD
 and shared-bus behaviour are verified at the **V1 prototype**; V0.2 never claims them.

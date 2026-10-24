@@ -1,0 +1,86 @@
+# STARK-0207 (ROADMAP V0.2) on the storage test image (ADR-0018): 60 s of
+# emulated use of everything V0.2 added — three 100 kB write tests, an eject
+# and a mount, Settings changed and restored (committed), a card pulled and
+# put back — plus About and Diagnostics, then idle at the launcher so
+# stark_diag's last line (~61 s) is taken at the root menu with the card
+# mounted, as at the first one. Gates: drops=0 on every diag line (always)
+# and the first and last stark_diag heap within 1 kB. Outside the default
+# set (test/emu/soak/); the esp-emulator-soak job runs it on the storage
+# image.
+name = "emu-v02-soak"
+image = "storage"
+end_ms = 62500
+wall_limit_s = 1500
+heap_min = 200000
+heap_delta_max = 1024
+pokes = [
+    { at_ms = 14000, var = "emu_medium_present", value = 0 },
+    { at_ms = 16500, var = "emu_medium_present", value = 1 },
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage (last row)
+    { key = "OK", at_ms = 600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 900, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1100, hold_ms = 60 },
+    { key = "OK", at_ms = 1400, hold_ms = 60 },    # write test 1
+    { key = "OK", at_ms = 4000, hold_ms = 60 },    # write test 2
+    { key = "UP", at_ms = 7000, hold_ms = 60 },
+    { key = "UP", at_ms = 7200, hold_ms = 60 },    # Eject
+    { key = "OK", at_ms = 7500, hold_ms = 60 },
+    { key = "OK", at_ms = 7800, hold_ms = 60 },    # confirm
+    { key = "DOWN", at_ms = 9000, hold_ms = 60 },  # Mount
+    { key = "OK", at_ms = 9300, hold_ms = 60 },
+    { key = "BACK", at_ms = 10000, hold_ms = 60 },
+    { key = "UP", at_ms = 10300, hold_ms = 60 },   # Settings
+    { key = "OK", at_ms = 10600, hold_ms = 60 },
+    { key = "LEFT", at_ms = 10900, hold_ms = 60 },
+    { key = "LEFT", at_ms = 11200, hold_ms = 60 },
+    { key = "DOWN", at_ms = 11500, hold_ms = 60 },
+    { key = "LEFT", at_ms = 11700, hold_ms = 60 },
+    { key = "DOWN", at_ms = 12000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 12200, hold_ms = 60 },
+    { key = "DOWN", at_ms = 12400, hold_ms = 60 }, # Restore defaults
+    { key = "OK", at_ms = 12900, hold_ms = 60 },
+    { key = "OK", at_ms = 13200, hold_ms = 60 },   # confirm
+    { key = "BACK", at_ms = 13500, hold_ms = 60 },
+    { key = "OK", at_ms = 16000, hold_ms = 60 },   # close "SD card removed"
+    { key = "DOWN", at_ms = 20000, hold_ms = 60 }, # Storage
+    { key = "OK", at_ms = 20300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 20600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 20800, hold_ms = 60 },
+    { key = "OK", at_ms = 21100, hold_ms = 60 },   # write test 3
+    { key = "BACK", at_ms = 25000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 25300, hold_ms = 60 }, # wraps to About
+    { key = "OK", at_ms = 25600, hold_ms = 60 },
+    { key = "BACK", at_ms = 26600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 26900, hold_ms = 60 }, # Diagnostics
+    { key = "OK", at_ms = 27200, hold_ms = 60 },
+    { key = "BACK", at_ms = 30000, hold_ms = 60 },
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    "app: start storage",
+    "storageapp: wtest ok bytes=102400",
+    "storageapp: wtest ok bytes=102400",
+    "storage: ejected log=",
+    "storage: mounted emu-flashfat",
+    "app: stop storage",
+    "app: start settings",
+    "settings: brightness=80",
+    "settings: volume=2",
+    'dialog: open "Restore defaults?"',
+    "settings: committed n=2",
+    "app: stop settings",
+    "storage: card removed",
+    'dialog: open "SD card removed"',
+    "dialog: ok",
+    "storage: mounted emu-flashfat",
+    "app: start storage",
+    "storageapp: wtest ok bytes=102400",
+    "app: stop storage",
+    "app: start about",
+    "app: stop about",
+    "app: start diagnostics",
+    "app: stop diagnostics",
+]
+forbid = ["wtest failed", "storage: unusable"]

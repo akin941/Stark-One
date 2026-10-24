@@ -6,10 +6,15 @@
  *
  * The harness drives the "card" through two globals over GDB
  * (scripts/test_emu.py `pokes`): emu_medium_present = 0 is a pulled card,
- * emu_medium_formatted = 0 a card without a FAT volume.
+ * emu_medium_formatted = 0 a card without a FAT volume. While "pulled",
+ * every sector read and write fails, as a removed SD card's would: the
+ * mounted volume's diskio is replaced by one that forwards to the
+ * wear-levelling layer only while the card is present (STARK-0207).
  */
 #include "stark_storage_medium.h"
 #include <stdbool.h>
+#include "diskio_impl.h"
+#include "diskio_wl.h"
 #include "esp_vfs_fat.h"
 #include "wear_levelling.h"
 
@@ -20,6 +25,59 @@ volatile uint8_t emu_medium_formatted = 1;
 
 static wl_handle_t s_wl = WL_INVALID_HANDLE;
 static const char *s_mount_point;
+
+/* ---- the "pullable" diskio: IDF's diskio_wl.c, gated on presence ---- */
+
+static DSTATUS emu_init(BYTE pdrv)
+{
+    (void)pdrv;
+    return 0;
+}
+
+static DSTATUS emu_status(BYTE pdrv)
+{
+    (void)pdrv;
+    return emu_medium_present ? 0 : STA_NODISK;
+}
+
+static DRESULT emu_read(BYTE pdrv, BYTE *buf, LBA_t sector, UINT count)
+{
+    (void)pdrv;
+    size_t ss = wl_sector_size(s_wl);
+    if (!emu_medium_present) {
+        return RES_ERROR;
+    }
+    return wl_read(s_wl, sector * ss, buf, count * ss) == ESP_OK ? RES_OK : RES_ERROR;
+}
+
+static DRESULT emu_write(BYTE pdrv, const BYTE *buf, LBA_t sector, UINT count)
+{
+    (void)pdrv;
+    size_t ss = wl_sector_size(s_wl);
+    if (!emu_medium_present || wl_erase_range(s_wl, sector * ss, count * ss) != ESP_OK) {
+        return RES_ERROR;
+    }
+    return wl_write(s_wl, sector * ss, buf, count * ss) == ESP_OK ? RES_OK : RES_ERROR;
+}
+
+static DRESULT emu_ioctl(BYTE pdrv, BYTE cmd, void *buf)
+{
+    (void)pdrv;
+    switch (cmd) {
+        case CTRL_SYNC:
+            return emu_medium_present ? RES_OK : RES_ERROR;
+        case GET_SECTOR_COUNT:
+            *(LBA_t *)buf = (LBA_t)(wl_size(s_wl) / wl_sector_size(s_wl));
+            return RES_OK;
+        case GET_SECTOR_SIZE:
+            *(WORD *)buf = (WORD)wl_sector_size(s_wl);
+            return RES_OK;
+        default:
+            return RES_ERROR;
+    }
+}
+
+static const ff_diskio_impl_t k_emu_diskio = {emu_init, emu_status, emu_read, emu_write, emu_ioctl};
 
 const char *stark_storage_medium_name(void)
 {
@@ -51,6 +109,9 @@ stark_err_t stark_storage_medium_mount(const char *mount_point, size_t max_files
         return STARK_ERR_IO;
     }
     s_mount_point = mount_point;
+    /* Same drive, same handle bookkeeping (unmount clears it); only the
+     * sector functions change. */
+    ff_diskio_register(ff_diskio_get_pdrv_wl(s_wl), &k_emu_diskio);
     return STARK_OK;
 }
 

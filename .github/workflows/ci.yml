@@ -11,8 +11,9 @@
 #               same firmware with only stark_storage_medium replaced by
 #               internal-flash FAT; check_emu_image.py proves that against the
 #               production build, then test/emu/storage/*.toml run. Mandatory.
-#   esp-emulator-soak — the 60 s soak (test/emu/soak/, ROADMAP V0.1 exit 3):
-#               pull requests and manual dispatch; mandatory on pull requests.
+#   esp-emulator-soak — the 60 s soaks (test/emu/soak/): V0.1 on the production
+#               image, V0.2 on the storage test image (STARK-0207); pull requests
+#               and manual dispatch; mandatory on pull requests.
 #
 # Every job above is free and mandatory. Wokwi is optional and lives in
 # .github/workflows/wokwi.yml (manual dispatch or the `wokwi` PR label); it is
@@ -231,6 +232,12 @@ jobs:
 
       - name: scripts/test_emu.sh (60 s soak, ROADMAP V0.1 exit 3)
         run: scripts/test_emu.sh test/emu/soak/v01-soak.toml
+
+      - name: Build the emulator storage test image (ADR-0018)
+        run: scripts/build.sh --docker --emu-storage
+
+      - name: scripts/test_emu.sh --image storage (60 s V0.2 soak, STARK-0207)
+        run: scripts/test_emu.sh --image storage test/emu/soak/v02-soak.toml
 
       - name: Upload soak logs
         if: always()

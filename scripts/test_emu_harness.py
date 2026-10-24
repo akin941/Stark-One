@@ -115,9 +115,13 @@ class Scenarios(unittest.TestCase):
                 self.assertIn(p["key"].upper(), emu.KEYS, f)
                 self.assertLess(p["at_ms"] + p.get("hold_ms", 60), s["end_ms"], f)
             emu.gdb_script(s, 1)  # generates without error
-            # storage-image scenarios live in test/emu/storage/, nowhere else
-            in_storage_dir = f.parent.name == "storage"
-            self.assertEqual(s.get("image", "production") == "storage", in_storage_dir, f)
+            # storage-image scenarios live in test/emu/storage/ (or soak/),
+            # and nothing in storage/ runs on the production image
+            image = s.get("image", "production")
+            if f.parent.name == "storage":
+                self.assertEqual(image, "storage", f)
+            elif f.parent.name != "soak":
+                self.assertEqual(image, "production", f)
 
 
 class Pokes(unittest.TestCase):
