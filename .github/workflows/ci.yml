@@ -12,7 +12,8 @@
 #               internal-flash FAT; check_emu_image.py proves that against the
 #               production build, then test/emu/storage/*.toml run. Mandatory.
 #   esp-emulator-soak — the 60 s soaks (test/emu/soak/): V0.1 on the production
-#               image, V0.2 on the storage test image (STARK-0207); pull requests
+#               image, V0.2 and V0.3 (STARK-0207, STARK-0307, the latter with
+#               the RMT loopback) on the storage test image; pull requests
 #               and manual dispatch; mandatory on pull requests.
 #
 # Every job above is free and mandatory. Wokwi is optional and lives in
@@ -241,6 +242,9 @@ jobs:
 
       - name: scripts/test_emu.sh --image storage (60 s V0.2 soak, STARK-0207)
         run: scripts/test_emu.sh --image storage test/emu/soak/v02-soak.toml
+
+      - name: scripts/test_emu.sh --image storage (60 s V0.3 IR soak, STARK-0307)
+        run: scripts/test_emu.sh --image storage test/emu/soak/v03-soak.toml
 
       - name: Upload soak logs
         if: always()

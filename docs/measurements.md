@@ -95,6 +95,40 @@ The ADR-0008 shared-bus risk stays **open** (ARCHITECTURE §13): the emulator pr
 UI keeps rendering while a worker writes through the same storage code, not that the real
 bus shares well.
 
+### V0.3 (esp-emulator 0.44.0; production image and storage test image, RMT loopback)
+
+Same environment as V0.2. Scenarios marked *loopback* run esp-emu with
+`--rmt-loopback 0:2`: the first RMT TX channel's **baseband** symbols arrive at the first
+RX channel with exact durations — no carrier, no LED, no light, no receiver (ADR-0019 §2,
+VALIDATION §3.6). Nothing below is optical evidence.
+
+| Date | Task | Metric | Value | Source |
+| --- | --- | --- | --- | --- |
+| 2026-10-24 | STARK-0307 | Free internal heap at boot, production image — **gate ≥ 200 kB** | 266 700 B (V0.2: 288 832 B; −22 132 B) | every production scenario |
+| 2026-10-24 | STARK-0307 | Free internal heap at boot, storage test image (seeded FAT mounted) | 267 060 B | every storage scenario |
+| 2026-10-24 | STARK-0307 | Static RAM (`.bss` + `.data`): `stark_ir` / `app_ir` / RMT driver | 7 734 B / 6 994 B / 317 B | `idf.py size-components` |
+| 2026-10-24 | STARK-0307 | of which, `stark_ir`: IR task stack 3 072 B, capture ring 2 136 B, TX symbols 648 B, TX signal copy 532 B, RX work signal 532 B, RX symbols 520 B; `app_ir`: six full captures 3 192 B, shared worker buffer 2 332 B, browse list 784 B, sent file name 24 B (STARK-0305/0306 "As built") | — | `nm` |
+| 2026-10-24 | STARK-0303 | Boot heap cost of the RX channel and IR task | −9 568 B (≈ 6.3 kB static, ≈ 3.2 kB RMT driver heap) | `diag: heap=` at boot |
+| 2026-10-24 | STARK-0307 | Flash: `stark_ir` / `app_ir` / RMT driver (code + rodata) | 7 067 B / 3 127 B / 13 080 B | `idf.py size-components` |
+| 2026-10-24 | STARK-0307 | Application binary (`stark-one.bin`) | 417 968 B (V0.2: 376 576 B; +41 392 B) | `idf.py build` |
+| 2026-10-24 | STARK-0307 | Task stack never touched (fill-pattern dump after every protocol sent and received, saves included; storage image, loopback): IR task / app worker | 1 152 of 3 072 B / 2 356 of 4 096 B | GDB dump, `storage/v03-protocols`, `storage/v03-capture-replay` |
+| 2026-10-24 | STARK-0307 | Root heap, first vs last stark_diag line over the 60 s V0.3 soak (10 replays, 2 saves, 3 browses, IR self-test, write test, settings) — **gate ≤ 1 kB** | 262 656 → 262 700 B (Δ 44 B) | `soak/v03-soak` (storage image, loopback) |
+| 2026-10-24 | STARK-0304 | Heap across three IR self-test runs — **gate ± 256 B** | 276 084 → 276 084 B (Δ 0) | throwaway run, production image, loopback |
+| 2026-10-24 | STARK-0307 | Event drops over the soaks and every scenario — **gate 0** | 0 | `test_emu.py` drops gate |
+| 2026-10-24 | STARK-0307 | Host line coverage, pure sources | 1 853 / 1 857 (99.8 %); `stark_ir` pure core 571 / 571 (100 %: timing, NEC, bi-phase, RC5, RC6, SIRC, raw, symbols, capture, tx guard, names) | `test_host.sh --coverage` |
+| 2026-10-24 | STARK-0302 | Spec-derived host vectors (`gen_ir_vectors.py`, not recorded) | NEC 23, NECX 21, RC5 21, RC6 24, SIRC-12/15/20 20 each; exhaustive round trips RC5 8 192, RC6 131 072, SIRC-20 1 048 576 frames; 10 000 fuzzed `.ir` inputs | host suite |
+
+### V0.3 exit criteria — evidence (ROADMAP.md "V0.3", ADR-0019)
+
+V0.3 completion is **IR software / protocol verified**. Every physical half is open until
+the V1 prototype (ROADMAP V1 exit 9, `docs/bringup/v1-ir.md`) and is **not claimed** here.
+
+| # | Criterion | Software evidence (V0.3) | Physical evidence |
+| --- | --- | --- | --- |
+| 1 | Codec host tests pass on ≥ 20 vectors per supported protocol | ≥ 20 spec-derived vectors per protocol (NEC, NECX, RC5, RC6-0, SIRC-12/15/20) with seeded jitter, ± 24 % / ± 26 % tolerance edges and malformed frames (`test_ir_nec.c`, `test_ir_codecs.c`); every protocol encoded → RMT TX → loopback → RMT RX → decoded on the production firmware (`v03-ir-loopback`, 7/7) and every seeded file replayed and received back with identical fields (`storage/v03-protocols`) | **Deferred to V1:** ≥ 20 vectors recorded from our own remotes per protocol |
+| 2 | Capture, save, replay, device responds | `storage/v03-capture-replay`: a seeded RC6 frame captured by the IR app → saved as `ir_0001.ir` → listed first → parsed back → replayed after the confirmation → captured again with the same fields; `storage/v03-replay` (cancel, busy, invalid file); every transmit gated, confirmed and logged (`forbid_between`); `test_ui_ir.c`, `test_ir_tx_guard.c` | **Deferred to V1:** own remote → TSOP receiver → save → IR LED → own device responds; carrier and duty on a logic analyser |
+| 3 | Raw replay of an unsupported protocol | `test_ir_raw.c` (round trip, strict parser, fuzzing); `storage/v03-capture-replay`: a signal no decoder accepts captured as `RAW n=13` → saved as `ir_0002.ir` → replayed → captured back with the same 13 durations | **Deferred to V1:** the same with an own remote of an unsupported protocol |
+
 ## Hardware (gated, V1 prototype)
 
 To be filled in at the V1 prototype milestone (ROADMAP.md "V1 prototype"), with the

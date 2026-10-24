@@ -156,6 +156,10 @@ deferred to V1:
   browse saved signals, transmit a saved signal
 * Universal-remote-style brute lists are **out of scope** (SECURITY_SCOPE.md)
 
+**Status: complete (software / protocol-verified), 2026-10-24** — evidence in
+docs/measurements.md; the physical halves are ROADMAP V1 exit 9 and
+`docs/bringup/v1-ir.md`, none of them claimed.
+
 **Completion levels (ADR-0019).** *V0.3 complete* = IR **software / protocol verified**
 (host vectors and fault injection, the ESP-IDF build, the production firmware in esp-emu
 with its RMT TX looped into RX). The emulator loopback carries the baseband signal only —

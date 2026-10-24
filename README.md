@@ -8,16 +8,19 @@ built on a clean, extensible firmware architecture. It is inspired by the class 
 portable multi-tools such as the Flipper Zero, but it is **not a clone**: own firmware
 architecture, own module standard, own PCB, own enclosure.
 
-> **Status: V0.2 complete — software-verified; physical microSD at V1** (STARK-0201 …
-> STARK-0207, ADR-0018; on V0.1: STARK-0100 … 0110, V0: STARK-0001 … 0021). On top of
-> V0.1's event bus, input, band-rendered UI, dialogs, launcher, fonts, app workers and
-> `stark_diag`: microSD storage behind a medium port (background mount, removal and
-> reinsertion, safe eject, status-bar indicator), validated file helpers with atomic
-> writes under `/sd/stark/`, typed settings in NVS applied live and kept across reboots,
-> a Settings app, a rotating log file, and nine apps. Validation is free and local: host
-> tests, the pinned ESP-IDF build, the production image in Espressif's esp-emulator and
-> an emulator storage test image; real-card and shared-bus behaviour are V1 hardware
-> gates (docs/measurements.md).
+> **Status: V0.3 complete (software/protocol-verified; optical IR at V1)** (STARK-0301 …
+> STARK-0307, ADR-0019; V0.2: STARK-0201 … 0207, ADR-0018; V0.1: STARK-0100 … 0110; V0:
+> STARK-0001 … 0021). On top of V0.2's storage, settings and log file: an IR codec core
+> (NEC, NEC-extended, RC5, RC6 mode 0, Sony SIRC-12/15/20, and a raw timing format for
+> anything else), RMT receive and transmit drivers with a transmit gate (confirmation,
+> limits, a 1 s interval, every transmission logged), and an IR app that receives
+> continuously while open, saves captures to the card, and replays saved signals after a
+> confirmation — for our own devices only. Ten apps. Validation is free and local: host
+> tests with spec-derived vectors, the pinned ESP-IDF build, and the firmware in
+> Espressif's esp-emulator with its RMT TX looped into RX. That loopback carries the
+> baseband only, so it is not optical evidence: the IR LED, carrier, receiver, real
+> remotes and devices are V1 hardware gates (`docs/bringup/v1-ir.md`), as are the real
+> microSD card and shared bus (docs/measurements.md).
 
 ## Documents
 
