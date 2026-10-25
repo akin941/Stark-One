@@ -1,0 +1,50 @@
+# STARK-0405 (ROADMAP V0.4 exit 2, software half) on the storage test image
+# with the fake PN532 transport: an NDEF URI record written to a blank
+# NTAG215 and to an Ultralight after the confirmation, each read back by the
+# production reader and shown as the same URI. Not RF evidence.
+name = "emu-v04-write-readback"
+image = "storage"
+heap_min = 200000
+end_ms = 10000
+pokes = [
+    { at_ms = 1500, var = "emu_nfc_tag", value = 2 },  # blank NTAG215
+    { at_ms = 5000, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 6000, var = "emu_nfc_tag", value = 5 },  # Ultralight
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },  # NFC (Lab: IR 11, NFC 12)
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "OK", at_ms = 2300, hold_ms = 60 },  # Write URI
+    { key = "DOWN", at_ms = 2600, hold_ms = 60 },  # https://example.org/lab
+    { key = "OK", at_ms = 2900, hold_ms = 60 },
+    { key = "OK", at_ms = 3300, hold_ms = 60 },  # confirm
+    { key = "OK", at_ms = 6800, hold_ms = 60 },  # Write URI
+    { key = "OK", at_ms = 7100, hold_ms = 60 },  # https://example.com/stark
+    { key = "OK", at_ms = 7500, hold_ms = 60 },  # confirm
+    { key = "BACK", at_ms = 9000, hold_ms = 60 },
+]
+expect = [
+    "nfc: tag NTAG215 uid=0455606B76818C atqa=0044 sak=00",
+    "nfcapp: confirm 0455606B76818C: URI https://example.org/lab (20 B of 491). Own tags only.",
+    "dialog: ok",
+    "nfc: write ok 6 pages",
+    "nfcapp: wrote 0455606B76818C",
+    "nfc: tag NTAG215 uid=0455606B76818C atqa=0044 sak=00",
+    "nfcapp: record URI https://example.org/lab",
+    "nfc: tag left",
+    "nfc: tag ULTRALIGHT uid=04C4CFDAE5F0FB atqa=0044 sak=00",
+    "nfcapp: record Text en: STARK ONE lab",
+    "nfcapp: confirm 04C4CFDAE5F0FB: URI https://example.com/stark (22 B of 45). Own tags only.",
+    "dialog: ok",
+    "nfc: write ok 7 pages",
+    "nfcapp: wrote 04C4CFDAE5F0FB",
+    "nfc: tag ULTRALIGHT uid=04C4CFDAE5F0FB atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "app: stop nfc",
+]
+forbid = ["nfc: write failed", "nfcapp: write refused", "nfc: read stopped"]
+forbid_between = [
+    { after = "app: start nfc", before = "dialog: ok", text = "nfc: write" },
+]

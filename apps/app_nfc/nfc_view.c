@@ -6,8 +6,9 @@
 #include <stdio.h>
 #include "ndef.h"
 #include "nfcapp.h"
+#include "stark_log.h"
 
-#define ROWS_MAX   (5 + NDEF_MAX_RECORDS + 1)
+#define ROWS_MAX   (5 + NDEF_MAX_RECORDS + 2)
 #define LABEL_SIZE 40
 
 static stark_nfc_read_t s_read;
@@ -18,10 +19,25 @@ static char s_values[4][24];
 static const char *s_value_of[ROWS_MAX];
 static size_t s_count;
 static size_t s_write_row = (size_t)-1;
+static size_t s_save_row = (size_t)-1;
 
 void nfcview_refresh(void)
 {
     s_has_tag = stark_nfc_take(&s_read) == STARK_OK;
+}
+
+void nfcview_log_records(void)
+{
+    ndef_message_t m;
+    if (!s_has_tag || !s_read.ndef_present ||
+        ndef_parse(s_read.ndef, s_read.ndef_len, &m) != STARK_OK) {
+        return;
+    }
+    for (uint8_t i = 0; i < m.count; i++) {
+        char line[64];
+        ndef_describe(&m.rec[i], line, sizeof line);
+        STARK_LOGI("nfcapp", "record %s", line);
+    }
 }
 
 static void row(const char *label, const char *value, bool enabled)
@@ -80,6 +96,7 @@ const ui_menu_item_t *nfcview_items(size_t *count)
 {
     s_count = 0;
     s_write_row = (size_t)-1;
+    s_save_row = (size_t)-1;
     switch (stark_nfc_module()) {
         case STARK_NFC_READY:
             if (s_has_tag) {
@@ -104,6 +121,8 @@ const ui_menu_item_t *nfcview_items(size_t *count)
     bool writable = nfcview_writable(&why) != NULL;
     s_write_row = s_count;
     row("Write URI", writable ? NULL : why, writable);
+    s_save_row = s_count;
+    row("Save dump", s_has_tag ? NULL : "no tag", s_has_tag);
     *count = s_count;
     return s_items;
 }
@@ -116,4 +135,9 @@ const char *nfcview_value(size_t index)
 bool nfcview_is_write_row(size_t index)
 {
     return index == s_write_row;
+}
+
+bool nfcview_is_save_row(size_t index)
+{
+    return index == s_save_row;
 }

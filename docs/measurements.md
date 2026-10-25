@@ -129,6 +129,40 @@ the V1 prototype (ROADMAP V1 exit 9, `docs/bringup/v1-ir.md`) and is **not claim
 | 2 | Capture, save, replay, device responds | `storage/v03-capture-replay`: a seeded RC6 frame captured by the IR app → saved as `ir_0001.ir` → listed first → parsed back → replayed after the confirmation → captured again with the same fields; `storage/v03-replay` (cancel, busy, invalid file); every transmit gated, confirmed and logged (`forbid_between`); `test_ui_ir.c`, `test_ir_tx_guard.c` | **Deferred to V1:** own remote → TSOP receiver → save → IR LED → own device responds; carrier and duty on a logic analyser |
 | 3 | Raw replay of an unsupported protocol | `test_ir_raw.c` (round trip, strict parser, fuzzing); `storage/v03-capture-replay`: a signal no decoder accepts captured as `RAW n=13` → saved as `ir_0002.ir` → replayed → captured back with the same 13 durations | **Deferred to V1:** the same with an own remote of an unsupported protocol |
 
+### V0.4 (esp-emulator 0.44.0; production image on an empty I²C bus, test image with the fake PN532 transport)
+
+Same environment as V0.3. The production image's I²C bus is **empty** (esp-emu models no
+I²C devices), so it only exercises the no-module path. The test image substitutes
+`stark_nfc_transport` with the test-only fake PN532 (ADR-0020 §3). Nothing below is
+evidence of a real tag, a PN532 on the bus, or an RF field.
+
+| Date | Task | Metric | Value | Source |
+| --- | --- | --- | --- | --- |
+| 2026-10-25 | STARK-0405 | Free internal heap at boot, production image — **gate ≥ 200 kB** | 254 276 B (V0.3: 266 700 B) | every production scenario |
+| 2026-10-25 | STARK-0405 | Free internal heap at boot, test image (fake PN532 detected, NFC task running) | 252 252 B | every storage scenario |
+| 2026-10-25 | STARK-0402 | Boot heap cost of the I²C bus, PN532 device and driver state | −2 428 B | `diag: heap=` at boot |
+| 2026-10-25 | STARK-0405 | Static RAM (`.bss` + `.data`): `stark_nfc` / `app_nfc` / I²C driver / transport | 7 369 B / 2 871 B / 838 B / 4 B | `idf.py size-components` |
+| 2026-10-25 | STARK-0405 | of which, `stark_nfc`: NFC task stack 4 096 B, snapshot 908 B, the task's own read 908 B, write request 872 B, driver state 304 B; `app_nfc`: dump buffer 952 B, tag copy 908 B, rows and labels 652 B | — | `nm` |
+| 2026-10-25 | STARK-0405 | Flash: `stark_nfc` / `app_nfc` / I²C driver + HAL (code + rodata) | 9 103 B / 2 870 B / 12 593 B | `idf.py size-components` |
+| 2026-10-25 | STARK-0405 | Application binary (`stark-one.bin`) | 448 928 B (V0.3: 417 968 B; +30 960 B) | `idf.py build` |
+| 2026-10-25 | STARK-0405 | Task stack never touched (fill-pattern dump after reads, a write, faults, a recovery and two dumps; test image): NFC task / app worker | 2 464 of 4 096 B / 2 044 of 4 096 B | GDB dump, `storage/v04-nfc-app`, `storage/v04-dump` |
+| 2026-10-25 | STARK-0405 | Root heap, first vs last stark_diag line over the 60 s V0.4 soak (10 tag arrivals, 2 writes, 2 dumps, a module loss and recovery, an IR replay, a write test) — **gate ≤ 1 kB** | 247 848 → 247 892 B (Δ 44 B) | `soak/v04-soak` (test image, fake transport, RMT loopback) |
+| 2026-10-25 | STARK-0405 | Event drops over the four soaks and every scenario — **gate 0** | 0 | `test_emu.py` drops gate |
+| 2026-10-25 | STARK-0405 | Host line coverage, pure sources | 2 799 / 2 803 (99.9 %); `stark_nfc` pure core 946 / 946 (100 %: NDEF, PN532 frame and driver, identification, Type 2, reader, poll, writer, dump) | `test_host.sh --coverage` |
+| 2026-10-25 | STARK-0405 | Spec-derived vectors (`gen_nfc_vectors.py`, not read from a tag) | 73 NDEF + 24 URI/Text vectors; 36 PN532 frame vectors (UM0701 examples asserted byte for byte); a 26-tag catalogue (NTAG213/215/216, Ultralight, EV1, Classic Mini/1K/4K, ISO-DEP, TLV layouts, a vanishing tag) | host suite |
+
+### V0.4 exit criteria — evidence (ROADMAP.md "V0.4", ADR-0020)
+
+V0.4 completion is **NFC software / protocol verified**. Every physical half is open
+until the V1 prototype (ROADMAP V1 exit 10, `docs/bringup/v1-nfc.md`) and is **not
+claimed** here.
+
+| # | Criterion | Software evidence (V0.4) | Physical evidence |
+| --- | --- | --- | --- |
+| 1 | UID and technology of our own NTAG/ISO 14443A tags, ≥ 20/20 reads | 26 catalogue tags identified through the production reader + driver + fake (`test_nfc_reader.c`); 20/20 consecutive host reads identical with no driver errors; `storage/v04-reads`: the same NTAG213 arrives and leaves 20 times, read 20/20 with the same UID, technology and NDEF record, then NTAG215, read-only NTAG213, Ultralight, Classic 1K and ISO-DEP once each | **Deferred to V1:** 20/20 reads of each of our own tag types on the breadboard |
+| 2 | Writes and reads back an NDEF URI record on a writable tag | `test_nfc_writer.c` (written, read back byte-identical, parsed; capacity boundary; read-only, wrong-tag and no-tag refusals with zero WRITEs; a vanish after each page; every WRITE inside the data area); `storage/v04-write-readback`: URIs written to an NTAG215 and an Ultralight after the confirmation and read back as the same URI (`nfcapp: record URI …`) | **Deferred to V1:** our own NTAG written and read back by the device and by a phone |
+| 3 | Module absence detected, app disables itself | `v04-nfc-boot`, `v04-nfc-absent`, `v02-no-card` (production image, empty bus: `nfc: no module (Not found)`, the app shows "No NFC module", no field); host: absent, silent, NACKing and corrupt modules, module loss and recovery (`test_pn532.c`, `test_nfc_poll.c`, `storage/v04-nfc-app`) | **Deferred to V1:** a board without the module; the module unplugged while running |
+
 ## Hardware (gated, V1 prototype)
 
 To be filled in at the V1 prototype milestone (ROADMAP.md "V1 prototype"), with the

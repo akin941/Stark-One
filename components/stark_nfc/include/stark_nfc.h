@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "nfc_dump.h"
 #include "nfc_types.h"
 #include "stark_err.h"
 
@@ -75,3 +76,13 @@ stark_err_t stark_nfc_write_ndef(const uint8_t *uid, uint8_t uid_len, const uint
                                  size_t len);
 /* The last write's outcome (nfc_writer.h lists the errors). */
 stark_err_t stark_nfc_write_result(void);
+
+/*
+ * Dumps the present tag into *out — the caller's buffer, untouched until the
+ * event (STARK-0405): selected again (same UID), every Type 2 page read; an
+ * identification-only tag dumps no pages. Returns at once; STARK_SYS_NFC
+ * DUMP_DONE or DUMP_FAILED follows. STARK_ERR_STATE while not polling or
+ * without a tag, STARK_ERR_BUSY while a dump or write is pending.
+ */
+stark_err_t stark_nfc_request_dump(nfc_dump_t *out);
+stark_err_t stark_nfc_dump_result(void);

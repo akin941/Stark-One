@@ -8,19 +8,24 @@ built on a clean, extensible firmware architecture. It is inspired by the class 
 portable multi-tools such as the Flipper Zero, but it is **not a clone**: own firmware
 architecture, own module standard, own PCB, own enclosure.
 
-> **Status: V0.3 complete (software/protocol-verified; optical IR at V1)** (STARK-0301 …
-> STARK-0307, ADR-0019; V0.2: STARK-0201 … 0207, ADR-0018; V0.1: STARK-0100 … 0110; V0:
-> STARK-0001 … 0021). On top of V0.2's storage, settings and log file: an IR codec core
-> (NEC, NEC-extended, RC5, RC6 mode 0, Sony SIRC-12/15/20, and a raw timing format for
-> anything else), RMT receive and transmit drivers with a transmit gate (confirmation,
-> limits, a 1 s interval, every transmission logged), and an IR app that receives
-> continuously while open, saves captures to the card, and replays saved signals after a
-> confirmation — for our own devices only. Ten apps. Validation is free and local: host
-> tests with spec-derived vectors, the pinned ESP-IDF build, and the firmware in
-> Espressif's esp-emulator with its RMT TX looped into RX. That loopback carries the
-> baseband only, so it is not optical evidence: the IR LED, carrier, receiver, real
-> remotes and devices are V1 hardware gates (`docs/bringup/v1-ir.md`), as are the real
-> microSD card and shared bus (docs/measurements.md).
+> **Status: V0.4 complete (software/protocol-verified; real tags and RF at V1)**
+> (STARK-0401 … 0405, ADR-0020; V0.3: STARK-0301 … 0307, ADR-0019; V0.2: STARK-0201 …
+> 0207, ADR-0018; V0.1: STARK-0100 … 0110; V0: STARK-0001 … 0021). On top of V0.3's
+> infrared lab, V0.4 adds:
+> - an NFC stack for a PN532 on the shared I²C bus: NDEF encode/decode, a PN532 protocol
+>   driver over an injected transport, and tag detection and identification (NTAG213/215/216,
+>   Ultralight; MIFARE Classic and ISO-DEP identified only);
+> - Type 2 NDEF reads, and confirmed NDEF writes to our own tags that never lock them;
+> - dumps to the card in a documented text format;
+> - an NFC app that turns the RF field on only while it is open.
+>
+> Eleven apps. Validation is free and local: host tests with spec-derived vectors, the
+> production driver run against a **test-only fake PN532** at its transport seam, the
+> pinned ESP-IDF build, and the firmware in Espressif's esp-emulator (whose I²C bus is
+> empty). Neither the fake nor the emulator reads a real tag. The PN532 on the bus, the
+> antenna, range and real tags are V1 hardware gates (`docs/bringup/v1-nfc.md`), as are
+> the IR front-end (`docs/bringup/v1-ir.md`) and the real microSD card
+> (docs/measurements.md).
 
 ## Documents
 

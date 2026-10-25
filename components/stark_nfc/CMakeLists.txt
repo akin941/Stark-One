@@ -10,6 +10,7 @@ idf_component_register(
         "nfc_reader.c"
         "nfc_poll.c"
         "nfc_writer.c"
+        "nfc_dump.c"
         "stark_nfc.c"
     INCLUDE_DIRS
         "include"

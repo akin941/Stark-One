@@ -1,0 +1,32 @@
+# STARK-0405 on the storage test image with the fake PN532 transport: an
+# NTAG213 is dumped page by page and saved as captures/nfc_0001.nfc; a MIFARE
+# Classic, identified only, saves a dump without pages (nfc_0002.nfc). The
+# `stark-nfc 1` format round-trip is host-tested (test_nfc_dump.c).
+name = "emu-v04-dump"
+image = "storage"
+heap_min = 200000
+end_ms = 7500
+pokes = [
+    { at_ms = 1500, var = "emu_nfc_tag", value = 1 },  # NTAG213 with a URI
+    { at_ms = 4000, var = "emu_nfc_tag", value = 3 },  # MIFARE Classic 1K
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },  # NFC (Lab: IR 11, NFC 12)
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "DOWN", at_ms = 2300, hold_ms = 60 },  # Write URI -> Save dump
+    { key = "OK", at_ms = 2600, hold_ms = 60 },
+    { key = "OK", at_ms = 4800, hold_ms = 60 },  # Save dump (Write is disabled)
+    { key = "BACK", at_ms = 6500, hold_ms = 60 },
+]
+expect = [
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfc: dump 45 pages",
+    "nfcapp: saved nfc_0001.nfc",
+    "nfc: tag CLASSIC_1K uid=DEADBEEF atqa=0004 sak=08",
+    "nfc: dump 0 pages",
+    "nfcapp: saved nfc_0002.nfc",
+    "app: stop nfc",
+]
+forbid = ["nfc: dump failed", "nfcapp: save failed", "nfcapp: save refused"]

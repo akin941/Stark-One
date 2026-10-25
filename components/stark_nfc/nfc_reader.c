@@ -173,3 +173,29 @@ void nfc_reader_read(pn532_t *d, const nfc_tag_t *found, stark_nfc_read_t *out)
     }
     nfc_reader_release(d);
 }
+
+static stark_err_t dump_pages(pn532_t *d, const nfc_tag_t *tag, nfc_dump_t *out)
+{
+    STARK_CHECK_RET(nfc_reader_reselect(d, tag));
+    if (!nfc_tech_is_type2(tag->tech)) {
+        return STARK_OK;
+    }
+    size_t pages = tag->pages < NFC_T2_MAX_PAGES ? tag->pages : NFC_T2_MAX_PAGES;
+    for (size_t page = 0; page < pages; page += 4) {
+        uint8_t buf[16];
+        STARK_CHECK_RET(read4(d, page, buf));
+        size_t n = pages - page < 4 ? pages - page : 4;
+        memcpy(out->mem + page * NFC_T2_PAGE_BYTES, buf, n * NFC_T2_PAGE_BYTES);
+        out->n_pages = (uint16_t)(page + n);
+    }
+    return STARK_OK;
+}
+
+stark_err_t nfc_reader_dump(pn532_t *d, const nfc_tag_t *tag, nfc_dump_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->tag = *tag;
+    stark_err_t err = dump_pages(d, tag, out);
+    nfc_reader_release(d);
+    return err;
+}

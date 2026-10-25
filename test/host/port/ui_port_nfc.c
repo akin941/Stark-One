@@ -123,3 +123,24 @@ stark_err_t stark_nfc_write_result(void)
 {
     return s_last;
 }
+
+/* A dump of the snapshot: pages filled with their own index. */
+stark_err_t stark_nfc_request_dump(nfc_dump_t *out)
+{
+    if (!s_has_tag) {
+        return STARK_ERR_STATE;
+    }
+    memset(out, 0, sizeof *out);
+    out->tag = s_tag.tag;
+    out->n_pages = s_tag.tag.pages;
+    for (size_t i = 0; i < (size_t)out->n_pages * NFC_T2_PAGE_BYTES; i++) {
+        out->mem[i] = (uint8_t)(i / NFC_T2_PAGE_BYTES);
+    }
+    publish(STARK_NFC_EVT_DUMP_DONE);
+    return STARK_OK;
+}
+
+stark_err_t stark_nfc_dump_result(void)
+{
+    return STARK_OK;
+}

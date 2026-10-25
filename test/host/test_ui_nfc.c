@@ -3,8 +3,9 @@
  * STARK-0404) with a fake stark_nfc: no module (nothing polled), waiting, a
  * tag with its NDEF records, identification-only and read-only tags (Write
  * disabled), the exact confirmation text, cancel writes nothing, write done /
- * failed / refused, BACK from the payloads to the view, and polling stops
- * with the app. Frames pinned after inspection.
+ * failed / refused, BACK from the payloads to the view, Save dump refused
+ * without a card and saved as nfc_NNNN.nfc with one (STARK-0405), and
+ * polling stops with the app. Frames pinned after inspection.
  */
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +17,8 @@
 #include "stark_ui.h"
 #include "ui_port.h"
 #include "ui_port_nfc.h"
+#include "ui_port_storage.h"
+#include "nfc_dump.h"
 #include "unity.h"
 
 extern const stark_app_t app_nfc;
@@ -96,7 +99,7 @@ static void test_tag_view_and_write(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_app_launch("nfc"));
     frame();
     TEST_ASSERT_TRUE(ui_port_nfc_polling()); /* the field is on while the app is open */
-    pin("waiting", UINT64_C(0x947e513b86e87bcb));
+    pin("waiting", UINT64_C(0xdcb8c0a88062f85a));
 
     uint8_t p1[64];
     uint8_t p2[64];
@@ -107,7 +110,7 @@ static void test_tag_view_and_write(void)
     make_tag(NFC_TECH_NTAG213, 0x00, true, recs, 2);
     ui_port_nfc_set_tag(&s_tag);
     frame();
-    pin("ntag_two_records", UINT64_C(0x967c634492251723));
+    pin("ntag_two_records", UINT64_C(0x85a29a240c605177));
 
     /* Write URI is the only selectable row */
     press(STARK_KEY_OK);
@@ -153,6 +156,31 @@ static void test_tag_view_and_write(void)
     TEST_ASSERT_EQUAL(2, ui_port_nfc_writes());
     press(STARK_KEY_BACK); /* the payloads -> the view, not the launcher */
     TEST_ASSERT_TRUE(ui_port_nfc_polling());
+
+    /* Save dump (STARK-0405): no card, then a card and the worker */
+    ui_port_storage_set(STARK_STORAGE_ABSENT, 0, 0);
+    frame();
+    press(STARK_KEY_DOWN); /* Write URI -> Save dump */
+    press(STARK_KEY_OK);
+    TEST_ASSERT_TRUE(ui_port_log_contains("nfcapp: save refused: no card"));
+    ui_port_storage_clear_files();
+    ui_port_storage_set(STARK_STORAGE_MOUNTED, 1u << 20, 1u << 20);
+    ui_port_worker_inline(true);
+    frame();
+    press(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("nfcapp: saved nfc_0001.nfc"));
+    const char *text = ui_port_storage_file("nfc_0001.nfc");
+    TEST_ASSERT_NOT_NULL(text);
+    static nfc_dump_t back;
+    TEST_ASSERT_EQUAL(STARK_OK, nfc_dump_parse(text, strlen(text), &back));
+    TEST_ASSERT_EQUAL(45, back.n_pages);
+    TEST_ASSERT_EQUAL_HEX8(44, back.mem[44 * 4]);
+    press(STARK_KEY_DOWN); /* the view was rebuilt on DUMP_DONE: selection on Write URI */
+    press(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("nfcapp: saved nfc_0002.nfc"));
+    ui_port_worker_inline(false);
 }
 
 static void test_tags_that_cannot_be_written(void)
@@ -161,7 +189,7 @@ static void test_tags_that_cannot_be_written(void)
     s_tag.tag.atqa = 0x0004;
     ui_port_nfc_set_tag(&s_tag);
     frame();
-    pin("classic", UINT64_C(0xe69b21be1d3c5eca));
+    pin("classic", UINT64_C(0xb30c1b59d6ffe276));
     ui_port_reset_records();
     press(STARK_KEY_OK); /* nothing selectable */
     TEST_ASSERT_FALSE(ui_port_log_contains("nfcapp: confirm"));
@@ -172,7 +200,7 @@ static void test_tags_that_cannot_be_written(void)
     make_tag(NFC_TECH_NTAG213, 0x00, false, &r, 1); /* read-only */
     ui_port_nfc_set_tag(&s_tag);
     frame();
-    pin("read_only", UINT64_C(0x2340d36c14684f7a));
+    pin("read_only", UINT64_C(0x3fd72cfab4a69f26));
     press(STARK_KEY_OK);
     TEST_ASSERT_FALSE(ui_port_log_contains("nfcapp: confirm"));
 

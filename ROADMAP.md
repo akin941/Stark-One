@@ -194,6 +194,10 @@ deferred to V1:
 default-key brute forcing against tags we do not own, UID spoofing for access systems,
 cloning of credentials. See [docs/SECURITY_SCOPE.md](docs/SECURITY_SCOPE.md).
 
+**Status: complete (software / protocol-verified), 2026-10-25** — evidence in
+docs/measurements.md; the physical halves are ROADMAP V1 exit 10 and
+`docs/bringup/v1-nfc.md`, none of them claimed.
+
 **Completion levels (ADR-0020).** *V0.4 complete* = NFC **software / protocol
 verified**: host tests with spec-derived vectors, the production PN532 driver run
 against a test-only fake PN532 at its I²C transport seam (framing, ACK/NACK, checksums,
