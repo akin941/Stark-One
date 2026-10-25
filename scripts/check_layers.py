@@ -32,6 +32,7 @@ LAYERS = {
     "stark_hal": 1,
     "stark_log": 1,
     "stark_storage_medium": 1,  # hardware port (ADR-0018 §2)
+    "stark_nfc_transport": 1,  # the PN532's I2C port (ADR-0020 §2)
     "stark_gfx": 2,
     "stark_event": 3,  # L2 core + L3 port
     "stark_input": 3,  # L2 core + L3 service

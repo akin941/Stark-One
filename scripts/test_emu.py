@@ -117,7 +117,8 @@ def inject_line():
     raise SystemExit("cannot find input_core_update() in %s" % INJECT_SOURCE)
 
 
-POKE_VARS = ("emu_medium_present", "emu_medium_formatted")  # the test medium's switches
+POKE_VARS = ("emu_medium_present", "emu_medium_formatted",  # the test medium's switches
+             "emu_nfc_fault")  # the fake PN532 transport's (ADR-0020 §3)
 
 
 def control_shell(port, command):

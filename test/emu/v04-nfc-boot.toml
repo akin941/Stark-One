@@ -1,0 +1,18 @@
+# STARK-0402 on the production image. esp-emu 0.44.0 models no I2C devices,
+# so the bus is empty: the PN532's address is not acknowledged
+# (ESP_ERR_INVALID_RESPONSE), detection reports the module absent at once,
+# and boot carries on. This is the no-module path only — no PN532, no RF
+# (ADR-0020 §1, §6).
+name = "emu-v04-nfc-boot"
+end_ms = 2500
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },
+]
+expect = [
+    "boot: ui_ready in ",
+    "ir: init rx=48 tx=47",
+    "nfc: no module (Not found)",
+    'menu: sel=2 "Diagnostics"',
+]
+forbid = ["nfc init failed", "nfc: pn532", "nfc: not fitted", "nfc: unexpected chip"]

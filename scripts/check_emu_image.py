@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 check_emu_image.py — prove the emulator storage test image is the production
-firmware with exactly one substitution (ADR-0018 §3, TASKS.md STARK-0201).
+firmware with exactly two substitutions: the storage medium (ADR-0018 §3,
+TASKS.md STARK-0201) and the NFC transport (ADR-0020 §3, STARK-0402).
 
 Compares two finished builds:
   * the component sets must be identical;
   * every component must come from the same place with the same sources,
-    requirements and include directories — except `stark_storage_medium`,
-    which must come from test/emu/storage_image/components/;
+    requirements and include directories — except `stark_storage_medium` and
+    `stark_nfc_transport`, which must come from test/emu/storage_image/components/;
     managed (registry) components are compared by their name, since each
     project keeps its own managed_components/ copy;
   * the resolved sdkconfig must be identical;
@@ -27,8 +28,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SUBSTITUTED = "stark_storage_medium"
-SUBSTITUTE_DIR = "test/emu/storage_image/components/" + SUBSTITUTED
+SUBSTITUTED = ("stark_storage_medium", "stark_nfc_transport")
+SUBSTITUTE_DIRS = {name: "test/emu/storage_image/components/" + name for name in SUBSTITUTED}
 COMPARED_FIELDS = ("sources", "include_dirs", "reqs", "priv_reqs")
 
 
@@ -56,8 +57,8 @@ def compare_components(prod, emu, root):
     for name in sorted(a & b):
         da = normalise(ia[name]["dir"], root, prod["build_dir"])
         db = normalise(ib[name]["dir"], root, emu["build_dir"])
-        if name == SUBSTITUTED:
-            if not db.endswith(SUBSTITUTE_DIR):
+        if name in SUBSTITUTED:
+            if not db.endswith(SUBSTITUTE_DIRS[name]):
                 failures.append("%s not substituted: test image uses %s" % (name, db))
             continue
         if da != db:
@@ -118,7 +119,7 @@ def main(argv=None):
     if failures:
         return 1
     print("OK: the storage test image differs from production only in %s "
-          "(and its extra partition)." % SUBSTITUTED)
+          "(and its extra partition)." % " and ".join(SUBSTITUTED))
     return 0
 
 

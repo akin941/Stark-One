@@ -3294,6 +3294,30 @@ counted in `pn532_stats_t`.
 4. I²C pins are named only in `stark_board`; layers check passes; ARCHITECTURE
    documents the transport, the driver and the event id.
 
+**As built.**
+* **Detection is pure.** The detection sequence is `pn532_detect()` in the pure driver,
+  so its decisions (IC check, SAM, retries, field off, each step's failure) are
+  host-tested; `stark_nfc.c` only logs the outcome. Boot calls it from
+  `main/stark_main.c`, and the options live in `components/stark_nfc/Kconfig.stark`.
+* **Response size.** A response is read with a length sized from the caller's `cap`.
+  Over I²C a frame cut short therefore reads as zeros and fails its data checksum; it
+  never looks short. A response longer than `cap` fails the same way, so there is no
+  separate overflow path.
+* **Fake.**
+  - `FAKE_SILENT` (no ACK) was added for the missing-ACK path.
+  - An armed fault also corrupts the resend a host NACK asks for, so persistent
+    corruption is modelled.
+  - Its frame code is independent of `pn532_frame.c`.
+* **Emulator switches.** The test image's transport has `emu_nfc_fault` now;
+  `emu_nfc_tag` arrives with the tag catalogue in STARK-0403. Detection runs before the
+  harness's first breakpoint, so `v04-nfc-module` uses no pokes.
+* **Board.** `stark_board_init()` creates the I²C master bus (`I2C_NUM_0`, internal
+  pull-ups, glitch filter 7) and `stark_board_i2c_bus()` hands it out.
+* **Measured.**
+  - Boot heap −2 428 B (I²C driver, device, `pn532_t`); production boot heap 264 272 B.
+  - `pn532_frame.c` 57/57 and `pn532.c` 126/126 lines; 36 frame vectors, two of them
+    UM0701's own examples, asserted byte for byte in the generator.
+
 **Resource limits.** pn532 cores ≤ 6 kB flash, `pn532_t` ≤ 300 B; the transport ≤ 2 kB
 flash plus the ESP-IDF I²C driver; boot heap drop ≤ 4 kB.
 
