@@ -3,25 +3,38 @@
  * (ADR-0020 §3): the same API, answered by the test-only fake PN532
  * (test/fake/fake_pn532.c) instead of the I2C bus. Test image only.
  *
- * Scenarios steer it through a GDB poke (scripts/test_emu.py POKE_VARS):
- * emu_nfc_fault selects a fake_fault_t, applied until it changes again
- * (0 clears it).
+ * Scenarios steer it through GDB pokes (scripts/test_emu.py POKE_VARS):
+ * emu_nfc_tag puts catalogue tag n (test/fake/fake_tag_catalog.h, 1-based;
+ * 0 empties the field) in front of the antenna; emu_nfc_fault selects a
+ * fake_fault_t, applied until it changes again (0 clears it).
  */
 #include "fake_pn532.h"
+#include "fake_tag_catalog.h"
 #include "stark_nfc_transport.h"
 
+volatile uint8_t emu_nfc_tag;
 volatile uint8_t emu_nfc_fault;
 
-static uint8_t s_applied;
+static uint8_t s_fault_applied;
+static uint8_t s_tag_applied;
 static bool s_open;
 
-/* Applies a changed poke before each transfer. */
+/* Applies changed pokes before each transfer. */
 static void follow_pokes(void)
 {
     uint8_t fault = emu_nfc_fault;
-    if (fault != s_applied && fault < FAKE_FAULT_COUNT) {
+    if (fault != s_fault_applied && fault < FAKE_FAULT_COUNT) {
         fake_pn532_fault((fake_fault_t)fault, -1);
-        s_applied = fault;
+        s_fault_applied = fault;
+    }
+    uint8_t tag = emu_nfc_tag;
+    if (tag != s_tag_applied && tag <= FAKE_CATALOG_COUNT) {
+        const fake_catalog_entry_t *e = tag > 0 ? &k_fake_catalog[tag - 1] : NULL;
+        fake_pn532_tag(e != NULL ? &e->tag : NULL);
+        if (e != NULL && e->vanish_after >= 0) {
+            fake_pn532_vanish_after((unsigned)e->vanish_after);
+        }
+        s_tag_applied = tag;
     }
 }
 

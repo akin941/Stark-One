@@ -3442,6 +3442,27 @@ from STARK-0404.
    coverage.
 4. Polling and the field are off unless started; earlier scenarios unchanged.
 
+**As built.**
+* **Tag catalogue.** 26 spec-derived tags, generated into `test/fake/fake_tag_catalog.h`
+  (not `test/host/vectors/`) because the emulator test image's transport also serves
+  them. The memory layouts follow the NFC Forum Type 2 and NTAG21x specifications:
+  UID with its BCC bytes, lock bytes, CC, configuration pages with AUTH0 = FF, and
+  GET_VERSION replies. They include every identification-only technology, every TLV
+  layout listed above, an NDEF TLV beyond the first READ, NTAG216 filled to capacity,
+  and a tag that vanishes on its third exchange.
+* **Reader.** It sizes nothing from the tag beyond the CC. A plain Ultralight NAKs
+  GET_VERSION and is selected again (the fake models the NAK sending the tag back to
+  IDLE). A CC larger than 872 bytes is `STARK_ERR_NOT_SUPPORTED`. A swap between poll
+  and read stops the read at once.
+* **NFC task.** It owns the driver after init. `start`/`stop` only set a flag and wake
+  it, and the field follows that flag. While the module is lost, the field is left
+  alone and detection retries every second.
+* **Emulator switches.** `emu_nfc_tag` is wired in the test image's transport, entries
+  1–7 being the catalogue's first seven. No scenario uses it until the app
+  (STARK-0404).
+* **Coverage.** `nfc_ident.c`, `nfc_type2.c`, `nfc_reader.c` and `nfc_poll.c` are at
+  100 % lines.
+
 **Resource limits.** Snapshot ≤ 1 kB, task stack 4 kB, NFC static total ≤ 8 kB; flash
 ≤ +12 kB.
 
