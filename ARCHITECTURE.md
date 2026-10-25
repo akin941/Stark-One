@@ -306,6 +306,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 2 | `STARK_SYS_STORAGE` | `stark_storage` (STARK-0201) | the new `stark_storage_state_t` |
 | 3 | `STARK_SYS_SETTING` | `stark_settings` (STARK-0204) | the `stark_setting_t` that changed |
 | 4 | `STARK_SYS_IR` | `stark_ir` (STARK-0303) | `STARK_IR_EVT_RX` / `_TX_DONE` / `_TX_FAILED` |
+| 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -808,6 +809,7 @@ an app's confirmed action (SECURITY_SCOPE §4).
 | `stark_storage` | V0.2 | Implemented (§6.9b, STARK-0201…0203, 0206): mount state machine, task, medium port, removal, eject, file helpers, log file |
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
+| `stark_nfc` + `stark_nfc_transport` | V0.4 | Planned (ADR-0020, TASKS STARK-0401…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |

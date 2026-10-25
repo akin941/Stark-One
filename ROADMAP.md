@@ -194,13 +194,22 @@ deferred to V1:
 default-key brute forcing against tags we do not own, UID spoofing for access systems,
 cloning of credentials. See [docs/SECURITY_SCOPE.md](docs/SECURITY_SCOPE.md).
 
-**Verification:** hardware only (no Wokwi part) + host tests for NDEF and framing.
+**Completion levels (ADR-0020).** *V0.4 complete* = NFC **software / protocol
+verified**: host tests with spec-derived vectors, the production PN532 driver run
+against a test-only fake PN532 at its I²C transport seam (framing, ACK/NACK, checksums,
+timeouts, bus errors, recovery, tags appearing and disappearing), the ESP-IDF build, and
+the firmware in esp-emu (production image on an empty I²C bus; test image with the fake
+transport). Neither the fake nor the emulator is evidence that a real tag was read.
+Physical NFC/RF is verified at the **V1 prototype**.
 
-**Exit criteria**
+**Exit criteria** — each split into the evidence V0.4 requires and the physical evidence
+deferred to V1:
 
-1. Reads UID and technology of our own NTAG/ISO14443A tags reliably (≥ 20/20 reads).
-2. Writes and reads back an NDEF URI record on a writable tag.
-3. Module absence is detected and the app disables itself cleanly.
+| # | Criterion (unchanged) | V0.4 software evidence (required) | V1 physical HIL evidence (deferred) |
+| --- | --- | --- | --- |
+| 1 | Reads UID and technology of our own NTAG/ISO14443A tags reliably (≥ 20/20 reads) | ≥ 20 spec-derived tag vectors (4- and 7-byte UIDs; NTAG213/215/216, Ultralight, MIFARE Classic 1K/4K and ISO-DEP by ATQA/SAK) identified through the production driver and the fake PN532; 20/20 consecutive reads with no state leak, on the host and in the emulator test image | 20/20 reads of each of our own tag types on the breadboard, orientation and distance recorded |
+| 2 | Writes and reads back an NDEF URI record on a writable tag | An NDEF URI message written to the fake's NTAG memory through the production driver, read back byte-identical and parsed to the same URI; refused for read-only or too-small tags; host and emulator test image | The same on a real writable NTAG of ours, read back by the device and by a phone |
+| 3 | Module absence is detected and the app disables itself cleanly | Production image in esp-emu on an empty I²C bus: `nfc: no module`, the app shows it and polls nothing; host: absent, silent, NACKing and corrupt modules, and recovery after re-initialisation | A board without the module; the module unplugged while the app runs |
 
 ---
 
@@ -319,6 +328,13 @@ simulated milestones (ADR-0011):
    protocol; range, angle, ambient-light and noise behaviour recorded; own-echo
    behaviour while transmitting recorded; GPIO 47/48 signal integrity (and the
    DevKitC-1 v1.0 RGB LED on GPIO 48) checked.
+10. **Deferred V0.4 NFC gates** (ADR-0020): PN532 I²C electrical communication and
+   initialisation on the board (address 0x24, pull-ups, clock); RF field and antenna;
+   detection range and orientation sensitivity; real ISO 14443A timing; ≥ 20/20 UID and
+   technology reads of each of our own tag types; an NDEF URI written to our own NTAG
+   and read back by the device and a phone; removal timing; weak, noisy and several
+   nearby tags; module absent and unplugged while running; current with the field on
+   and off; I²C bus sharing with the rest of the device.
 
 ---
 

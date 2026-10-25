@@ -674,3 +674,89 @@ gates. `docs/bringup/v1-ir.md` (STARK-0307) is written now and filled in at V1.
 
 **Revisit trigger:** an esp-emu release modelling carrier modulation or an IR
 receiver; the V1 prototype.
+
+---
+
+## ADR-0020 — V0.4 NFC: protocol-verified against a test-only fake PN532, physical NFC/RF at V1
+
+**Status:** accepted (owner decision, 2026-10-25). Applies ADR-0017 to V0.4 the way
+ADR-0019 applied it to V0.3.
+
+**Context.** ROADMAP V0.4 reads, identifies and writes NDEF to our own 13.56 MHz tags
+through a PN532-class module on the shared I²C bus. No module, antenna or tag exists
+before the V1 prototype. Wokwi has no NFC part, and paid Wokwi is excluded. esp-emu
+0.44.0 has no external I²C device model (its only device side channels are UART1 and the
+RMT loopback). Verified with ESP-IDF's `i2c_basic` example on the esp32s3 model: the I²C
+master bus initialises, and a transaction to an absent address returns
+`ESP_ERR_INVALID_RESPONSE` at once, ESP-IDF's result for an address NACK. The emulator
+can therefore run the production firmware against an **empty** bus, never against a
+PN532.
+
+**Decision.**
+1. **Two levels of completion.** *V0.4 complete* means **NFC software / protocol
+   verified**: NDEF encode/decode, PN532 framing and protocol handling, tag detection
+   and identification, the Type 2 read/write data flow, the app, the dump format and
+   storage, error, timeout and recovery behaviour. It never means a real tag was read.
+   Each ROADMAP V0.4 exit criterion is split into a software half and a V1 physical
+   half. Open until V1: real PN532 I²C electrical communication and initialisation on
+   the board, the antenna and RF field, detection range and orientation, real ISO 14443
+   timing, real UID/tag reads, real NDEF reads and writes, removal timing, noisy or weak
+   tags, several tags in the field, power and current, and bus interaction with the rest
+   of the device.
+2. **The production transport is the real one.** `stark_nfc_transport` (L1) talks to
+   the PN532 at its I²C address 0x24 through ESP-IDF's `i2c_master` driver on the
+   board's `I2C_SDA`/`I2C_SCL`. The PN532 protocol driver above it is a pure L2 core
+   that receives its transport by injection (as the storage engine receives its I/O
+   table, ARCHITECTURE §6.9b). Production code has no fake mode, no simulator branch
+   and no `#ifdef` of any kind for testing.
+3. **The fake PN532 is test-only and models the protocol.** `test/fake/fake_pn532.c`
+   is a pure C model of the chip as seen over I²C: the status byte and ready bit, ACK
+   and NACK frames, information frames with length and data checksums, the commands the
+   driver uses, an application-error frame, and the memory of a simulated tag (Type 2
+   pages, GET_VERSION, writes, ATQA/SAK/UID for identification-only types). Fault
+   switches inject NACK, checksum errors, truncation, timeouts, bus errors, unexpected
+   response codes, and a tag that appears, disappears or vanishes mid-transaction. It
+   answers frames, never finished tag objects, so every test runs production API →
+   production driver → transport seam → fake device. It is linked by the host tests and
+   by the emulator test image's substitute `stark_nfc_transport`
+   (`test/emu/storage_image/components/`), exactly as ADR-0018 §3 substitutes
+   `stark_storage_medium`; `check_emu_image.py` allows both substitutions and nothing
+   else. RF and analogue behaviour are not modelled.
+4. **Vectors are spec-derived.** PN532 frames follow the NXP PN532 User Manual
+   (UM0701-02), Type 2 tag memory follows the NFC Forum Type 2 Tag specification and
+   NXP's NTAG213/215/216 data sheet, and NDEF follows the NFC Forum NDEF and RTD
+   (URI, Text) specifications. They are generated deterministically by
+   `scripts/gen_nfc_vectors.py`, committed, and labelled "spec-derived, not read from a
+   tag". This is the reading of SECURITY_SCOPE §4.7 that ADR-0019 §3 made for IR:
+   nothing comes from other people's tags, and vectors read from our own tags join at V1.
+5. **Security boundary (SECURITY_SCOPE §2, §3).** Reading and identifying our own
+   tags, parsing standard NDEF, writing NDEF to our own writable NFC Forum Type 2 tags,
+   and storing or displaying those captures. MIFARE Classic and ISO-DEP tags are
+   identified from ATQA/SAK/UID only: no sector authentication, no keys, no key
+   dictionaries. Writes touch only the NDEF area inside the capability container's
+   declared size, never pages 0–3 (UID, lock bytes, capability container), dynamic lock
+   bytes, OTP or configuration and password pages, so nothing can lock a tag
+   permanently. Writing requires a confirmation naming the tag UID and the content.
+   There is no dump restore, UID writing, card emulation (`TgInitAsTarget`), password
+   authentication or brute forcing; none of these is stubbed. The RF field is on only
+   while the NFC app polls.
+6. **The emulator is integration evidence only.** On the production image it shows the
+   no-module path on an empty bus. On the test image, over the fake, it shows the app,
+   the UI, storage and the NFC task working together. It is never NFC or RF evidence.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| A physical breadboard as a V0.4 prerequisite | Owner decision; hardware is V1 |
+| Mocking the driver's API (returning finished tag records) | Owner requirement: tests must exercise the production driver's framing, ACK, checksum, timeout and retry paths |
+| A test or emulator mode inside `stark_nfc` | A test path in production firmware (ADR-0010) |
+| Waiting for an esp-emu I²C device model | None exists in 0.44.0; the fake gives deterministic fault injection a device model would not |
+| SPI fallback in V0.4 | ROADMAP names I²C first; SPI is a revisit item if the V1 board needs it |
+
+**Consequences.** V0.4's report separates software, fake-device, host, emulator and
+deferred physical evidence. ROADMAP V1 exit 10 and the V1 hardware table collect the NFC
+gates, and `docs/bringup/v1-nfc.md` (STARK-0405) is written now and filled in at V1.
+
+**Revisit trigger:** an esp-emu release with an I²C device model, the V1 prototype, or a
+module other than the PN532 (ST25R-class) being chosen.
