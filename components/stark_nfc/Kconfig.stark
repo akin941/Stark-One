@@ -12,3 +12,20 @@ config STARK_NFC_I2C_TIMEOUT_MS
     int "NFC: one I2C transfer's timeout (ms)"
     range 5 1000
     default 50
+
+config STARK_NFC_POLL_MS
+    int "NFC: poll period while an app polls (ms)"
+    range 100 2000
+    default 250
+
+config STARK_NFC_TASK_PRIO
+    int "NFC task priority"
+    range 1 4
+    default 3
+    help
+        Below the app worker (4) and the UI task (5).
+
+config STARK_NFC_TASK_STACK
+    int "NFC task stack (bytes)"
+    range 3072 8192
+    default 4096

@@ -118,7 +118,7 @@ def inject_line():
 
 
 POKE_VARS = ("emu_medium_present", "emu_medium_formatted",  # the test medium's switches
-             "emu_nfc_fault")  # the fake PN532 transport's (ADR-0020 §3)
+             "emu_nfc_tag", "emu_nfc_fault")  # the fake PN532 transport's (ADR-0020 §3)
 
 
 def control_shell(port, command):

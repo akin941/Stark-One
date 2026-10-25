@@ -57,6 +57,7 @@ SIDEWAYS = {
     ("stark_storage", "stark_event"),  # state-change events (STARK-0201)
     ("stark_settings", "stark_event"),  # change events (STARK-0204)
     ("stark_ir", "stark_event"),  # capture / transmit events (STARK-0303)
+    ("stark_nfc", "stark_event"),  # tag / module events (STARK-0403)
 }
 
 PURE = {"stark_err", "stark_gfx"}

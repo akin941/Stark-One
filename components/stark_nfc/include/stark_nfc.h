@@ -8,6 +8,9 @@
  */
 #pragma once
 
+#include <stdbool.h>
+#include <stdint.h>
+#include "nfc_types.h"
 #include "stark_err.h"
 
 #define STARK_SYS_NFC              5u
@@ -36,3 +39,26 @@ typedef enum {
  */
 stark_err_t stark_nfc_init(void);
 stark_nfc_module_t stark_nfc_module(void);
+
+/* What reading the present tag gave (STARK-0403). */
+typedef struct {
+    nfc_tag_t tag;
+    stark_err_t read_err;   /* STARK_OK, or why the NDEF read stopped */
+    bool ndef_present;      /* Type 2 with a valid CC and an NDEF TLV */
+    bool writable;          /* CC write access 0 */
+    uint16_t ndef_capacity; /* the largest NDEF message the CC allows */
+    uint16_t ndef_len;
+    uint8_t ndef[NFC_NDEF_MAX];
+} stark_nfc_read_t;
+
+/*
+ * Polling, receive-first (ADR-0020 §5): start turns the RF field on and polls
+ * every CONFIG_STARK_NFC_POLL_MS; stop turns it off and forgets the tag. Both
+ * return at once (the NFC task carries them out). STARK_ERR_NOT_SUPPORTED
+ * without a ready module.
+ */
+stark_err_t stark_nfc_start(void);
+stark_err_t stark_nfc_stop(void);
+
+/* A copy of the present tag's snapshot; STARK_ERR_NOT_FOUND when none. */
+stark_err_t stark_nfc_take(stark_nfc_read_t *out);

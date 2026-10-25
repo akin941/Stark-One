@@ -296,6 +296,141 @@ def pn532_parse_vectors():
     return v
 
 
+# ---- Type 2 tags (NFC Forum Type 2 Tag, NTAG21x / MF0UL data sheets) -------
+
+FAKE_MAX_PAGES = 231
+
+# GET_VERSION replies: vendor NXP 0x04, product type (0x04 NTAG, 0x03 Ultralight),
+# storage size byte (NTAG213 0x0F, 215 0x11, 216 0x13; MF0UL11 0x0B).
+VERSION_NTAG213 = bytes([0x00, 0x04, 0x04, 0x02, 0x01, 0x00, 0x0F, 0x03])
+VERSION_NTAG215 = bytes([0x00, 0x04, 0x04, 0x02, 0x01, 0x00, 0x11, 0x03])
+VERSION_NTAG216 = bytes([0x00, 0x04, 0x04, 0x02, 0x01, 0x00, 0x13, 0x03])
+VERSION_UL_EV1 = bytes([0x00, 0x04, 0x03, 0x01, 0x01, 0x00, 0x0B, 0x03])
+VERSION_OTHER = bytes([0x00, 0x05, 0x04, 0x02, 0x01, 0x00, 0x0F, 0x03])
+
+# (total pages, CC size byte, first configuration page) per product
+NTAG = {"213": (45, 0x12, 41), "215": (135, 0x3E, 131), "216": (231, 0x6D, 227)}
+
+
+def t2_header(uid7, cc_size, cc_access=0x00, cc_magic=0xE1, cc_version=0x10):
+    """Pages 0-3: UID with its check bytes, lock bytes, capability container."""
+    bcc0 = 0x88 ^ uid7[0] ^ uid7[1] ^ uid7[2]
+    bcc1 = uid7[3] ^ uid7[4] ^ uid7[5] ^ uid7[6]
+    return (bytes([uid7[0], uid7[1], uid7[2], bcc0]) + bytes(uid7[3:7]) +
+            bytes([bcc1, 0x48, 0x00, 0x00]) + bytes([cc_magic, cc_version, cc_size, cc_access]))
+
+
+def ndef_tlv(msg):
+    if len(msg) < 0xFF:
+        return bytes([0x03, len(msg)]) + msg + b"\xFE"
+    return bytes([0x03, 0xFF, len(msg) >> 8, len(msg) & 0xFF]) + msg + b"\xFE"
+
+
+def t2_memory(header, data, pages, cfg_page=None):
+    mem = bytearray(pages * 4)
+    mem[:16] = header
+    mem[16:16 + len(data)] = data
+    if cfg_page is not None:  # CFG0: AUTH0 = 0xFF (no password protection); CFG1; PWD, PACK read 0
+        mem[cfg_page * 4:cfg_page * 4 + 8] = bytes([0x04, 0x00, 0x00, 0xFF, 0x00, 0x05, 0x00, 0x00])
+    return bytes(mem)
+
+
+def uid_n(seed, n):
+    return bytes(([0x04] + [(seed * 37 + i * 11) & 0xFF for i in range(1, n)])[:n])
+
+
+URI_MSG = message([uri_rec("https://example.com/stark")])
+TEXT_MSG = message([text_rec("en", "STARK ONE lab")])
+TWO_MSG = message([uri_rec("https://example.org/lab"), text_rec("en", "two records")])
+
+
+def ntag(label, product, seed, data, msg=None, access=0x00, ro=False, magic=0xE1, version=0x10,
+         read_err="STARK_OK", vanish=-1, writable=None):
+    pages, size, cfg = NTAG[product]
+    uid = uid_n(seed, 7)
+    present = msg is not None and magic == 0xE1 and version >> 4 == 1 and read_err == "STARK_OK"
+    return {
+        "label": label, "uid": uid, "atqa": 0x0044, "sak": 0x00, "type2": True,
+        "version": {"213": VERSION_NTAG213, "215": VERSION_NTAG215, "216": VERSION_NTAG216}[product],
+        "pages": pages, "ro_from": 4 if ro else 0,
+        "mem": t2_memory(t2_header(uid, size, access, magic, version), data, pages, cfg),
+        "tech": "NTAG" + product, "read_err": read_err, "ndef": msg if present else None,
+        "writable": (access == 0x00 and magic == 0xE1 and version >> 4 == 1) if writable is None else writable,
+        "capacity": size * 8 if magic == 0xE1 and version >> 4 == 1 else 0, "vanish": vanish,
+    }
+
+
+def ident_only(label, uid, atqa, sak, tech):
+    return {"label": label, "uid": uid, "atqa": atqa, "sak": sak, "type2": False, "version": None,
+            "pages": 0, "ro_from": 0, "mem": b"", "tech": tech, "read_err": "STARK_OK",
+            "ndef": None, "writable": False, "capacity": 0, "vanish": -1}
+
+
+def tag_catalog():
+    """Index 1..7 are the emulator test image's emu_nfc_tag values (0: none)."""
+    c = [
+        ntag("NTAG213 with a URI", "213", 1, ndef_tlv(URI_MSG), URI_MSG),
+        ntag("blank NTAG215", "215", 2, ndef_tlv(b""), b""),
+        ident_only("MIFARE Classic 1K", bytes([0xDE, 0xAD, 0xBE, 0xEF]), 0x0004, 0x08,
+                   "CLASSIC_1K"),
+        ntag("read-only NTAG213", "213", 4, ndef_tlv(TEXT_MSG), TEXT_MSG, access=0x0F, ro=True),
+    ]
+    ul_uid = uid_n(5, 7)
+    ul_mem = bytearray(16 * 4)
+    ul_mem[:16] = t2_header(ul_uid, 0x06)
+    ul_mem[16:16 + len(ndef_tlv(TEXT_MSG))] = ndef_tlv(TEXT_MSG)
+    c.append({"label": "Ultralight", "uid": ul_uid, "atqa": 0x0044, "sak": 0x00, "type2": True,
+              "version": None, "pages": 16, "ro_from": 0, "mem": bytes(ul_mem),
+              "tech": "ULTRALIGHT", "read_err": "STARK_OK", "ndef": TEXT_MSG, "writable": True,
+              "capacity": 48, "vanish": -1})
+    c.append(ident_only("ISO-DEP", bytes([0x08, 0x12, 0x34, 0x56]), 0x0344, 0x20, "ISO_DEP"))
+    vanishing = ntag("NTAG213 that vanishes mid-read", "213", 7, ndef_tlv(URI_MSG), None,
+                     read_err="STARK_ERR_NOT_FOUND", vanish=2)
+    c.append(vanishing)
+    c += [
+        ntag("NTAG216 with two records", "216", 8, ndef_tlv(TWO_MSG), TWO_MSG),
+        ntag("lock control TLV first", "213", 9,
+             bytes([0x01, 0x03, 0xA0, 0x0C, 0x34]) + ndef_tlv(URI_MSG), URI_MSG),
+        ntag("memory control TLV first", "213", 10,
+             bytes([0x02, 0x03, 0x00, 0x00, 0x00]) + ndef_tlv(TEXT_MSG), TEXT_MSG),
+        ntag("null TLVs first", "213", 11, bytes([0x00, 0x00, 0x00]) + ndef_tlv(URI_MSG), URI_MSG),
+        ntag("unknown TLV skipped", "213", 12, bytes([0x10, 0x02, 0xAA, 0xBB]) + ndef_tlv(URI_MSG),
+             URI_MSG),
+    ]
+    long_msg = message([(TNF_MIME, b"text/plain", b"", bytes((i * 3) & 0xFF for i in range(300)))])
+    c.append(ntag("long-form NDEF length", "215", 13, ndef_tlv(long_msg), long_msg))
+    c.append(ntag("empty NDEF TLV", "213", 14, ndef_tlv(b""), b""))
+    c.append(ntag("terminator only", "213", 15, b"\xFE", None))
+    c.append(ntag("CC with a wrong magic", "213", 16, ndef_tlv(URI_MSG), URI_MSG, magic=0xE2))
+    c.append(ntag("CC version 2", "213", 17, ndef_tlv(URI_MSG), URI_MSG, version=0x20))
+    c.append(ntag("NDEF longer than the data area", "213", 18,
+                  bytes([0x03, 0xFF, 0x0F, 0xFF]), None, read_err="STARK_ERR_INVALID_ARG"))
+    # data area 872 = TLV header 4 + message + terminator 1; message = 7-byte MIME header + payload
+    big = message([(TNF_MIME, b"a", b"", bytes(NDEF_MAX - 4 - 1 - 7))])
+    c.append(ntag("NTAG216 filled to capacity", "216", 19, ndef_tlv(big), big))
+    c.append(ident_only("MIFARE Classic Mini", bytes([0x11, 0x22, 0x33, 0x44]), 0x0004, 0x09,
+                        "CLASSIC_MINI"))
+    c.append(ident_only("MIFARE Classic 4K", bytes([0x55, 0x66, 0x77, 0x88]), 0x0002, 0x18,
+                        "CLASSIC_4K"))
+    ev1_uid = uid_n(22, 7)
+    ev1 = bytearray(20 * 4)
+    ev1[:16] = t2_header(ev1_uid, 0x06)
+    ev1[16:19] = ndef_tlv(b"")
+    c.append({"label": "Ultralight EV1", "uid": ev1_uid, "atqa": 0x0044, "sak": 0x00,
+              "type2": True, "version": VERSION_UL_EV1, "pages": 20, "ro_from": 0,
+              "mem": bytes(ev1), "tech": "ULTRALIGHT", "read_err": "STARK_OK", "ndef": b"",
+              "writable": True, "capacity": 48, "vanish": -1})
+    other = ntag("another vendor's Type 2", "213", 23, ndef_tlv(URI_MSG), URI_MSG)
+    other["version"] = VERSION_OTHER
+    other["tech"] = "TYPE2"
+    c.append(other)
+    c.append(ident_only("unknown SAK", bytes([0x01, 0x02, 0x03, 0x04]), 0x0004, 0x40, "UNKNOWN"))
+    c.append(ident_only("ISO-DEP with a 10-byte UID", uid_n(25, 10), 0x0344, 0x20, "ISO_DEP"))
+    c.append(ntag("NDEF TLV beyond the first read", "213", 26, bytes(14) + ndef_tlv(URI_MSG),
+                  URI_MSG))
+    return c
+
+
 # ---- rendering --------------------------------------------------------------
 
 def c_bytes(data):
@@ -388,10 +523,37 @@ def render_pn532(build, parse):
     return "".join(lines)
 
 
+def render_catalog(cat):
+    lines = [HEADER.replace("NFC Forum NDEF and RTD\n * specifications",
+                            "NFC Forum Type 2 Tag + NTAG21x\n * memory maps"),
+             "#pragma once\n", '#include "fake_tag_catalog_type.h"\n\n',
+             "/* clang-format off */\n"]
+    table = []
+    for i, t in enumerate(cat):
+        lines.append(array("k_cat_%d_ndef" % i, t["ndef"] or b""))
+        mem = t["mem"].rstrip(b"\x00") if t["mem"] else b""
+        version = t["version"] or bytes(8)
+        table.append(
+            "    {%s, {{%s}, %d, 0x%04X, 0x%02X, %s, %s, {%s}, %d, %d, {%s}}, %d, %s, %s, %s, %s, %d, "
+            "k_cat_%d_ndef, %d},\n"
+            % (c_str(t["label"]), c_bytes(t["uid"]), len(t["uid"]), t["atqa"], t["sak"],
+               "true" if t["type2"] else "false", "true" if t["version"] else "false",
+               c_bytes(version), t["pages"], t["ro_from"], c_bytes(mem) or "0", t["vanish"],
+               c_str(t["tech"]), t["read_err"], "true" if t["ndef"] is not None else "false",
+               "true" if t["writable"] else "false", t["capacity"], i,
+               len(t["ndef"] or b"")))
+    lines.append("\nstatic const fake_catalog_entry_t k_fake_catalog[] = {\n")
+    lines += table
+    lines.append("};\n#define FAKE_CATALOG_COUNT (sizeof k_fake_catalog / sizeof k_fake_catalog[0])\n")
+    lines.append("/* clang-format on */\n")
+    return "".join(lines)
+
+
 OUTPUTS = {
     "nfc_ndef_vectors.h": lambda: render_ndef(ndef_vectors()),
     "nfc_rtd_vectors.h": lambda: render_rtd(rtd_vectors()),
     "nfc_pn532_vectors.h": lambda: render_pn532(pn532_build_vectors(), pn532_parse_vectors()),
+    "../../fake/fake_tag_catalog.h": lambda: render_catalog(tag_catalog()),
 }
 
 

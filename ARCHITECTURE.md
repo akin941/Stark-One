@@ -809,6 +809,9 @@ an app's confirmed action (SECURITY_SCOPE §4).
 /* stark_nfc.h */
 stark_err_t        stark_nfc_init(void);   /* transport + detection; a missing module is not an error */
 stark_nfc_module_t stark_nfc_module(void); /* NOT_FITTED / ABSENT / READY / LOST */
+stark_err_t        stark_nfc_start(void);  /* field on, poll (STARK-0403) */
+stark_err_t        stark_nfc_stop(void);   /* field off, tag forgotten */
+stark_err_t        stark_nfc_take(stark_nfc_read_t *out); /* the present tag's snapshot */
 
 /* stark_nfc_transport.h — the only code on the bus for NFC */
 stark_err_t stark_nfc_transport_open(void);  /* PN532 at 0x24 on stark_board_i2c_bus() */
@@ -829,7 +832,24 @@ with SAMConfiguration normal mode, one passive activation retry, and the field o
 transport maps an address NACK to `STARK_ERR_NOT_FOUND`, which is "no module", and a bus
 timeout to `STARK_ERR_TIMEOUT`. Boot logs `nfc: pn532 fw <ver>.<rev>`,
 `nfc: no module (<err>)`, `nfc: unexpected chip 0x<ic>` or `nfc: not fitted`, and
-carries on either way. Host tests inject `test/fake/fake_pn532.c`; the emulator test
+carries on either way.
+
+**Polling (STARK-0403).** With a module, init starts the NFC task (`stark_nfc`, prio 3,
+4 kB, core 0); every PN532 command after init is the task's. Between `start` and `stop`
+the field is on and the task polls every `STARK_NFC_POLL_MS` (250). Otherwise it sleeps
+with the field off. The pure poll machine (`nfc_poll.c`) decides each poll's outcome:
+- a new UID is a tag, so the pure reader (`nfc_reader.c`) identifies it (`nfc_ident.c`)
+  and reads its Type 2 CC and NDEF TLV (`nfc_type2.c`) into the snapshot;
+- two empty polls mean it left;
+- three transport errors mean the module is lost, and detection is retried every
+  second until it is back.
+
+Each is logged (`nfc: tag <tech> uid= atqa= sak=`, `nfc: ndef <n> B` / `nfc: no ndef` /
+`nfc: read stopped: <err>`, `nfc: tag left`, `nfc: module lost` / `back`,
+`nfc: field on` / `off`) and published as `STARK_SYS_NFC`. A vanished tag never leaves a
+half-read snapshot.
+
+Host tests inject `test/fake/fake_pn532.c`; the emulator test
 image substitutes `stark_nfc_transport` with one built on the same fake
 (`check_emu_image.py` allows exactly that and the medium). No production file names the
 fake.
