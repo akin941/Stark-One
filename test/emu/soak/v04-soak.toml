@@ -1,0 +1,104 @@
+# STARK-0405 (ROADMAP V0.4) on the storage test image with the fake PN532
+# transport (ADR-0020 §3) and the RMT loopback: 60 s of emulated use — the
+# NFC app polling while 10 tags arrive and leave (every emulator catalogue
+# tag, a vanishing one included), two confirmed writes, two dumps saved, a
+# bus-error burst that loses the module and its recovery — then an IR replay
+# and a 100 kB write test, and idle at the launcher so stark_diag's last
+# line (~61 s) is taken at the root menu, as the first one was. Gates:
+# drops=0 on every diag line and root heap within 1 kB. The esp-emulator-soak
+# job runs it. Integration evidence only — no RF, no real tags.
+name = "emu-v04-soak"
+image = "storage"
+end_ms = 62500
+wall_limit_s = 1500
+heap_min = 200000
+heap_delta_max = 1024
+rmt_loopback = "0:2"
+pokes = [
+    { at_ms = 1500, var = "emu_nfc_tag", value = 1 },  # NTAG213
+    { at_ms = 2300, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 3000, var = "emu_nfc_tag", value = 2 },  # NTAG215
+    { at_ms = 6000, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 6800, var = "emu_nfc_tag", value = 4 },  # NTAG213
+    { at_ms = 7600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 8300, var = "emu_nfc_tag", value = 5 },  # ULTRALIGHT
+    { at_ms = 11300, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 12000, var = "emu_nfc_tag", value = 3 },  # CLASSIC_1K
+    { at_ms = 13800, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 14500, var = "emu_nfc_tag", value = 1 },  # NTAG213
+    { at_ms = 16600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 17300, var = "emu_nfc_tag", value = 6 },  # ISO_DEP
+    { at_ms = 18100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 18800, var = "emu_nfc_tag", value = 1 },  # NTAG213
+    { at_ms = 19600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 20300, var = "emu_nfc_tag", value = 2 },  # NTAG215
+    { at_ms = 21100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 21800, var = "emu_nfc_tag", value = 7 },  # NTAG213
+    { at_ms = 22600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 23300, var = "emu_nfc_fault", value = 2 },  # bus errors
+    { at_ms = 24800, var = "emu_nfc_fault", value = 0 },
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },  # NFC (Lab: IR 11, NFC 12)
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "OK", at_ms = 3800, hold_ms = 60 },  # Write URI
+    { key = "OK", at_ms = 4100, hold_ms = 60 },  # https://example.com/stark
+    { key = "OK", at_ms = 4500, hold_ms = 60 },  # confirm
+    { key = "OK", at_ms = 9100, hold_ms = 60 },  # Write URI
+    { key = "OK", at_ms = 9400, hold_ms = 60 },  # https://example.com/stark
+    { key = "OK", at_ms = 9800, hold_ms = 60 },  # confirm
+    { key = "OK", at_ms = 12800, hold_ms = 60 },  # Save dump
+    { key = "DOWN", at_ms = 15300, hold_ms = 60 },  # Save dump
+    { key = "OK", at_ms = 15600, hold_ms = 60 },
+    { key = "BACK", at_ms = 27000, hold_ms = 60 },  # leave NFC: field off
+    { key = "UP", at_ms = 27400, hold_ms = 60 },  # IR
+    { key = "OK", at_ms = 27700, hold_ms = 60 },
+    { key = "DOWN", at_ms = 28000, hold_ms = 60 },  # Browse saved
+    { key = "OK", at_ms = 28200, hold_ms = 60 },  # 9 files, on lab_nec.ir
+    { key = "OK", at_ms = 28700, hold_ms = 60 },
+    { key = "OK", at_ms = 29100, hold_ms = 60 },  # confirm
+    { key = "BACK", at_ms = 30000, hold_ms = 60 },  # receive view
+    { key = "BACK", at_ms = 30400, hold_ms = 60 },  # leave IR
+    { key = "DOWN", at_ms = 30800, hold_ms = 60 },  # NFC
+    { key = "DOWN", at_ms = 30950, hold_ms = 60 },  # Settings
+    { key = "DOWN", at_ms = 31100, hold_ms = 60 },  # Storage
+    { key = "OK", at_ms = 31400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 31700, hold_ms = 60 },
+    { key = "DOWN", at_ms = 31900, hold_ms = 60 },
+    { key = "OK", at_ms = 32200, hold_ms = 60 },  # write test
+    { key = "BACK", at_ms = 36000, hold_ms = 60 },
+]
+expect = [
+    "nfc: pn532 fw 1.6",
+    "app: start nfc",
+    "nfc: field on",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfc: tag NTAG215 uid=0455606B76818C atqa=0044 sak=00",
+    "nfc: write ok 7 pages",
+    "nfc: tag NTAG213 uid=049FAAB5C0CBD6 atqa=0044 sak=00",
+    "nfc: tag ULTRALIGHT uid=04C4CFDAE5F0FB atqa=0044 sak=00",
+    "nfc: write ok 7 pages",
+    "nfc: tag CLASSIC_1K uid=DEADBEEF atqa=0004 sak=08",
+    "nfcapp: saved nfc_0001.nfc",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: saved nfc_0002.nfc",
+    "nfc: tag ISO_DEP uid=08123456 atqa=0344 sak=20",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfc: tag NTAG215 uid=0455606B76818C atqa=0044 sak=00",
+    "nfc: tag NTAG213 uid=040E19242F3A45 atqa=0044 sak=00",
+    "nfc: read stopped: Not found",
+    "nfc: module lost",
+    "nfc: module back",
+    "app: stop nfc",
+    "nfc: field off",
+    "app: start ir",
+    "irapp: sent lab_nec.ir",
+    "app: stop ir",
+    "app: start storage",
+    "storageapp: wtest ok bytes=102400",
+    "app: stop storage",
+]
+forbid = ["nfc: write failed", "nfcapp: write refused", "nfcapp: save failed", "nfcapp: save refused",
+          "irapp: send refused", "wtest failed", "storage: unusable"]

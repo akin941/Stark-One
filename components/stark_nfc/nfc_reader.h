@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "nfc_dump.h"
 #include "nfc_types.h"
 #include "pn532.h"
 #include "stark_nfc.h"
@@ -37,3 +38,11 @@ void nfc_reader_release(pn532_t *d);
  * is kept, and nothing of an earlier read survives. Releases the tag.
  */
 void nfc_reader_read(pn532_t *d, const nfc_tag_t *found, stark_nfc_read_t *out);
+
+/*
+ * A dump of the tag `tag` describes (STARK-0405): selected again (same UID),
+ * then for Type 2 every page 0 .. tag->pages-1 read 4 at a time; an
+ * identification-only tag dumps no pages. Errors as nfc_reader_reselect() and
+ * nfc_reader_exchange(); out->n_pages counts the pages read either way.
+ */
+stark_err_t nfc_reader_dump(pn532_t *d, const nfc_tag_t *tag, nfc_dump_t *out);

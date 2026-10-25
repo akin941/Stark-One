@@ -44,6 +44,9 @@ static nfc_tag_t s_write_tag;
 static uint8_t s_write_msg[NFC_NDEF_MAX];
 static size_t s_write_len;
 static _Atomic int s_write_err = STARK_OK;
+static atomic_bool s_dump_pending; /* *s_dump_out belongs to the task while set */
+static nfc_dump_t *s_dump_out;
+static _Atomic int s_dump_err = STARK_OK;
 
 static stark_err_t io_write(void *ctx, const uint8_t *buf, size_t len)
 {
@@ -193,6 +196,25 @@ static void write_once(uint32_t now)
     poll_once(now);
 }
 
+/* A dump of the present tag into the caller's buffer. */
+static void dump_once(void)
+{
+    nfc_tag_t tag;
+    (void)xSemaphoreTake(s_lock, portMAX_DELAY);
+    bool has = s_has_tag;
+    tag = s_snap.tag;
+    (void)xSemaphoreGive(s_lock);
+    stark_err_t err = has ? nfc_reader_dump(&s_pn532, &tag, s_dump_out) : STARK_ERR_NOT_FOUND;
+    atomic_store(&s_dump_err, err);
+    if (err == STARK_OK) {
+        STARK_LOGI("nfc", "dump %u pages", (unsigned)s_dump_out->n_pages);
+    } else {
+        STARK_LOGW("nfc", "dump failed: %s", stark_err_str(err));
+    }
+    atomic_store(&s_dump_pending, false);
+    publish(err == STARK_OK ? STARK_NFC_EVT_DUMP_DONE : STARK_NFC_EVT_DUMP_FAILED);
+}
+
 static void nfc_task(void *arg)
 {
     (void)arg;
@@ -214,8 +236,11 @@ static void nfc_task(void *arg)
             continue;
         }
         uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
-        if (atomic_load(&s_write_pending) && s_field && s_poll.state != NFC_POLL_RECOVERING) {
+        bool ready = s_field && s_poll.state != NFC_POLL_RECOVERING;
+        if (atomic_load(&s_write_pending) && ready) {
             write_once(now);
+        } else if (atomic_load(&s_dump_pending) && ready) {
+            dump_once();
         } else {
             poll_once(now);
         }
@@ -273,6 +298,28 @@ stark_err_t stark_nfc_write_ndef(const uint8_t *uid, uint8_t uid_len, const uint
 stark_err_t stark_nfc_write_result(void)
 {
     return (stark_err_t)atomic_load(&s_write_err);
+}
+
+stark_err_t stark_nfc_request_dump(nfc_dump_t *out)
+{
+    if (out == NULL) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (s_task == NULL || !atomic_load(&s_want_poll)) {
+        return STARK_ERR_STATE;
+    }
+    if (atomic_load(&s_dump_pending) || atomic_load(&s_write_pending)) {
+        return STARK_ERR_BUSY;
+    }
+    s_dump_out = out;
+    atomic_store(&s_dump_pending, true);
+    xTaskNotifyGive(s_task);
+    return STARK_OK;
+}
+
+stark_err_t stark_nfc_dump_result(void)
+{
+    return (stark_err_t)atomic_load(&s_dump_err);
 }
 
 stark_err_t stark_nfc_take(stark_nfc_read_t *out)

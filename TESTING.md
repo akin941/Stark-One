@@ -171,7 +171,9 @@ same job also builds the storage test image and runs the V0.2 soak
 (`test/emu/soak/v02-soak.toml`: write tests, eject/mount, settings, a pull and
 reinsertion), and since STARK-0307 the V0.3 soak (`test/emu/soak/v03-soak.toml`, with the
 RMT loopback: ten confirmed replays across every protocol, saves, browse, App Test's IR
-self-test, a write test and settings).
+self-test, a write test and settings), and since STARK-0405 the V0.4 soak
+(`test/emu/soak/v04-soak.toml`, with the fake PN532 transport: ten tag arrivals, two
+confirmed writes, two dumps, a module loss and recovery, an IR replay and a write test).
 
 **Planned scenarios by milestone**
 

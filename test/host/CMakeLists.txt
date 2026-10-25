@@ -545,12 +545,14 @@ set(NFC_CORE_SOURCES
     ${STARK_COMPONENTS}/stark_nfc/nfc_reader.c
     ${STARK_COMPONENTS}/stark_nfc/nfc_poll.c
     ${STARK_COMPONENTS}/stark_nfc/nfc_writer.c
+    ${STARK_COMPONENTS}/stark_nfc/nfc_dump.c
 )
 # The test-only fake PN532 (ADR-0020 §3), shared with the emulator test image.
 set(FAKE_PN532 ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_pn532.c)
 set(NFC_INCLUDES ${STARK_COMPONENTS}/stark_nfc ${STARK_COMPONENTS}/stark_nfc/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vectors ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
-foreach(nfc_test ndef pn532_frame pn532 nfc_ident nfc_type2 nfc_reader nfc_poll nfc_writer)
+foreach(nfc_test ndef pn532_frame pn532 nfc_ident nfc_type2 nfc_reader nfc_poll nfc_writer
+        nfc_dump)
     add_executable(run_${nfc_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${nfc_test}.c
         ${NFC_CORE_SOURCES} ${FAKE_PN532})
     target_include_directories(run_${nfc_test}_tests PRIVATE ${NFC_INCLUDES})
@@ -632,7 +634,7 @@ target_link_libraries(run_ui_storage_tests PRIVATE unity)
 # NDEF and tag names for apps on the UI port, without coverage (the core suites
 # own that figure).
 add_library(nfc_core_nocov OBJECT ${STARK_COMPONENTS}/stark_nfc/ndef.c
-    ${STARK_COMPONENTS}/stark_nfc/nfc_ident.c)
+    ${STARK_COMPONENTS}/stark_nfc/nfc_ident.c ${STARK_COMPONENTS}/stark_nfc/nfc_dump.c)
 target_include_directories(nfc_core_nocov PRIVATE ${STARK_COMPONENTS}/stark_nfc
     ${STARK_COMPONENTS}/stark_nfc/include)
 target_compile_options(nfc_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
@@ -643,12 +645,16 @@ add_executable(run_ui_nfc_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_nfc/app_nfc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_nfc/nfc_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_nfc/nfc_write.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_nfc/nfc_save.c
     ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_nfc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_storage.c
     $<TARGET_OBJECTS:nfc_core_nocov>
+    $<TARGET_OBJECTS:storage_core_nocov>
     ${UI_PORT_SOURCES}
 )
 target_include_directories(run_ui_nfc_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
-    ${STARK_COMPONENTS}/stark_nfc/include ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_nfc)
+    ${STARK_COMPONENTS}/stark_nfc/include ${STARK_COMPONENTS}/stark_storage/include
+    ${STARK_COMPONENTS}/stark_storage_medium/include ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_nfc)
 target_compile_options(run_ui_nfc_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_nfc_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_nfc_tests PRIVATE unity)

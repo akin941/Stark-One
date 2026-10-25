@@ -46,3 +46,38 @@ characters appear as `?`, and a line that does not fit ends with `...`.
 When encoding, `ndef_encode` sets MB/ME, uses the short form whenever a payload is at
 most 255 bytes, and sets IL only with an ID. That is the exact inverse of parsing for
 canonical messages.
+
+## 2. Tag dumps (STARK-0405, `nfc_dump.h`)
+
+`Save dump` in the NFC app writes the present tag to `captures/nfc_NNNN.nfc`, using the
+next free number and an atomic write. The format is plain text:
+
+```
+stark-nfc 1
+uid 04303B46515C67
+atqa 0044
+sak 00
+tech NTAG213
+pages 45
+page 0 04303B87
+page 1 46515C67
+...
+page 44 00000000
+```
+
+* The first line is the format and version. The fields follow in exactly this order:
+  `uid` (8, 14 or 20 hex digits), `atqa` (4), `sak` (2), `tech` (a name from
+  `nfc_tech_name()`) and `pages` (decimal, 0–231).
+* Then `pages` lines `page <n> <8 hex digits>`, numbered from 0 with no gaps. Hex is
+  upper case, and fields are separated by single spaces.
+* Lines starting with `#` are comments and may appear anywhere. The final newline is
+  optional; anything after the last page is rejected.
+* **What a dump holds** is only what the tag returned to unauthenticated reads.
+  - A Type 2 tag gives every page of the product (NTAG213 45, NTAG215 135, NTAG216 231),
+    or `4 + CC size × 2` for other Type 2 tags.
+  - NTAG password and PACK pages read as zeros, as the data sheet specifies.
+  - MIFARE Classic and ISO-DEP tags give their identification and `pages 0`: no sector
+    is read and no key is used.
+* **Inspection only.** The firmware has no way to write a dump back to a tag (ADR-0020
+  §5). Files are read on a PC; `nfc_dump_parse()` is the strict, bounded reference
+  parser and is host-tested with fuzzing.

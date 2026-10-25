@@ -1,0 +1,149 @@
+# STARK-0405 (ROADMAP V0.4 exit 1, software half) on the storage test image
+# with the test-only fake PN532 transport (ADR-0020 §3): the same NTAG213
+# arrives and leaves 20 times and is read 20/20 with identical fields and
+# NDEF, then each other emulator catalogue tag once (NTAG215, read-only
+# NTAG213, Ultralight, MIFARE Classic 1K, ISO-DEP), identified by the
+# production driver and reader. Not RF evidence: real reads are V1.
+name = "emu-v04-reads"
+image = "storage"
+heap_min = 200000
+end_ms = 40200
+pokes = [
+    { at_ms = 1500, var = "emu_nfc_tag", value = 1 },  # read 1 of 20
+    { at_ms = 2100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 3000, var = "emu_nfc_tag", value = 1 },  # read 2 of 20
+    { at_ms = 3600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 4500, var = "emu_nfc_tag", value = 1 },  # read 3 of 20
+    { at_ms = 5100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 6000, var = "emu_nfc_tag", value = 1 },  # read 4 of 20
+    { at_ms = 6600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 7500, var = "emu_nfc_tag", value = 1 },  # read 5 of 20
+    { at_ms = 8100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 9000, var = "emu_nfc_tag", value = 1 },  # read 6 of 20
+    { at_ms = 9600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 10500, var = "emu_nfc_tag", value = 1 },  # read 7 of 20
+    { at_ms = 11100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 12000, var = "emu_nfc_tag", value = 1 },  # read 8 of 20
+    { at_ms = 12600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 13500, var = "emu_nfc_tag", value = 1 },  # read 9 of 20
+    { at_ms = 14100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 15000, var = "emu_nfc_tag", value = 1 },  # read 10 of 20
+    { at_ms = 15600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 16500, var = "emu_nfc_tag", value = 1 },  # read 11 of 20
+    { at_ms = 17100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 18000, var = "emu_nfc_tag", value = 1 },  # read 12 of 20
+    { at_ms = 18600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 19500, var = "emu_nfc_tag", value = 1 },  # read 13 of 20
+    { at_ms = 20100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 21000, var = "emu_nfc_tag", value = 1 },  # read 14 of 20
+    { at_ms = 21600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 22500, var = "emu_nfc_tag", value = 1 },  # read 15 of 20
+    { at_ms = 23100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 24000, var = "emu_nfc_tag", value = 1 },  # read 16 of 20
+    { at_ms = 24600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 25500, var = "emu_nfc_tag", value = 1 },  # read 17 of 20
+    { at_ms = 26100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 27000, var = "emu_nfc_tag", value = 1 },  # read 18 of 20
+    { at_ms = 27600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 28500, var = "emu_nfc_tag", value = 1 },  # read 19 of 20
+    { at_ms = 29100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 30000, var = "emu_nfc_tag", value = 1 },  # read 20 of 20
+    { at_ms = 30600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 31500, var = "emu_nfc_tag", value = 2 },  # NTAG215
+    { at_ms = 32100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 33000, var = "emu_nfc_tag", value = 4 },  # NTAG213
+    { at_ms = 33600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 34500, var = "emu_nfc_tag", value = 5 },  # ULTRALIGHT
+    { at_ms = 35100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 36000, var = "emu_nfc_tag", value = 3 },  # CLASSIC_1K
+    { at_ms = 36600, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 37500, var = "emu_nfc_tag", value = 6 },  # ISO_DEP
+    { at_ms = 38100, var = "emu_nfc_tag", value = 0 },
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },  # NFC (Lab: IR 11, NFC 12)
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "BACK", at_ms = 39200, hold_ms = 60 },
+]
+expect = [
+    "nfc: pn532 fw 1.6",
+    "app: start nfc",
+    "nfc: field on",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfcapp: record URI https://example.com/stark",
+    "nfc: tag left",
+    "nfc: tag NTAG215 uid=0455606B76818C atqa=0044 sak=00",
+    "nfc: tag left",
+    "nfc: tag NTAG213 uid=049FAAB5C0CBD6 atqa=0044 sak=00",
+    "nfcapp: record Text en: STARK ONE lab",
+    "nfc: tag left",
+    "nfc: tag ULTRALIGHT uid=04C4CFDAE5F0FB atqa=0044 sak=00",
+    "nfcapp: record Text en: STARK ONE lab",
+    "nfc: tag left",
+    "nfc: tag CLASSIC_1K uid=DEADBEEF atqa=0004 sak=08",
+    "nfc: tag left",
+    "nfc: tag ISO_DEP uid=08123456 atqa=0344 sak=20",
+    "nfc: tag left",
+    "app: stop nfc",
+    "nfc: field off",
+]
+forbid = ["nfc: read stopped", "nfc: module lost", "nfc: write"]

@@ -255,6 +255,9 @@ claimed below V1.
 * **Not proven anywhere before V1:** PN532 electrical I²C, the RF field and antenna,
   ISO 14443 timing, range and orientation, real tags.
 
+**Status (STARK-0405): every software half met** — evidence in docs/measurements.md
+"V0.4 exit criteria"; every physical half open in `docs/bringup/v1-nfc.md`.
+
 | Exit criterion | Host | Emulator (production / test image) | Physical, deferred to HIL (V1) |
 | --- | --- | --- | --- |
 | 1. UID and technology, ≥ 20/20 reads | ≥ 20 tag vectors identified; 20/20 consecutive reads through driver + fake | 20/20 arrive/leave cycles per Type 2 tag over the fake transport | 20/20 reads of each of our own tag types |

@@ -3725,6 +3725,25 @@ storage image's medium switch).
 **Resource limits.** One `nfc_dump_t` (~0.95 kB) in the app, filled by the NFC task and
 written by the app worker through a 256-byte line buffer; `nfc_dump.c` ≤ 3 kB flash.
 
+**As built.**
+* **Dump read.** `nfc_reader_dump()` (pure) selects the tag again by UID and reads every
+  page 4 at a time. The NFC task fills the app's buffer, and the app worker streams it
+  through a 256-byte buffer to `captures/nfc_NNNN.nfc`. A save is refused without a
+  card or while one is in flight, and the state resets when the app stops.
+* **Record logging.** The app logs each NDEF record when a tag is read
+  (`nfcapp: record URI …`). That is the evidence `v04-write-readback` uses to show the
+  written URI coming back.
+* **20/20 reads.** `storage/v04-reads` gives 20 arrive/leave cycles for the NTAG213 and
+  one cycle for each other emulator catalogue tag; 20 cycles of every Type 2 tag would
+  have tripled the wall time for no new path.
+* **Static RAM.** The 0404 writer's second copy of the message put `stark_nfc` over the
+  8 kB budget (8 249 B). It now builds TLV pages on the fly, leaving 7 369 B; the fix
+  is folded into STARK-0404.
+* **Measured.**
+  - NFC task stack peak 1 632 of 4 096 B.
+  - `stark_nfc` 946/946 lines.
+  - The soak's heap delta is in docs/measurements.md.
+
 **Out of scope.** Dump import or write-back, dumps of protected memory, Classic sector
 dumps, a dump browser (files are read on a PC).
 

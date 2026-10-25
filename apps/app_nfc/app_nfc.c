@@ -29,6 +29,8 @@ static void activate(size_t index, void *ctx)
         nfcwrite_activate(index);
     } else if (nfcview_is_write_row(index)) {
         nfcapp_show_write();
+    } else if (nfcview_is_save_row(index)) {
+        nfcsave_request();
     }
 }
 
@@ -67,7 +69,11 @@ static bool nfc_event(stark_screen_t *self, const stark_event_t *e)
 {
     if (e->type == STARK_EVT_SYSTEM && e->system.id == STARK_SYS_NFC) {
         nfcwrite_event(e);
+        nfcsave_event(e);
         nfcview_refresh();
+        if (e->system.arg == STARK_NFC_EVT_TAG) {
+            nfcview_log_records();
+        }
         bool write_over = e->system.arg == STARK_NFC_EVT_WRITE_DONE ||
                           e->system.arg == STARK_NFC_EVT_WRITE_FAILED;
         if (s_mode == MODE_VIEW || write_over) {
@@ -97,6 +103,7 @@ static void nfc_stop(void *state)
 {
     (void)state;
     (void)stark_nfc_stop();
+    nfcsave_stop();
 }
 
 static stark_screen_t *nfc_screen(void *state)
