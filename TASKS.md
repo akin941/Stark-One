@@ -2948,9 +2948,10 @@ collected in ROADMAP V1 exit 10, the V1 hardware table and `docs/bringup/v1-nfc.
 changed; `STARK_NFC_EVT_WRITE_DONE` 4; `STARK_NFC_EVT_WRITE_FAILED` 5;
 `STARK_NFC_EVT_DUMP_DONE` 6; `STARK_NFC_EVT_DUMP_FAILED` 7).
 
-**Launcher.** The NFC app joins **Lab**, registered before IR, so the IR app keeps its
-UP-from-About path (Storage, Settings, IR). Rows: Lab header 10, NFC 11, IR 12, Device
-header 13, Settings 14, Storage 15. Scenarios update only `sel=` numbers (STARK-0404).
+**Launcher.** The NFC app joins **Lab**. The launcher sorts by title within a category,
+so the rows are Lab header 10, IR 11, NFC 12, Device header 13, Settings 14, Storage 15.
+(Corrected at STARK-0404: the plan assumed registration order placed NFC before IR.
+Scenarios that walk UP from About to IR gain one press.)
 
 **Common definitions** (`components/stark_nfc/include/nfc_types.h`, pure, used by every
 task):
@@ -3581,6 +3582,34 @@ stark_err_t stark_nfc_write_ndef(const uint8_t *uid, uint8_t uid_len,
    the CC data area (host proof); read-only and too-small tags are refused.
 4. Module absence: the production image's app shows `No NFC module` and starts no
    polling. Earlier scenarios pass with only `sel=` numbers changed.
+
+**As built.**
+* **Launcher rows (corrects the preamble).** The launcher sorts apps by title within a
+  category, so registration order does not place them. Lab is IR 11, NFC 12; Device
+  header 13, Settings 14, Storage 15. The IR scenarios that walked UP from About
+  therefore gained one UP (Storage, Settings, NFC, IR); `v01-hello` passes NFC too;
+  the V0.1 soak's DOWN run after Hello gained one DOWN. `v02-no-card` now also opens
+  NFC on the production image and sees it disabled. The `sel=` lines for Settings and
+  Storage moved by one.
+* **A bug the emulator caught.** After a module recovery the NFC task waited forever,
+  because it only woke on the poll period while the field was on, and recovery leaves
+  the field off. Polling never resumed. The task now wakes whenever polling is wanted;
+  `storage/v04-nfc-app` asserts `nfc: field on` after `nfc: module back` and
+  `nfc: field off` after the app stops.
+* **Screen details.**
+  - Both modes keep the title "NFC": the status bar does not redraw when the menu is
+    re-initialised, so a mode title would go stale.
+  - A lost module shows only its status row.
+  - The confirm text is logged (`nfcapp: confirm <uid>: <record> (<n> B of <cap>). Own
+    tags only.`) before the dialog opens.
+* **UI goldens.** Six frames (no module, waiting, NTAG with two records, Classic,
+  read-only, module lost) were inspected and pinned. They are identical on macOS and
+  Linux clang.
+* **Writer.** It builds each page of the TLV on the fly (`nfc_t2_tlv_page`) rather than
+  holding a second copy of the message, which keeps `stark_nfc` within the 8 kB static
+  budget of STARK-0403 (8 249 B with the copy, measured at STARK-0405). The fake records
+  every WRITE page address, and every writer test checks them all against the data
+  area in `tearDown`. `nfc_writer.c` has 100 % line coverage.
 
 **Resource limits.** App static ≤ 3 kB (its copy of the snapshot is ~0.9 kB; the dump
 buffer of STARK-0405 ~0.95 kB); app files ≤ 150 lines each; `nfc_writer.c` ≤ 3 kB

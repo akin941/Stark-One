@@ -42,3 +42,12 @@ typedef enum {
  * are in area. */
 nfc_tlv_t nfc_t2_tlv(const uint8_t *area, size_t avail, size_t total, size_t *off, size_t *len,
                      size_t *need);
+
+/* The NDEF TLV for a message of len bytes, followed by a Terminator and
+ * zero-padded to whole pages (STARK-0404): its size in bytes, 0 when len is
+ * over 0xFFFE. */
+size_t nfc_t2_tlv_size(size_t len);
+
+/* Page `page` (0-based within that TLV) of it, built on the fly so the
+ * writer never holds a second copy of the message. */
+void nfc_t2_tlv_page(const uint8_t *msg, size_t len, size_t page, uint8_t out[4]);

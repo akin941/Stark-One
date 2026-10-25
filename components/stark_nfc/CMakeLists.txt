@@ -9,6 +9,7 @@ idf_component_register(
         "nfc_type2.c"
         "nfc_reader.c"
         "nfc_poll.c"
+        "nfc_writer.c"
         "stark_nfc.c"
     INCLUDE_DIRS
         "include"

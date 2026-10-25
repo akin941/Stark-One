@@ -812,6 +812,8 @@ stark_nfc_module_t stark_nfc_module(void); /* NOT_FITTED / ABSENT / READY / LOST
 stark_err_t        stark_nfc_start(void);  /* field on, poll (STARK-0403) */
 stark_err_t        stark_nfc_stop(void);   /* field off, tag forgotten */
 stark_err_t        stark_nfc_take(stark_nfc_read_t *out); /* the present tag's snapshot */
+stark_err_t        stark_nfc_write_ndef(const uint8_t *uid, uint8_t uid_len,
+                                        const uint8_t *msg, size_t len); /* STARK-0404 */
 
 /* stark_nfc_transport.h — the only code on the bus for NFC */
 stark_err_t stark_nfc_transport_open(void);  /* PN532 at 0x24 on stark_board_i2c_bus() */
@@ -848,6 +850,18 @@ Each is logged (`nfc: tag <tech> uid= atqa= sak=`, `nfc: ndef <n> B` / `nfc: no 
 `nfc: read stopped: <err>`, `nfc: tag left`, `nfc: module lost` / `back`,
 `nfc: field on` / `off`) and published as `STARK_SYS_NFC`. A vanished tag never leaves a
 half-read snapshot.
+
+**Writing (STARK-0404).** `stark_nfc_write_ndef()` hands the NFC task a message for one
+UID; the pure writer (`nfc_writer.c`) carries it out:
+- it selects again and refuses another tag;
+- it requires a CC with write access and a message that fits;
+- it writes the NDEF TLV page by page from page 4, inside the data area only (never
+  UID, lock, CC, OTP or configuration pages);
+- it reads back and compares.
+
+`WRITE_DONE` / `WRITE_FAILED` follow, then the tag is read again. The NFC app
+(`apps/app_nfc`, Lab, row 12) only calls it after a confirmation that names the UID and
+the content.
 
 Host tests inject `test/fake/fake_pn532.c`; the emulator test
 image substitutes `stark_nfc_transport` with one built on the same fake

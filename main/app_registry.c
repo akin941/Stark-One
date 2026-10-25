@@ -16,6 +16,7 @@ const stark_app_t *const stark_apps[] = {
     &app_buzzertest,
     &app_apptest,
     &app_hello,
+    &app_nfc,
     &app_ir,
     &app_storage,
     &app_settings,

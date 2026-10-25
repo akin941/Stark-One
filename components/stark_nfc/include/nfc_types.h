@@ -25,6 +25,10 @@ typedef enum {
     NFC_TECH_COUNT
 } nfc_tech_t;
 
+/* "NTAG213", "CLASSIC_1K", ... — the spelling used in logs, dumps and the app
+ * (nfc_ident.c). */
+const char *nfc_tech_name(nfc_tech_t tech);
+
 typedef struct {
     uint8_t uid[NFC_UID_MAX];
     uint8_t uid_len;

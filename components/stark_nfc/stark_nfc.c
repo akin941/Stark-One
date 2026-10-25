@@ -16,6 +16,7 @@
 #include "nfc_ident.h"
 #include "nfc_poll.h"
 #include "nfc_reader.h"
+#include "nfc_writer.h"
 #include "pn532.h"
 #include "sdkconfig.h"
 #include "stark_event.h"
@@ -38,6 +39,11 @@ static bool s_has_tag;
 static stark_nfc_read_t s_work; /* the NFC task's own read */
 static nfc_poll_t s_poll;
 static bool s_field;
+static atomic_bool s_write_pending; /* the request below belongs to the task while set */
+static nfc_tag_t s_write_tag;
+static uint8_t s_write_msg[NFC_NDEF_MAX];
+static size_t s_write_len;
+static _Atomic int s_write_err = STARK_OK;
 
 static stark_err_t io_write(void *ctx, const uint8_t *buf, size_t len)
 {
@@ -169,11 +175,33 @@ static void poll_once(uint32_t now)
     }
 }
 
+/* A confirmed write, then the tag read again so the snapshot shows the result. */
+static void write_once(uint32_t now)
+{
+    uint16_t pages = 0;
+    stark_err_t err = nfc_writer_write(&s_pn532, &s_write_tag, s_write_msg, s_write_len, &pages);
+    atomic_store(&s_write_err, err);
+    if (err == STARK_OK) {
+        STARK_LOGI("nfc", "write ok %u pages", (unsigned)pages);
+    } else {
+        STARK_LOGW("nfc", "write failed: %s (%u pages written)", stark_err_str(err),
+                   (unsigned)pages);
+    }
+    atomic_store(&s_write_pending, false);
+    publish(err == STARK_OK ? STARK_NFC_EVT_WRITE_DONE : STARK_NFC_EVT_WRITE_FAILED);
+    nfc_poll_init(&s_poll); /* the next poll reads whatever is there now */
+    poll_once(now);
+}
+
 static void nfc_task(void *arg)
 {
     (void)arg;
     for (;;) {
-        bool polling = s_field || s_poll.state == NFC_POLL_RECOVERING;
+        /* NOTE: wake on the poll period whenever polling is wanted, not only
+         * while the field is on — after a recovery the field is off until
+         * apply_field() turns it on again, and waiting forever would stop
+         * polling for good (caught by storage/v04-nfc-app). */
+        bool polling = atomic_load(&s_want_poll) || s_field || s_poll.state == NFC_POLL_RECOVERING;
         (void)ulTaskNotifyTake(pdTRUE,
                                polling ? pdMS_TO_TICKS(CONFIG_STARK_NFC_POLL_MS) : portMAX_DELAY);
         if (s_poll.state != NFC_POLL_RECOVERING) {
@@ -185,7 +213,12 @@ static void nfc_task(void *arg)
             }
             continue;
         }
-        poll_once((uint32_t)(esp_timer_get_time() / 1000));
+        uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+        if (atomic_load(&s_write_pending) && s_field && s_poll.state != NFC_POLL_RECOVERING) {
+            write_once(now);
+        } else {
+            poll_once(now);
+        }
     }
 }
 
@@ -210,6 +243,36 @@ stark_err_t stark_nfc_start(void)
 stark_err_t stark_nfc_stop(void)
 {
     return want_poll(false);
+}
+
+stark_err_t stark_nfc_write_ndef(const uint8_t *uid, uint8_t uid_len, const uint8_t *msg,
+                                 size_t len)
+{
+    if (uid == NULL || uid_len == 0 || uid_len > NFC_UID_MAX || (len > 0 && msg == NULL) ||
+        len > NFC_NDEF_MAX) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (s_task == NULL || !atomic_load(&s_want_poll)) {
+        return STARK_ERR_STATE;
+    }
+    if (atomic_load(&s_write_pending)) {
+        return STARK_ERR_BUSY;
+    }
+    memset(&s_write_tag, 0, sizeof s_write_tag);
+    memcpy(s_write_tag.uid, uid, uid_len);
+    s_write_tag.uid_len = uid_len;
+    if (len > 0) {
+        memcpy(s_write_msg, msg, len);
+    }
+    s_write_len = len;
+    atomic_store(&s_write_pending, true);
+    xTaskNotifyGive(s_task);
+    return STARK_OK;
+}
+
+stark_err_t stark_nfc_write_result(void)
+{
+    return (stark_err_t)atomic_load(&s_write_err);
 }
 
 stark_err_t stark_nfc_take(stark_nfc_read_t *out)

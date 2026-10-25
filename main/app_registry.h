@@ -16,6 +16,7 @@ extern const stark_app_t app_displaytest;
 extern const stark_app_t app_inputtest;
 extern const stark_app_t app_hello;
 extern const stark_app_t app_apptest;
+extern const stark_app_t app_nfc;
 extern const stark_app_t app_ir;
 extern const stark_app_t app_storage;
 extern const stark_app_t app_settings;
