@@ -3018,8 +3018,8 @@ stark_err_t ndef_uri_make(const char *uri, uint8_t *payload, size_t cap, ndef_re
 stark_err_t ndef_text_get(const ndef_record_t *r, char *lang, size_t lcap, char *text, size_t tcap);
 stark_err_t ndef_text_make(const char *lang, const char *text, uint8_t *payload, size_t cap,
                            ndef_record_t *out);
-/* "URI https://…", "Text en: …", "MIME text/plain 12 B", "External a.b:c 3 B", "Empty",
- * "Unknown 4 B"; truncated to cap with "…" */
+/* "URI https://...", "Text en: ...", "MIME text/plain 12 B", "External a.b:c 3 B", "Empty",
+ * "Unknown 4 B"; truncated to cap with "..." */
 void ndef_describe(const ndef_record_t *r, char *out, size_t cap);
 ```
 
@@ -3073,6 +3073,21 @@ random mutations of valid messages parse or fail cleanly under ASan/UBSan; and
 2. Fuzzing is clean under ASan/UBSan; no read past `len` (sanitizer-proven).
 3. `ndef.c` has 100 % line coverage; `docs/nfc-format.md` documents the subset.
 4. `gen_nfc_vectors.py --check` runs in CI lint.
+
+**As built.**
+* **Vectors.** 73 NDEF vectors (52 valid, 21 malformed) and 24 URI/Text vectors from
+  `gen_nfc_vectors.py`'s own encoder. The valid ones cover every URI prefix code,
+  English and Turkish text, 2- and 3-record messages, IDs, MIME, External, Absolute
+  URI, Unknown, an opaque Smart Poster, payloads of 255, 256, 800 and 872 bytes, and
+  eight records. Two non-canonical but valid encodings (a long form for a short
+  payload, IL with an empty ID) parse correctly and are excluded from the
+  byte-identical re-encode check.
+* **Other checks:** truncation at every byte of each 3-record message, and 10 000
+  seeded mutations. `ndef.c` has 100 % line coverage (257/257).
+* **Truncation marker.** Descriptions end with ASCII `...`, not `…`, so every font
+  renders them. The cut backs off to a UTF-8 character boundary.
+* **Build.** The component builds under the firmware's warning flags. Nothing links it
+  until STARK-0402.
 
 **Resource limits.** `ndef.c` ≤ 4 kB flash; no allocation; `ndef_message_t` ≤ 200 B.
 
