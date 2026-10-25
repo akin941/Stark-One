@@ -1,0 +1,17 @@
+# STARK-0402 on the storage test image, whose stark_nfc_transport is the
+# test-only fake PN532 (ADR-0020 §3): the production driver detects it at
+# boot — GetFirmwareVersion, SAMConfiguration, RFConfiguration — through the
+# same API the I2C transport serves. Integration evidence, not RF evidence.
+name = "emu-v04-nfc-module"
+image = "storage"
+end_ms = 2500
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },
+]
+expect = [
+    "boot: ui_ready in ",
+    "nfc: pn532 fw 1.6",
+    'menu: sel=2 "Diagnostics"',
+]
+forbid = ["nfc init failed", "nfc: no module", "nfc: unexpected chip"]

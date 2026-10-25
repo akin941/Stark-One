@@ -178,8 +178,9 @@ typedef struct {
 
 const stark_board_pins_t *stark_board_pins(void);
 const char               *stark_board_name(void);
-stark_err_t               stark_board_init(void);   /* clocks, bus, common GPIO */
+stark_err_t               stark_board_init(void);   /* clocks, SPI2 + I2C buses, common GPIO */
 stark_err_t               stark_board_heartbeat_start(void); /* status LED, 1 Hz 10 % */
+struct i2c_master_bus_t  *stark_board_i2c_bus(void); /* I2C_NUM_0 on I2C_SDA/SCL; NULL if absent (STARK-0402) */
 ```
 
 A board *capability* structure (`has_sdcard`, `has_ir`, `has_nfc`, …) is deliberately
@@ -802,6 +803,37 @@ protocol's frame period; `ir: tx done` / `ir: tx failed` and `STARK_SYS_IR`
 `TX_DONE`/`TX_FAILED` follow. The API has no repeat-forever and nothing transmits without
 an app's confirmed action (SECURITY_SCOPE §4).
 
+### 6.9e `stark_nfc` (L3) and `stark_nfc_transport` (L1) — STARK-0401…0405, ADR-0020
+
+```c
+/* stark_nfc.h */
+stark_err_t        stark_nfc_init(void);   /* transport + detection; a missing module is not an error */
+stark_nfc_module_t stark_nfc_module(void); /* NOT_FITTED / ABSENT / READY / LOST */
+
+/* stark_nfc_transport.h — the only code on the bus for NFC */
+stark_err_t stark_nfc_transport_open(void);  /* PN532 at 0x24 on stark_board_i2c_bus() */
+stark_err_t stark_nfc_transport_write(const uint8_t *buf, size_t len, uint32_t timeout_ms);
+stark_err_t stark_nfc_transport_read(uint8_t *buf, size_t len, uint32_t timeout_ms);
+```
+
+The pure core owns every decision: `ndef.c` (NDEF, STARK-0401), `pn532_frame.c` (frames,
+LCS/DCS) and `pn532.c` (the protocol driver). The driver reaches the chip only through a
+`pn532_io_t` it is given, the way the storage engine receives its I/O table. It polls the
+I²C status byte, takes the ACK, repeats a command after a NACK, a bad ACK or no ACK
+(`PN532_RETRIES`), sends a NACK to get a corrupt response again (`PN532_RESENDS`), aborts
+a command whose response never comes with an ACK, and counts all of it in
+`pn532_stats_t`. `pn532_detect()` checks for the PN532's IC byte 0x32 and initialises it
+with SAMConfiguration normal mode, one passive activation retry, and the field off.
+
+`stark_nfc.c` binds that driver to `stark_nfc_transport` and FreeRTOS time. The
+transport maps an address NACK to `STARK_ERR_NOT_FOUND`, which is "no module", and a bus
+timeout to `STARK_ERR_TIMEOUT`. Boot logs `nfc: pn532 fw <ver>.<rev>`,
+`nfc: no module (<err>)`, `nfc: unexpected chip 0x<ic>` or `nfc: not fitted`, and
+carries on either way. Host tests inject `test/fake/fake_pn532.c`; the emulator test
+image substitutes `stark_nfc_transport` with one built on the same fake
+(`check_emu_image.py` allows exactly that and the medium). No production file names the
+fake.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -809,7 +841,7 @@ an app's confirmed action (SECURITY_SCOPE §4).
 | `stark_storage` | V0.2 | Implemented (§6.9b, STARK-0201…0203, 0206): mount state machine, task, medium port, removal, eject, file helpers, log file |
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
-| `stark_nfc` + `stark_nfc_transport` | V0.4 | Planned (ADR-0020, TASKS STARK-0401…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
+| `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
@@ -835,7 +867,8 @@ app_main()
  │      loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
  ├─ stark_diag_init(ui adapter)            – 1 s diagnostics sampler (STARK-0109)
  ├─ stark_storage_init()                   – storage task; mounts in the background (STARK-0201)
- └─ stark_ir_init()                        – RMT RX channel + IR task, RX off (STARK-0303)
+ ├─ stark_ir_init()                        – RMT RX channel + IR task, RX off (STARK-0303)
+ └─ stark_nfc_init()                       – PN532 detection on the I2C bus, field off (STARK-0402)
 ```
 
 Since STARK-0017 the UI task (`stark_ui_task`, created by `main`) is the event bus's one

@@ -1,0 +1,14 @@
+# stark_nfc options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). STARK-0402.
+
+config STARK_NFC_I2C_HZ
+    int "NFC: PN532 I2C clock (Hz)"
+    range 10000 400000
+    default 100000
+    help
+        The PN532 supports up to 400 kHz; 100 kHz tolerates breadboard wiring.
+
+config STARK_NFC_I2C_TIMEOUT_MS
+    int "NFC: one I2C transfer's timeout (ms)"
+    range 5 1000
+    default 50

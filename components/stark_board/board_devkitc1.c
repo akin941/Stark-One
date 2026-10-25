@@ -12,6 +12,7 @@
  */
 #include "stark_board.h"
 #include "driver/gpio.h"
+#include "driver/i2c_master.h"
 #include "driver/spi_master.h"
 #include "esp_err.h"
 
@@ -41,6 +42,13 @@ static const stark_board_pins_t s_pins = {
     .ir_rx = 48, /* also the DevKitC-1 v1.0 RGB LED: cosmetic flicker only */
     .tft_spi_hz = CONFIG_STARK_DISPLAY_SPI_HZ,
 };
+
+static i2c_master_bus_handle_t s_i2c;
+
+struct i2c_master_bus_t *stark_board_i2c_bus(void)
+{
+    return s_i2c;
+}
 
 const stark_board_pins_t *stark_board_pins(void)
 {
@@ -115,6 +123,23 @@ stark_err_t stark_board_init(void)
     err = spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO);
     if (err != ESP_OK) {
         return STARK_ERR_IO;
+    }
+
+    /* NOTE: the internal pull-ups are weak (~45 kOhm); breakout modules such as
+     * the PN532's carry their own. The board's pull-ups and the bus waveform
+     * are V1 checks (ROADMAP V1 exit 10). */
+    if (s_pins.i2c_sda >= 0 && s_pins.i2c_scl >= 0 && s_i2c == NULL) {
+        i2c_master_bus_config_t i2c_cfg = {
+            .i2c_port = I2C_NUM_0,
+            .sda_io_num = s_pins.i2c_sda,
+            .scl_io_num = s_pins.i2c_scl,
+            .clk_source = I2C_CLK_SRC_DEFAULT,
+            .glitch_ignore_cnt = 7,
+            .flags.enable_internal_pullup = true,
+        };
+        if (i2c_new_master_bus(&i2c_cfg, &s_i2c) != ESP_OK) {
+            return STARK_ERR_IO;
+        }
     }
 
     return STARK_OK;

@@ -16,13 +16,15 @@ def comp(d, sources=(), reqs=()):
             "reqs": list(reqs), "priv_reqs": []}
 
 
-def desc(build_dir, medium_dir, lcd_dir):
+def desc(build_dir, medium_dir, lcd_dir, nfc_dir):
     return {
         "build_dir": build_dir,
-        "build_components": ["stark_ui", "stark_storage_medium", "esp_lcd_ili9341", "main", ""],
+        "build_components": ["stark_ui", "stark_storage_medium", "stark_nfc_transport",
+                             "esp_lcd_ili9341", "main", ""],
         "build_component_info": {
             "stark_ui": comp(REPO + "/components/stark_ui", [REPO + "/components/stark_ui/a.c"]),
             "stark_storage_medium": comp(medium_dir, [medium_dir + "/m.c"]),
+            "stark_nfc_transport": comp(nfc_dir, [nfc_dir + "/t.c"]),
             "esp_lcd_ili9341": comp(lcd_dir),
             "main": comp(REPO + "/main", [build_dir + "/gen.c"]),
         },
@@ -30,13 +32,21 @@ def desc(build_dir, medium_dir, lcd_dir):
 
 
 PROD = desc("/p/build", REPO + "/components/stark_storage_medium",
-            REPO + "/managed_components/esp_lcd_ili9341")
-EMU = desc("/p/build/emu-storage", REPO + "/" + chk.SUBSTITUTE_DIR,
-           REPO + "/test/emu/storage_image/managed_components/esp_lcd_ili9341")
+            REPO + "/managed_components/esp_lcd_ili9341", REPO + "/components/stark_nfc_transport")
+EMU = desc("/p/build/emu-storage", REPO + "/" + chk.SUBSTITUTE_DIRS["stark_storage_medium"],
+           REPO + "/test/emu/storage_image/managed_components/esp_lcd_ili9341",
+           REPO + "/" + chk.SUBSTITUTE_DIRS["stark_nfc_transport"])
 
 
 class Components(unittest.TestCase):
-    def test_only_the_medium_differs(self):
+    def test_nfc_transport_not_substituted(self):
+        emu = copy.deepcopy(EMU)
+        emu["build_component_info"]["stark_nfc_transport"] = \
+            PROD["build_component_info"]["stark_nfc_transport"]
+        msg = " ".join(chk.compare_components(PROD, emu, REPO))
+        self.assertIn("stark_nfc_transport not substituted", msg)
+
+    def test_only_the_two_substitutions_differ(self):
         self.assertEqual(chk.compare_components(PROD, EMU, REPO), [])
 
     def test_medium_not_substituted(self):

@@ -538,12 +538,16 @@ endforeach()
 # (scripts/gen_nfc_vectors.py, ADR-0020 §4).
 set(NFC_CORE_SOURCES
     ${STARK_COMPONENTS}/stark_nfc/ndef.c
+    ${STARK_COMPONENTS}/stark_nfc/pn532_frame.c
+    ${STARK_COMPONENTS}/stark_nfc/pn532.c
 )
+# The test-only fake PN532 (ADR-0020 §3), shared with the emulator test image.
+set(FAKE_PN532 ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_pn532.c)
 set(NFC_INCLUDES ${STARK_COMPONENTS}/stark_nfc ${STARK_COMPONENTS}/stark_nfc/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/vectors)
-foreach(nfc_test ndef)
+    ${CMAKE_CURRENT_SOURCE_DIR}/vectors ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+foreach(nfc_test ndef pn532_frame pn532)
     add_executable(run_${nfc_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${nfc_test}.c
-        ${NFC_CORE_SOURCES})
+        ${NFC_CORE_SOURCES} ${FAKE_PN532})
     target_include_directories(run_${nfc_test}_tests PRIVATE ${NFC_INCLUDES})
     target_compile_options(run_${nfc_test}_tests PRIVATE ${OUR_C_FLAGS})
     target_link_options(run_${nfc_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})

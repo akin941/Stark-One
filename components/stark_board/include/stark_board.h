@@ -36,6 +36,16 @@ const stark_board_pins_t *stark_board_pins(void);
 /* Returns the active board variant's name, e.g. "devkitc1". */
 const char *stark_board_name(void);
 
+struct i2c_master_bus_t; /* ESP-IDF's i2c_master_bus_handle_t points to one */
+
+/*
+ * The shared I2C master bus on I2C_SDA / I2C_SCL (HARDWARE.md §2.2: NFC now,
+ * module ID EEPROMs and lab I2C later), created by stark_board_init() the way
+ * SPI2 is. NULL before init or when the board has no I2C pins. Devices attach
+ * with i2c_master_bus_add_device() in their own port files.
+ */
+struct i2c_master_bus_t *stark_board_i2c_bus(void);
+
 /*
  * Configures the status LED as output, the six key GPIOs as inputs with
  * pull-ups, and initialises the shared SPI2 bus. Does not touch the panel.

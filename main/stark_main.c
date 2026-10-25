@@ -10,6 +10,7 @@
 #include "stark_event.h"
 #include "stark_input.h"
 #include "stark_ir.h"
+#include "stark_nfc.h"
 #include "stark_settings.h"
 #include "stark_storage.h"
 #include "settings_apply.h"
@@ -161,5 +162,12 @@ void app_main(void)
     err = stark_ir_init();
     if (err != STARK_OK) {
         STARK_LOGE("boot", "ir init failed: %s", stark_err_str(err));
+    }
+
+    /* Not boot-critical: a missing module only disables NFC (STARK-0402);
+     * the RF field stays off until an app polls (ADR-0020 §5). */
+    err = stark_nfc_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "nfc init failed: %s", stark_err_str(err));
     }
 }

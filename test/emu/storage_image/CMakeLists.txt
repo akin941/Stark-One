@@ -12,12 +12,14 @@ get_filename_component(STARK_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 
 file(GLOB stark_components LIST_DIRECTORIES true "${STARK_ROOT}/components/*")
 file(GLOB stark_apps LIST_DIRECTORIES true "${STARK_ROOT}/apps/app_*")
-list(FILTER stark_components EXCLUDE REGEX "/stark_storage_medium$") # the one substitution
+list(FILTER stark_components EXCLUDE REGEX "/stark_storage_medium$") # substitution 1 (ADR-0018)
+list(FILTER stark_components EXCLUDE REGEX "/stark_nfc_transport$")  # substitution 2 (ADR-0020)
 set(EXTRA_COMPONENT_DIRS
     ${stark_components}
     ${stark_apps}
     "${STARK_ROOT}/main"
     "${CMAKE_CURRENT_LIST_DIR}/components/stark_storage_medium"
+    "${CMAKE_CURRENT_LIST_DIR}/components/stark_nfc_transport"
 )
 # The production defaults, unchanged; the partition table is found next to
 # this file (partitions.csv = production table + the test FAT partition).
@@ -31,5 +33,6 @@ project(stark-one-emu-storage)
 # by scripts/gen_ir_vectors.py; test image only.
 fatfs_create_spiflash_image(emufat "${CMAKE_CURRENT_LIST_DIR}/seed" FLASH_IN_PROJECT)
 
-set(STARK_EXTRA_STRICT_DIRS "${CMAKE_CURRENT_LIST_DIR}/components/stark_storage_medium")
+set(STARK_EXTRA_STRICT_DIRS "${CMAKE_CURRENT_LIST_DIR}/components/stark_storage_medium"
+    "${CMAKE_CURRENT_LIST_DIR}/components/stark_nfc_transport")
 include(${STARK_ROOT}/cmake/stark_flags.cmake)
