@@ -1,0 +1,23 @@
+# STARK-0404 on the production image (ROADMAP V0.4 exit 3, software half):
+# the I2C bus is empty in esp-emu, so detection found no module; the NFC app
+# says so, starts no polling (no RF field) and leaves cleanly. Lab sorts by
+# title: UP from About wraps to Storage, then Settings, NFC (row 12).
+name = "emu-v04-nfc-absent"
+end_ms = 2500
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },     # NFC (Lab sorts by title: IR 11, NFC 12)
+    { key = "OK", at_ms = 950, hold_ms = 60 },
+    { key = "OK", at_ms = 1300, hold_ms = 60 },    # nothing selectable: rejected
+    { key = "BACK", at_ms = 1800, hold_ms = 60 },
+]
+expect = [
+    "nfc: no module (Not found)",
+    'menu: sel=12 "NFC"',
+    "nfcapp: no module",
+    "app: start nfc",
+    "app: stop nfc",
+]
+forbid = ["nfc: field on", "nfc: tag", "nfcapp: confirm"]

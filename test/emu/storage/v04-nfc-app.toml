@@ -1,0 +1,66 @@
+# STARK-0404 on the storage test image, whose stark_nfc_transport is the
+# test-only fake PN532 (ADR-0020 §3); GDB pokes put catalogue tags in its
+# field (emu_nfc_tag, test/fake/fake_tag_catalog.h) and inject faults
+# (emu_nfc_fault). The production driver, NFC task, app and UI run unchanged:
+# a URI tag is read and left; a blank NTAG215 is written after the
+# confirmation and read back; a read-only tag cannot be written; a MIFARE
+# Classic is identified only; a tag vanishing mid-read stops the read; bus
+# errors lose the module and it comes back. Integration evidence, not RF.
+name = "emu-v04-nfc-app"
+image = "storage"
+end_ms = 14500
+heap_min = 200000
+pokes = [
+    { at_ms = 1500, var = "emu_nfc_tag", value = 1 },    # NTAG213 with a URI
+    { at_ms = 2500, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 3300, var = "emu_nfc_tag", value = 2 },    # blank NTAG215
+    { at_ms = 6500, var = "emu_nfc_tag", value = 4 },    # read-only NTAG213
+    { at_ms = 8000, var = "emu_nfc_tag", value = 3 },    # MIFARE Classic 1K
+    { at_ms = 9000, var = "emu_nfc_tag", value = 7 },    # vanishes mid-read
+    { at_ms = 10200, var = "emu_nfc_fault", value = 2 }, # bus errors
+    { at_ms = 11400, var = "emu_nfc_fault", value = 0 },
+]
+presses = [
+    { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 450, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 600, hold_ms = 60 },     # NFC (Lab sorts by title: IR 11, NFC 12)
+    { key = "OK", at_ms = 950, hold_ms = 60 },
+    { key = "OK", at_ms = 4300, hold_ms = 60 },    # Write URI (the only selectable row)
+    { key = "OK", at_ms = 4700, hold_ms = 60 },    # https://example.com/stark
+    { key = "OK", at_ms = 5100, hold_ms = 60 },    # confirm
+    { key = "OK", at_ms = 7300, hold_ms = 60 },    # read-only: nothing to select
+    { key = "BACK", at_ms = 13500, hold_ms = 60 },
+]
+expect = [
+    "nfc: pn532 fw 1.6",
+    'menu: sel=12 "NFC"',
+    "app: start nfc",
+    "nfc: field on",
+    "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",
+    "nfc: ndef 22 B",
+    "nfc: tag left",
+    "nfc: tag NTAG215 uid=0455606B76818C atqa=0044 sak=00",
+    "nfc: ndef 0 B",
+    "nfcapp: confirm 0455606B76818C: URI https://example.com/stark (22 B of 491). Own tags only.",
+    'dialog: open "Write NFC tag?"',
+    "dialog: ok",
+    "nfc: write ok 7 pages",
+    "nfcapp: wrote 0455606B76818C",
+    "nfc: tag NTAG215 uid=0455606B76818C atqa=0044 sak=00",
+    "nfc: ndef 22 B",
+    "nfc: tag NTAG213 uid=049FAAB5C0CBD6 atqa=0044 sak=00",
+    "nfc: tag CLASSIC_1K uid=DEADBEEF atqa=0004 sak=08",
+    "nfc: tag NTAG213 uid=040E19242F3A45 atqa=0044 sak=00",
+    "nfc: read stopped: Not found",
+    "nfc: module lost",
+    "nfc: module back",
+    "nfc: field on",      # polling resumes after the recovery
+    "app: stop nfc",
+    "nfc: field off",     # the NFC task turns it off once the app has stopped
+]
+forbid = ["nfc: write failed", "nfcapp: write refused"]
+# nothing is written before the confirmation; nothing is offered for the read-only tag
+forbid_between = [
+    { after = "app: start nfc", before = "dialog: ok", text = "nfc: write" },
+    { after = "uid=049FAAB5C0CBD6", before = "app: stop nfc", text = "nfcapp: confirm" },
+]

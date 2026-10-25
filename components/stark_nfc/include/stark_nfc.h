@@ -9,6 +9,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "nfc_types.h"
 #include "stark_err.h"
@@ -62,3 +63,15 @@ stark_err_t stark_nfc_stop(void);
 
 /* A copy of the present tag's snapshot; STARK_ERR_NOT_FOUND when none. */
 stark_err_t stark_nfc_take(stark_nfc_read_t *out);
+
+/*
+ * Writes msg as the NDEF message of the tag whose UID is given — only that
+ * tag — then reads it back (STARK-0404). Returns at once; STARK_SYS_NFC
+ * WRITE_DONE or WRITE_FAILED follows, then the tag is read again (TAG).
+ * STARK_ERR_STATE while not polling, STARK_ERR_BUSY while a write is pending.
+ * Callers confirm with the user first (SECURITY_SCOPE §2, ADR-0020 §5).
+ */
+stark_err_t stark_nfc_write_ndef(const uint8_t *uid, uint8_t uid_len, const uint8_t *msg,
+                                 size_t len);
+/* The last write's outcome (nfc_writer.h lists the errors). */
+stark_err_t stark_nfc_write_result(void);

@@ -10,8 +10,9 @@ end_ms = 3500
 heap_min = 200000
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
-    { key = "UP", at_ms = 450, hold_ms = 60 },     # Settings
-    { key = "UP", at_ms = 600, hold_ms = 60 },     # IR
+    { key = "UP", at_ms = 420, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 540, hold_ms = 60 },     # NFC (STARK-0404)
+    { key = "UP", at_ms = 660, hold_ms = 60 },     # IR
     { key = "OK", at_ms = 800, hold_ms = 60 },
     { key = "OK", at_ms = 1200, hold_ms = 60 },    # Save last
     { key = "BACK", at_ms = 2500, hold_ms = 60 },

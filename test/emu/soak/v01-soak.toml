@@ -49,10 +49,11 @@ presses = [
     { key = "OK", at_ms = 18880, hold_ms = 60 },
     { key = "BACK", at_ms = 21190, hold_ms = 60 },
     { key = "DOWN", at_ms = 21300, hold_ms = 60 },  # Hello -> IR (STARK-0305)
-    { key = "DOWN", at_ms = 21420, hold_ms = 60 },  # ... Settings (STARK-0205)
-    { key = "DOWN", at_ms = 21540, hold_ms = 60 },  # ... Storage (STARK-0202)
-    { key = "DOWN", at_ms = 21660, hold_ms = 60 },  # ... wraps to About
-    { key = "OK", at_ms = 21810, hold_ms = 60 },
+    { key = "DOWN", at_ms = 21410, hold_ms = 60 },  # ... NFC (STARK-0404)
+    { key = "DOWN", at_ms = 21520, hold_ms = 60 },  # ... Settings (STARK-0205)
+    { key = "DOWN", at_ms = 21630, hold_ms = 60 },  # ... Storage (STARK-0202)
+    { key = "DOWN", at_ms = 21740, hold_ms = 60 },  # ... wraps to About
+    { key = "OK", at_ms = 21900, hold_ms = 60 },
     { key = "BACK", at_ms = 23620, hold_ms = 60 },
     { key = "DOWN", at_ms = 23930, hold_ms = 60 },
     { key = "OK", at_ms = 24240, hold_ms = 60 },
@@ -89,10 +90,11 @@ presses = [
     { key = "OK", at_ms = 40290, hold_ms = 60 },
     { key = "BACK", at_ms = 42600, hold_ms = 60 },
     { key = "DOWN", at_ms = 42710, hold_ms = 60 },  # Hello -> IR (STARK-0305)
-    { key = "DOWN", at_ms = 42830, hold_ms = 60 },  # ... Settings (STARK-0205)
-    { key = "DOWN", at_ms = 42950, hold_ms = 60 },  # ... Storage (STARK-0202)
-    { key = "DOWN", at_ms = 43070, hold_ms = 60 },  # ... wraps to About
-    { key = "OK", at_ms = 43220, hold_ms = 60 },
+    { key = "DOWN", at_ms = 42820, hold_ms = 60 },  # ... NFC (STARK-0404)
+    { key = "DOWN", at_ms = 42930, hold_ms = 60 },  # ... Settings (STARK-0205)
+    { key = "DOWN", at_ms = 43040, hold_ms = 60 },  # ... Storage (STARK-0202)
+    { key = "DOWN", at_ms = 43150, hold_ms = 60 },  # ... wraps to About
+    { key = "OK", at_ms = 43300, hold_ms = 60 },
     { key = "BACK", at_ms = 45030, hold_ms = 60 },
     { key = "DOWN", at_ms = 45340, hold_ms = 60 },
     { key = "OK", at_ms = 45650, hold_ms = 60 },

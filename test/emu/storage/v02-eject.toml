@@ -24,7 +24,7 @@ presses = [
 ]
 expect = [
     "storage: mounted emu-flashfat",
-    'menu: sel=14 "Storage"',
+    'menu: sel=15 "Storage"',
     "storageapp: status mounted",  # built with the screen, before the launch is logged
     "app: start storage",
     'dialog: open "Eject card?"',

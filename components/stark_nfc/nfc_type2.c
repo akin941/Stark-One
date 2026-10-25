@@ -77,3 +77,38 @@ nfc_tlv_t nfc_t2_tlv(const uint8_t *area, size_t avail, size_t total, size_t *of
     }
     return NFC_TLV_NONE;
 }
+
+size_t nfc_t2_tlv_size(size_t len)
+{
+    if (len > 0xFFFEu) {
+        return 0;
+    }
+    size_t used = (len < TLV_LONG ? 2u : 4u) + len + 1u;
+    return (used + 3u) & ~(size_t)3u;
+}
+
+/* Byte i of the padded TLV. */
+static uint8_t tlv_byte(const uint8_t *msg, size_t len, size_t i)
+{
+    size_t hdr = len < TLV_LONG ? 2u : 4u;
+    if (i == 0) {
+        return TLV_NDEF;
+    }
+    if (i < hdr) {
+        if (hdr == 2) {
+            return (uint8_t)len;
+        }
+        return i == 1 ? TLV_LONG : (uint8_t)(i == 2 ? len >> 8 : len);
+    }
+    if (i < hdr + len) {
+        return msg[i - hdr];
+    }
+    return i == hdr + len ? TLV_END : 0x00;
+}
+
+void nfc_t2_tlv_page(const uint8_t *msg, size_t len, size_t page, uint8_t out[4])
+{
+    for (size_t k = 0; k < 4; k++) {
+        out[k] = tlv_byte(msg, len, page * 4u + k);
+    }
+}

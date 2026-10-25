@@ -15,8 +15,9 @@ heap_min = 200000
 rmt_loopback = "0:2"
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
-    { key = "UP", at_ms = 450, hold_ms = 60 },     # Settings
-    { key = "UP", at_ms = 600, hold_ms = 60 },     # IR
+    { key = "UP", at_ms = 420, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 540, hold_ms = 60 },     # NFC (STARK-0404)
+    { key = "UP", at_ms = 660, hold_ms = 60 },     # IR
     { key = "OK", at_ms = 800, hold_ms = 60 },
     { key = "DOWN", at_ms = 1100, hold_ms = 60 },  # Browse saved
     { key = "OK", at_ms = 1300, hold_ms = 60 },    # 9 files; lab_bad disabled
