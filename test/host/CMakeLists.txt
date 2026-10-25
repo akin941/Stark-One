@@ -534,6 +534,23 @@ foreach(ir_test ir_timing ir_nec ir_codecs ir_raw ir_symbols ir_tx_guard ir_name
     add_test(NAME stark_${ir_test}_tests COMMAND run_${ir_test}_tests)
 endforeach()
 
+# stark_nfc's pure core (STARK-0401…) against spec-derived vectors
+# (scripts/gen_nfc_vectors.py, ADR-0020 §4).
+set(NFC_CORE_SOURCES
+    ${STARK_COMPONENTS}/stark_nfc/ndef.c
+)
+set(NFC_INCLUDES ${STARK_COMPONENTS}/stark_nfc ${STARK_COMPONENTS}/stark_nfc/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/vectors)
+foreach(nfc_test ndef)
+    add_executable(run_${nfc_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${nfc_test}.c
+        ${NFC_CORE_SOURCES})
+    target_include_directories(run_${nfc_test}_tests PRIVATE ${NFC_INCLUDES})
+    target_compile_options(run_${nfc_test}_tests PRIVATE ${OUR_C_FLAGS})
+    target_link_options(run_${nfc_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+    target_link_libraries(run_${nfc_test}_tests PRIVATE unity)
+    add_test(NAME stark_${nfc_test}_tests COMMAND run_${nfc_test}_tests)
+endforeach()
+
 # storage_core.c is linked only for stark_storage_state_str(); this copy is
 # built without coverage so the state machine's own suite owns its figure.
 add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_core.c)
