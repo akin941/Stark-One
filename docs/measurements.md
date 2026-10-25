@@ -158,6 +158,13 @@ simulated figure above kept alongside for reference.
 | Own remote captured → saved → replayed → own device responds (V0.3) | pass | | |
 | Raw replay of an unsupported own remote (V0.3) | pass | | |
 | IR range / angle / ambient light / echo while transmitting (V0.3) | (record) | | |
+| PN532 answers at 0x24 on GPIO 1/2; I²C waveform and pull-ups on a logic analyser (V0.4) | pass | | |
+| PN532 detection + initialisation time from boot (V0.4) | (record) | | |
+| ≥ 20/20 UID + technology reads of each of our own tag types (V0.4) | pass | | |
+| NDEF URI written to our own NTAG, read back by the device and a phone (V0.4) | pass | | |
+| Tag detection range and orientation; removal latency (V0.4) | (record) | | |
+| Weak, noisy and two nearby tags; module absent / unplugged while running (V0.4) | (record) / pass | | |
+| Current with the RF field on and off (V0.4) | (record) | | |
 
 ## V0 exit criteria — evidence (ROADMAP.md "V0")
 

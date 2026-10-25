@@ -66,6 +66,7 @@ bump is a deliberate change with a full emulator run — never "latest".
 | A "pulled" card's sector I/O failing (storage test image, STARK-0207) | ✅ the test medium re-registers the volume's diskio with WL calls gated on `emu_medium_present`: a pull mid-write fails the next sector write (`wtest failed: I/O error at 20480`) exactly as a removed card would |
 | The production firmware through the RMT loopback (STARK-0304) | ✅ App Test's IR self-test: NEC, NECX, RC5, RC6, SIRC-12/15/20 each encoded → gated → RMT TX → loopback → RMT RX → decoded to the sent values, 7/7 (`v03-ir-loopback`); without the loopback each reports a timeout, no panic (`v03-ir-noloop`); heap Δ 0 over three runs. Baseband only — no carrier, no light |
 | Saved signals replayed through the RMT loopback (storage test image, STARK-0306) | ✅ the FAT partition is seeded at build time with the spec-derived `lab_*.ir` files (ESP-IDF's `fatfs_create_spiflash_image`). IR → Browse → `lab_nec.ir` → confirm → `ir: tx NEC` → `ir: rx NEC addr=0x00 cmd=0x12`; that capture saved as `ir_0001.ir`, listed first and replayed; the RAW seed comes back as `ir: rx RAW n=13`; `lab_bad.ir` listed `(invalid)` and never sent; BACK on the confirm cancels; a send inside 1 s is refused (`v03-replay`). Baseband only |
+| I²C master with nothing on the bus (V0.4 planning) | ✅ ESP-IDF's `i2c_basic` example on the esp32s3 model: `i2c_new_master_bus` succeeds and a transaction to an absent address returns `ESP_ERR_INVALID_RESPONSE` (0x108, ESP-IDF's address-NACK result) at once — no hang. esp-emu 0.44.0 has **no** external I²C device model, so the production image always sees an empty bus (ADR-0020) |
 | RMT TX → RX loopback (`--rmt-loopback`, V0.3 planning) | ✅ `0:2` on esp32s3 (first TX → first RX channel): ESP-IDF's `ir_nec_transceiver` example decodes its own NEC frames; `0:4` delivers nothing. Baseband, exact durations, no carrier (ADR-0019 §2) |
 | GDB writes to a RAM global (`pokes`, storage test image, STARK-0202) | ✅ `emu_medium_present` flips stick; removal and reinsertion land at the scheduled emulated time |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
@@ -229,6 +230,34 @@ vectors.
 | 1. ≥ 20 vectors per protocol | ≥ 20 spec-derived vectors per protocol, tolerance edges, malformed frames, exhaustive round trips | every protocol encoded → loopback → decoded | ≥ 20 vectors recorded from our own remotes |
 | 2. Capture, save, replay | name generation, raw format | capture → save → browse → replay → captured again; transmit gated, confirmed, logged | own remote → receiver → save → LED → own device responds |
 | 3. Raw replay | raw format round trip + fuzzing | RAW seed replayed and captured back | an unsupported own remote |
+
+### 3.7 V0.4 — NFC (ADR-0020)
+
+V0.4 completion means **NFC software / protocol verified**; reading a real tag is never
+claimed below V1.
+
+**What runs where.**
+* **Host:** the pure NFC core (NDEF, PN532 framing and protocol, Type 2, identification,
+  polling, reader, writer, dump format) against spec-derived vectors, and the
+  production driver against the fake PN532 (`test/fake/fake_pn532.c`). The fake answers
+  I²C transactions like the chip, including the ready byte, ACK/NACK, checksums, the
+  application-error frame and a simulated tag's memory. It injects NACKs, checksum
+  errors, truncation, timeouts, bus errors, wrong response codes and tags appearing,
+  disappearing or vanishing mid-transaction.
+* **Emulator, production image:** an empty I²C bus, so the evidence is the no-module
+  path only.
+* **Emulator, test image:** `stark_nfc_transport` is substituted by one built on the
+  same fake (as `stark_storage_medium` is, ADR-0018 §3); GDB pokes choose the tag
+  (`emu_nfc_tag`) and faults (`emu_nfc_fault`). This proves the production driver, NFC
+  task, app, UI and storage work together over a modelled PN532.
+* **Not proven anywhere before V1:** PN532 electrical I²C, the RF field and antenna,
+  ISO 14443 timing, range and orientation, real tags.
+
+| Exit criterion | Host | Emulator (production / test image) | Physical, deferred to HIL (V1) |
+| --- | --- | --- | --- |
+| 1. UID and technology, ≥ 20/20 reads | ≥ 20 tag vectors identified; 20/20 consecutive reads through driver + fake | 20/20 arrive/leave cycles per Type 2 tag over the fake transport | 20/20 reads of each of our own tag types |
+| 2. NDEF URI write + read-back | writer + driver + fake: written, read back byte-identical, parsed; refusals | confirmed write → read back → same URI over the fake transport | our own NTAG, read back by the device and a phone |
+| 3. Module absence | absent, silent, NACKing, corrupt modules; recovery | production image on an empty bus: `nfc: no module`, app disabled | board without the module; unplugged while running |
 
 ---
 
