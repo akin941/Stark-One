@@ -3986,8 +3986,9 @@ random ticks of random presence and faults hold the invariants (effective ⊆ co
 table consistent, I/O calls per tick bounded). `test_app_caps.c`: all, one, none present;
 launch refused; `caps_required = 0` unaffected.
 
-**Emulator.** Production `v05-empty-bus.toml`: `module: slot 0 no id`, `module: slot 1 no
-id`, heap ≥ 200 kB, no I²C error log spam (`forbid`). Test image `storage/v05-discovery.toml`:
+**Emulator.** Production `v05-empty-bus.toml`: `module: slot 0 generic (bad magic)`
+(esp-emu acknowledges 0x50 and reads zeros, found while implementing this task),
+`module: slot 1 no id`, heap ≥ 200 kB, no I²C error log spam (`forbid`). Test image `storage/v05-discovery.toml`:
 insertion, corruption, replacement, removal and recovery by pokes. `check_emu_image.py`
 allows exactly three substitutions, with a negative test.
 
@@ -4002,8 +4003,9 @@ allows exactly three substitutions, with a negative test.
 5. Both emulator scenarios pass; production has no fake or simulator reference.
 
 **Security.** A descriptor grants nothing (ADR-0021 §2). **Budget.** `stark_module` +
-transport static ≤ 3.5 kB including the stack; flash ≤ 6 kB; boot heap cost ≤ 1 kB; task
-stack peak ≤ 2 kB, measured. **Physical HIL (V1).** Real probe and read, pull-ups, hotplug
+transport static ≤ 3.5 kB including the stack; flash ≤ 6 kB; boot heap cost ≤ 3.5 kB
+(the static RAM above is what the boot heap loses; corrected from a planned 1 kB, which
+forgot it); task stack peak ≤ 2 kB, measured. **Physical HIL (V1).** Real probe and read, pull-ups, hotplug
 on a live bus, bus recovery if SDA is held low by a departing module.
 
 ---

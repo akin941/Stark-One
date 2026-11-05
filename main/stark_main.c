@@ -9,12 +9,14 @@
 #include "stark_display.h"
 #include "stark_event.h"
 #include "stark_input.h"
+#include "stark_module.h"
 #include "stark_ir.h"
 #include "stark_nfc.h"
 #include "stark_settings.h"
 #include "stark_storage.h"
 #include "settings_apply.h"
 #include "storage_ui.h"
+#include "module_bridge.h"
 #include "stark_app.h"
 #include "app_registry.h"
 #include "stark_ui.h"
@@ -169,5 +171,15 @@ void app_main(void)
     err = stark_nfc_init();
     if (err != STARK_OK) {
         STARK_LOGE("boot", "nfc init failed: %s", stark_err_str(err));
+    }
+
+    /* Not boot-critical: an unknown or missing module never stops the device
+     * (STARK-0502, ROADMAP V0.5 exit 2). The bridge subscribes first. */
+    err = module_bridge_init();
+    if (err == STARK_OK) {
+        err = stark_module_init();
+    }
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "module init failed: %s", stark_err_str(err));
     }
 }

@@ -1,0 +1,18 @@
+# STARK-0502 on the production image (ROADMAP V0.5 exit 2, software half). esp-emu
+# 0.44.0 acknowledges 0x50 and reads all zeros there, and NACKs every other
+# address we tried (found at STARK-0502, docs/VALIDATION.md §2). So one boot shows
+# both paths: slot 0 is an unknown EEPROM (generic, no capabilities) and slot 1
+# has none ("no ID"). The boot is unaffected. Not connector evidence.
+name = "emu-v05-empty-bus"
+end_ms = 3500
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },
+]
+expect = [
+    "boot: ui_ready in ",
+    "module: slot 0 generic (bad magic)",
+    "module: slot 1 no id",
+    'menu: sel=2 "Diagnostics"',
+]
+forbid = ["module: not fitted", "module: slot 1 generic", "module: caps", "i2c.master:"]

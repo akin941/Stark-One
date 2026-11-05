@@ -1,0 +1,31 @@
+# stark_module options, shown in the single STARK menu: main/Kconfig.projbuild
+# sources this file (ARCHITECTURE.md §9). STARK-0502.
+
+config STARK_MODULE_I2C_HZ
+    int "Modules: ID EEPROM I2C clock (Hz)"
+    range 10000 400000
+    default 100000
+    help
+        A 24C02 supports up to 400 kHz; 100 kHz tolerates breadboard wiring.
+
+config STARK_MODULE_I2C_TIMEOUT_MS
+    int "Modules: one I2C transaction's timeout (ms)"
+    range 5 200
+    default 20
+
+config STARK_MODULE_POLL_MS
+    int "Modules: slot polling period (ms)"
+    range 200 10000
+    default 1000
+
+config STARK_MODULE_TASK_PRIO
+    int "Module task priority"
+    range 1 4
+    default 2
+    help
+        Below the app worker (4) and the UI task (5).
+
+config STARK_MODULE_TASK_STACK
+    int "Module task stack (bytes)"
+    range 2048 8192
+    default 2560

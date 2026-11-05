@@ -24,11 +24,21 @@ static chip_t *chip_at(uint8_t addr)
     return c->fitted ? c : NULL;
 }
 
-/* The fault this transaction suffers, counted down. */
-static fake_24c02_fault_t take_fault(void)
+typedef enum { OP_PROBE, OP_WRITE, OP_READ } op_t;
+
+/* The fault this transaction suffers, counted down. A data fault cannot strike
+ * an address-only probe, nor a bit flip or a mid-read removal a write. */
+static fake_24c02_fault_t take_fault(op_t op)
 {
     s_transactions++;
-    if (s_fault == FAKE_24C02_NONE || s_fault_left == 0) {
+    bool applies = s_fault != FAKE_24C02_NONE && s_fault_left != 0;
+    if (op != OP_READ && (s_fault == FAKE_24C02_TRUNCATE || s_fault == FAKE_24C02_BIT_FLIP)) {
+        applies = false;
+    }
+    if (op == OP_PROBE && s_fault == FAKE_24C02_NACK_DATA) {
+        applies = false;
+    }
+    if (!applies) {
         return FAKE_24C02_NONE;
     }
     if (s_fault_left > 0) {
@@ -74,7 +84,7 @@ void fake_24c02_fault(fake_24c02_fault_t kind, int count)
 
 stark_err_t fake_24c02_probe(uint8_t addr)
 {
-    fake_24c02_fault_t f = take_fault();
+    fake_24c02_fault_t f = take_fault(OP_PROBE);
     if (f == FAKE_24C02_TIMEOUT) {
         return STARK_ERR_TIMEOUT;
     }
@@ -89,7 +99,7 @@ stark_err_t fake_24c02_probe(uint8_t addr)
 
 stark_err_t fake_24c02_write(uint8_t addr, const uint8_t *buf, size_t len)
 {
-    fake_24c02_fault_t f = take_fault();
+    fake_24c02_fault_t f = take_fault(OP_WRITE);
     chip_t *c = chip_at(addr);
     if (f == FAKE_24C02_NACK_ADDR || c == NULL) {
         return STARK_ERR_NOT_FOUND;
@@ -111,7 +121,7 @@ stark_err_t fake_24c02_write(uint8_t addr, const uint8_t *buf, size_t len)
 
 stark_err_t fake_24c02_read(uint8_t addr, uint8_t *buf, size_t len)
 {
-    fake_24c02_fault_t f = take_fault();
+    fake_24c02_fault_t f = take_fault(OP_READ);
     chip_t *c = chip_at(addr);
     if (f == FAKE_24C02_NACK_ADDR || c == NULL) {
         return STARK_ERR_NOT_FOUND;

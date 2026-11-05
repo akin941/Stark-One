@@ -3,8 +3,7 @@
  * static registry, lifecycle and the launcher (ARCHITECTURE.md §6.8,
  * ADR-0009, TASKS.md STARK-0019).
  *
- * V0 has no capability gating: the descriptor carries no capability field
- * (one arrives with the module bus at V0.5, ADR-0009).
+ * caps_required (STARK-0502, ADR-0021): the stark_caps.h bits an app needs.
  */
 #pragma once
 
@@ -21,7 +20,8 @@ typedef struct {
     stark_err_t (*on_start)(void **state);  /* optional; a failure is logged, never fatal */
     void (*on_stop)(void *state);           /* optional */
     stark_screen_t *(*screen)(void *state); /* the app's one screen */
-    const uint8_t *icon; /* optional launcher icon: 16x16 1bpp (ui_menu.h), NULL for none */
+    const uint8_t *icon;    /* optional launcher icon: 16x16 1bpp (ui_menu.h), NULL for none */
+    uint32_t caps_required; /* stark_caps.h bits; 0: no requirement (STARK-0502) */
 } stark_app_t;
 
 /*
@@ -48,10 +48,21 @@ size_t stark_app_list(const stark_app_t **out, size_t max);
  * that screen pops it (stark_ui), which calls on_stop and logs
  * `app: stop <id>`. A failing on_start, or a NULL screen, is logged
  * (`app: start <id> failed: <err>`) and the launcher stays — never a panic.
- * STARK_ERR_NOT_FOUND for an unknown id, STARK_ERR_BUSY while an app runs.
- * One app at a time, one screen per app.
+ * STARK_ERR_NOT_FOUND for an unknown id, STARK_ERR_BUSY while an app runs,
+ * STARK_ERR_NOT_SUPPORTED (`app: <id> needs caps 0x…`) while its capabilities
+ * are missing. One app at a time, one screen per app.
  */
 stark_err_t stark_app_launch(const char *id);
+
+/*
+ * The effective capabilities, from the composition root (STARK-0502). UI task.
+ * A running app is not closed by a loss: it handles its own hardware going
+ * away, and the launcher is right when it returns.
+ */
+void stark_app_set_caps(uint32_t caps);
+
+/* Whether this app's caps_required are all present now. */
+bool stark_app_available(const stark_app_t *app);
 
 /* Pops the running app's screen (-> on_stop); nothing if none runs. */
 void stark_app_stop_current(void);
