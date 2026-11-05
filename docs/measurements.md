@@ -163,6 +163,33 @@ claimed** here.
 | 2 | Writes and reads back an NDEF URI record on a writable tag | `test_nfc_writer.c` (written, read back byte-identical, parsed; capacity boundary; read-only, wrong-tag and no-tag refusals with zero WRITEs; a vanish after each page; every WRITE inside the data area); `storage/v04-write-readback`: URIs written to an NTAG215 and an Ultralight after the confirmation and read back as the same URI (`nfcapp: record URI …`) | **Deferred to V1:** our own NTAG written and read back by the device and by a phone |
 | 3 | Module absence detected, app disables itself | `v04-nfc-boot`, `v04-nfc-absent`, `v02-no-card` (production image, empty bus: `nfc: no module (Not found)`, the app shows "No NFC module", no field); host: absent, silent, NACKing and corrupt modules, module loss and recovery (`test_pn532.c`, `test_nfc_poll.c`, `storage/v04-nfc-app`) | **Deferred to V1:** a board without the module; the module unplugged while running |
 
+### V0.5 module bus (software evidence, ADR-0021)
+
+| Date | Task | What | Value | Where |
+| --- | --- | --- | --- | --- |
+| 2026-11-05 | STARK-0505 | Production boot heap (`diag: heap=`), V0.4 254 276 B — **gate ≥ 200 kB** | 250 344 B (−3 932 B) | `v0-boot` |
+| 2026-11-05 | STARK-0505 | Test image boot heap | 246 160 B | `storage/v05-soak` |
+| 2026-11-05 | STARK-0505 | Firmware binary, V0.4 448 928 B | 456 656 B (+7 728 B) | `build/stark-one.bin` |
+| 2026-11-05 | STARK-0505 | Static RAM: `stark_module` (task stack 2 560 B) / transport / `app_modules` | 3 012 B / 20 B / 856 B | `idf_size.py --archives` |
+| 2026-11-05 | STARK-0505 | Flash: `stark_module` / transport / `app_modules` | 2 824 B / 307 B / 1 486 B | `idf_size.py --archives` |
+| 2026-11-05 | STARK-0505 | Stack peak (fill-pattern dump after the V0.5 soak; test image): module task / NFC task, idle checks included | 1 468 of 2 560 B / 1 384 of 4 096 B in this run (V0.4's heavier run: 1 632 B) | GDB dump |
+| 2026-11-05 | STARK-0505 | Root heap, first vs last `stark_diag` line over the 60 s V0.5 soak — **gate ≤ 1 kB** | 238 568 → 238 612 B (Δ 44 B) | `soak/v05-soak` |
+| 2026-11-05 | STARK-0505 | Event drops over the V0.5 soak — **gate 0** | 0 | `test_emu.py` drops gate |
+| 2026-11-05 | STARK-0505 | Host line coverage: `module_desc.c`, `module_core.c` | 100 % | `test_host.sh --coverage` |
+| 2026-11-05 | STARK-0505 | Vectors (`gen_module_vectors.py`, never read from a real module) | 31-entry catalogue (14 parse, 3 of them unsupported combinations; 17 rejected), every bit flip, truncation at every length, 10 000 seeded mutations | host suite |
+
+### V0.5 exit criteria — evidence (ROADMAP.md "V0.5", ADR-0021)
+
+V0.5 completion is **software / module-protocol verified**. Every physical half is open
+until the V1 prototype (ROADMAP V1 exit 11, `docs/bringup/v1-modules.md`) and is **not
+claimed** here.
+
+| # | Criterion | Software evidence (V0.5) | Physical evidence |
+| --- | --- | --- | --- |
+| 1 | Plugging a module changes the app list without a firmware change | `storage/v05-hotplug` (same image: reader leaves, NFC dimmed and skipped; EEPROM declaring NFC confirms nothing; reader returns, row back and opens); `test_ui_app_caps.c`, `test_module_core.c` | Open: check 21 |
+| 2 | Unknown/absent EEPROM gives a generic entry, never a boot failure | `v05-empty-bus` (production: slot 0 `generic (bad magic)`, slot 1 `no id`); every corrupt catalogue entry in `test_module_core.c` | Open: checks 3, 4 |
+| 3 | Two modules share SPI without corrupting the display | **Not met in software: it is a V1 gate.** Software half: two wired slots in `test_module_claim.c`; `storage/v05-spi-traffic` (one stand-in driver, 7 177 transfers alongside rendering, `overruns=0`, stale lease on removal) | Open: checks 12–15 |
+
 ## Hardware (gated, V1 prototype)
 
 To be filled in at the V1 prototype milestone (ROADMAP.md "V1 prototype"), with the

@@ -6,6 +6,7 @@
  */
 #include "irapp.h"
 #include "stark_app.h"
+#include "stark_caps.h"
 #include "stark_input.h"
 #include "stark_ir.h"
 #include "stark_log.h"
@@ -141,4 +142,5 @@ const stark_app_t app_ir = {
     .on_stop = ir_stop,
     .screen = ir_screen,
     .icon = k_icon,
+    .caps_required = STARK_CAP_IR_TX | STARK_CAP_IR_RX,
 };

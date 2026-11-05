@@ -7,6 +7,7 @@
  */
 #include "nfcapp.h"
 #include "stark_app.h"
+#include "stark_caps.h"
 #include "stark_input.h"
 #include "stark_log.h"
 
@@ -127,4 +128,5 @@ const stark_app_t app_nfc = {
     .on_stop = nfc_stop,
     .screen = nfc_screen,
     .icon = k_icon,
+    .caps_required = STARK_CAP_NFC,
 };

@@ -84,6 +84,7 @@ static void on_app_screen_exit(stark_screen_t *screen)
             app->on_stop(state);
         }
         STARK_LOGI("app", "stop %s", app->id);
+        ui_menu_refresh(&s_launcher); /* capability changes it sat out (stark_app_set_caps) */
     }
 }
 
@@ -124,9 +125,21 @@ static void launch_fail(const char *id, stark_err_t err)
 
 void stark_app_set_caps(uint32_t caps)
 {
-    if (caps != s_caps) {
-        s_caps = caps;
-        STARK_LOGI("app", "caps 0x%08x", (unsigned)caps);
+    if (caps == s_caps) {
+        return;
+    }
+    s_caps = caps;
+    STARK_LOGI("app", "caps 0x%08x", (unsigned)caps);
+    for (size_t i = 0; i < s_rows; i++) {
+        if (s_row_app[i] != NULL) {
+            s_items[i].disabled = !stark_app_available(s_row_app[i]);
+        }
+    }
+    /* NOTE: with an app open the launcher is not on screen. Its selection is left alone
+     * until the app leaves (on_app_screen_exit), so a reader that drops out and comes back
+     * while its app is open does not move the cursor off that app's row. */
+    if (s_ready && s_current == NULL) {
+        ui_menu_refresh(&s_launcher);
     }
 }
 
@@ -257,7 +270,9 @@ stark_err_t stark_app_init(const stark_app_t *const *apps, size_t n)
         if (rows[i].app == NULL) {
             s_items[i] = (ui_menu_item_t){.label = rows[i].header, .header = true};
         } else {
-            s_items[i] = (ui_menu_item_t){.label = rows[i].app->title, .icon = rows[i].app->icon};
+            s_items[i] = (ui_menu_item_t){.label = rows[i].app->title,
+                                          .icon = rows[i].app->icon,
+                                          .disabled = !stark_app_available(rows[i].app)};
         }
         s_row_app[i] = rows[i].app;
     }

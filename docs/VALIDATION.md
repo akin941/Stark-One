@@ -269,9 +269,33 @@ claimed below V1.
 ### 3.8 V0.5 — module bus (ADR-0021)
 
 V0.5 completion means **software / module-protocol verified**; a real module, connector
-or shared-SPI signal is never claimed below V1. Host tests run production discovery over
-the test-only fake 24C02. The production image shows an empty bus; the test image
-substitutes `stark_module_transport`. STARK-0505 fills in the coverage table and evidence.
+or shared-SPI signal is never claimed below V1.
+
+**What runs where.**
+* **Host:** the pure descriptor parser and discovery core against catalogue vectors from
+  an independent encoder, and production discovery against the fake 24C02
+  (`test/fake/fake_24c02.c`), which models address ACK/NACK and the word-address pointer
+  and injects NACKs, timeouts, bus errors, mid-read removal and bit flips. Arbitration
+  runs on an injected table with two wired slots, which this board does not have.
+* **Emulator, production image:** esp-emu acknowledges 0x50 and reads zeros, and NACKs
+  the other addresses tried (§2), so slot 0 is an unknown EEPROM and slot 1 has none.
+* **Emulator, test image:** `stark_module_transport` is substituted with one built on
+  the same fake; GDB pokes choose modules (`emu_mod_slot0/1`) and faults
+  (`emu_mod_fault`). A test-only stand-in driver (`emu_mod_traffic`) runs real
+  `spi_device` transfers on `MOD_CS`, with nothing on the other end.
+* **Not proven anywhere before V1:** real 24C02 communication, pull-ups, the connector,
+  supply limits, insertion and removal, hotplug safety, bus recovery, two modules on SPI
+  with the panel, chip-select isolation, contention and timing, module power-up.
+
+**Status (STARK-0505): exits 1 and 2 met in software; exit 3 is a V1 gate.** Evidence in
+docs/measurements.md "V0.5 exit criteria"; every physical half is open in
+`docs/bringup/v1-modules.md`.
+
+| Exit criterion | Host | Emulator (production / test image) | Physical, deferred to HIL (V1) |
+| --- | --- | --- | --- |
+| 1. Plugging changes the app list | insertion, removal, replacement; launcher dims and restores | same image: reader and EEPROM change, NFC row follows, inspector follows | a real module plugged in |
+| 2. Unknown/absent EEPROM | every corrupt vector generic, no capabilities; absent "no ID" | production: slot 0 generic, slot 1 no ID, boot unaffected | blank and absent chips on a connector |
+| 3. Two modules share SPI | claims, chip selects never crossed, stale leases, two wired slots | one stand-in driver alongside rendering | **the gate itself**: two modules and the panel on a logic analyser |
 
 ## 4. Hardware-in-the-loop (future tier, V1 prototype)
 

@@ -198,6 +198,8 @@ that milestone before a scenario depends on them.
 | V0.3 | `v03-ir-rx.toml`, `v03-ir-loopback.toml` (+ a no-loopback run) | Production image: RMT channels created; App Test's IR self-test encodes every protocol → RMT TX → esp-emu `--rmt-loopback 0:2` → RMT RX → decoded to the sent values. Baseband only: no carrier, no light (ADR-0019) |
 | V0.3 | `storage/v03-*.toml`, `soak/v03-soak.toml` | Storage image + loopback: capture → save → browse → replay → captured again, every seeded protocol and a RAW signal; 60 s soak |
 | V0.4 | `v04-nfc-boot.toml`, `v04-nfc-absent.toml`, `v02-no-card.toml` | Production image on an empty I²C bus: `nfc: no module`, the NFC app shows it and polls nothing (ADR-0020) |
+| V0.5 | `v05-empty-bus.toml`, `v04-nfc-absent.toml`, `v02-no-card.toml` | Production image: slot 0 generic (esp-emu answers at 0x50 with zeros), slot 1 no ID, NFC dimmed and skipped, boot unaffected |
+| V0.5 | `storage/v05-*.toml`, `soak/v05-soak.toml` | Test image with the fake-24C02 transport: discovery, hotplug through the launcher and inspector, the capability following the reader, SPI traffic on a claimed slot, 60 s of churn. Integration evidence, not connector or signal evidence |
 | V0.4 | `storage/v04-*.toml`, `soak/v04-soak.toml` | Test image with the fake-PN532 transport: detection, identification, 20/20 reads, confirmed NDEF write + read-back, dumps, faults and recovery; 60 s soak. Not RF evidence |
 | V0.7 | `v07-i2c-scan.toml` | Scanner finds esp-emu's built-in I²C EEPROM (and nothing else) |
 | V0.7 | `v07-uart-loopback.toml` | UART bridge round-trips via esp-emu's `--uart1-tcp` side channel |

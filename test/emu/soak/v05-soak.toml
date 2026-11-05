@@ -1,0 +1,71 @@
+# STARK-0505 (ROADMAP V0.5) on the test image with the fake 24C02 and fake PN532
+# transports (ADR-0021 §6): 60 s of module churn with the inspector open — modules
+# inserted, corrupted and replaced in both slots, bus faults, and the reader leaving
+# and returning, twice over — then the NFC app, and idle at the launcher so
+# stark_diag's last line (~61 s) is taken at the root menu, as the first one was.
+# Gates: drops=0 on every diag line and root heap within 1 kB. The esp-emulator-soak
+# job runs it. Integration evidence only: no connectors, no insertion, no real bus.
+name = "emu-v05-soak"
+image = "storage"
+end_ms = 62500
+wall_limit_s = 1500
+heap_min = 200000
+heap_delta_max = 1024
+pokes = [
+    { at_ms = 2000, var = "emu_mod_slot0", value = 1 },
+    { at_ms = 4300, var = "emu_mod_slot1", value = 2 },
+    { at_ms = 6600, var = "emu_mod_slot0", value = 15 },
+    { at_ms = 8900, var = "emu_mod_fault", value = 4 },
+    { at_ms = 11200, var = "emu_mod_fault", value = 0 },
+    { at_ms = 13500, var = "emu_mod_slot1", value = 21 },
+    { at_ms = 15800, var = "emu_nfc_fault", value = 1 },
+    { at_ms = 18100, var = "emu_mod_slot0", value = 2 },
+    { at_ms = 20400, var = "emu_nfc_fault", value = 0 },
+    { at_ms = 22700, var = "emu_mod_slot0", value = 0 },
+    { at_ms = 25000, var = "emu_mod_slot1", value = 0 },
+    { at_ms = 27300, var = "emu_mod_slot0", value = 1 },
+    { at_ms = 29600, var = "emu_mod_slot1", value = 2 },
+    { at_ms = 31900, var = "emu_mod_slot0", value = 15 },
+    { at_ms = 34200, var = "emu_mod_fault", value = 4 },
+    { at_ms = 36500, var = "emu_mod_fault", value = 0 },
+    { at_ms = 38800, var = "emu_mod_slot1", value = 21 },
+    { at_ms = 41100, var = "emu_nfc_fault", value = 1 },
+    { at_ms = 43400, var = "emu_mod_slot0", value = 2 },
+    { at_ms = 45700, var = "emu_nfc_fault", value = 0 },
+    { at_ms = 48000, var = "emu_mod_slot0", value = 0 },
+    { at_ms = 50300, var = "emu_mod_slot1", value = 0 },
+]
+presses = [
+    { key = "UP", at_ms = 400, hold_ms = 60 },   # Storage
+    { key = "UP", at_ms = 550, hold_ms = 60 },   # Settings
+    { key = "UP", at_ms = 700, hold_ms = 60 },   # Modules
+    { key = "OK", at_ms = 950, hold_ms = 60 },   # the inspector follows every change
+    { key = "DOWN", at_ms = 1300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 }, # Slot 0
+    { key = "OK", at_ms = 1800, hold_ms = 60 },   # its details
+    { key = "BACK", at_ms = 54000, hold_ms = 60 },
+    { key = "BACK", at_ms = 54500, hold_ms = 60 },
+    { key = "UP", at_ms = 54900, hold_ms = 60 },  # NFC
+    { key = "OK", at_ms = 55200, hold_ms = 60 },
+    { key = "BACK", at_ms = 57000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 57400, hold_ms = 60 }, # Modules
+    { key = "DOWN", at_ms = 57600, hold_ms = 60 }, # Settings
+    { key = "DOWN", at_ms = 57800, hold_ms = 60 }, # Storage
+    { key = "DOWN", at_ms = 58000, hold_ms = 60 }, # wraps to About
+]
+expect = [
+    "app: start modules",
+    "module: slot 0 NFC carrier id=0x0101 rev=2 caps=0x00000004",
+    "module: slot 1 SPI lab module id=0x0202 rev=1 caps=0x00000018",
+    "module: slot 0 generic (blank)",
+    "nfc: module lost",
+    "module: caps 0x00000003",
+    "nfc: pn532 fw 1.6",
+    "module: caps 0x00000007",
+    "app: stop modules",
+    "app: start nfc",
+    "nfc: field on",
+    "app: stop nfc",
+    "nfc: field off",
+]
+forbid = ["panic", "app: fault", "nfc needs caps"]
