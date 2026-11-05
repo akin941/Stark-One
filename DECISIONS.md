@@ -298,6 +298,15 @@ contents so the app list is always observable. `stark_app_t` in V0 carries no
 `main/app_registry.c` (the composition root), so adding an app edits nothing under
 `components/`.
 
+**Revisited at STARK-0506 (V0.5, 2026-11-05): keep the static array.** The trigger is
+about 15 apps, or apps from outside the repository. V0.5 has 12 apps, all in this
+repository. Adding Modules (STARK-0505) took one new directory and one line each in
+`app_registry.c` and `app_registry.h`, and no merge conflict arose. `caps_required`
+fits the array: gating needs a field, not a registration mechanism. Link-time sections
+would still bring the debugging and garbage-collection costs listed above and would
+save two lines. Look again at the same trigger; V0.6 and V0.7 together are expected to
+reach it.
+
 **Revisit trigger:** when the app count passes ~15, or when apps start living outside
 this repository, re-evaluate link-time registration — the mechanism is understood and
 the migration is mechanical (replace the array with a section walk; the

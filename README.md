@@ -8,7 +8,7 @@ built on a clean, extensible firmware architecture. It is inspired by the class 
 portable multi-tools such as the Flipper Zero, but it is **not a clone**: own firmware
 architecture, own module standard, own PCB, own enclosure.
 
-> **Status: V0.4 complete (software/protocol-verified; real tags and RF at V1)**
+> **Status: V0.5 complete (software/module-protocol-verified; real modules and shared SPI at V1)**
 > (STARK-0401 … 0405, ADR-0020; V0.3: STARK-0301 … 0307, ADR-0019; V0.2: STARK-0201 …
 > 0207, ADR-0018; V0.1: STARK-0100 … 0110; V0: STARK-0001 … 0021). On top of V0.3's
 > infrared lab, V0.4 adds:
