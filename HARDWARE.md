@@ -76,9 +76,9 @@ deliberately.
 | `I2C_SCL` | 2 | V0.4 | |
 | `IR_TX` | 47 | V0.3 | RMT TX → IR LED driver — in `stark_board` since STARK-0303 |
 | `IR_RX` | 48 | V0.3 | RMT RX ← 38 kHz demodulator (TSOP-class) — in `stark_board` since STARK-0303 |
-| `SUBGHZ_CS` | 40 | V0.6 | CC1101-class module on SPI2 |
-| `SUBGHZ_GDO0` | 41 | V0.6 | |
-| `SUBGHZ_GDO2` | 42 | V0.6 | |
+| `SUBGHZ_CS` | 40 | V0.5/V0.6 | Slot 0 `MOD_CS` (§6); CC1101-class module on SPI2 |
+| `SUBGHZ_GDO0` | 41 | V0.5/V0.6 | Slot 0 `MOD_IRQ0` |
+| `SUBGHZ_GDO2` | 42 | V0.5/V0.6 | Slot 0 `MOD_IRQ1` |
 | `LAB_UART_TX` | 38 | V0.7 | UART1, level-limited, series-protected |
 | `LAB_UART_RX` | 39 | V0.7 | |
 
@@ -104,8 +104,9 @@ One bus, `SPI2_HOST`, shared by panel / SD / Sub-GHz with independent CS lines.
 Mixing a display and an SD card on one bus is the known-awkward part: an SD access
 during a panel DMA transfer must not interleave. ESP-IDF's `spi_master` bus lock keeps
 each device's transactions atomic (and `sdspi` holds the bus across a multi-transaction
-SD command); STARK adds no bus mutex, and only `stark_display` and
-`stark_storage_medium` issue SPI2 transactions (ARCHITECTURE §8, ADR-0018 §4).
+SD command); STARK adds no bus mutex, and only `stark_display`, `stark_storage_medium`
+and a module driver holding a claim (`stark_module_spi.c`) issue SPI2 transactions
+(ARCHITECTURE §8, ADR-0018 §4, ADR-0021).
 `stark_board_init()` pulls `SD_CS` up so a card ignores panel traffic before
 `stark_storage` attaches it; once attached, the card stays attached and its CS is
 driven high whenever it is not addressed. How long an SD command can stall a band

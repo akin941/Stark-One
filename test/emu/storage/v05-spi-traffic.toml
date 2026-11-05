@@ -1,0 +1,29 @@
+# STARK-0503 on the test image: a stand-in driver (test only) claims slot 0 through
+# the production API and runs SPI transactions on MOD_CS while the launcher
+# renders; removing the module stops them at once with a stale lease. Software
+# coexistence on the emulator's bus model. Not signal evidence: two real modules
+# and the panel are ROADMAP V1 exit 11.
+name = "emu-v05-spi-traffic"
+image = "storage"
+end_ms = 12000
+heap_min = 200000
+pokes = [
+    { at_ms = 800, var = "emu_mod_slot0", value = 2 },    # SPI lab module
+    { at_ms = 3000, var = "emu_mod_traffic", value = 1 },
+    { at_ms = 9000, var = "emu_mod_slot0", value = 0 },   # removed mid-traffic
+]
+presses = [
+    { key = "DOWN", at_ms = 5000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 6000, hold_ms = 60 },
+    { key = "UP", at_ms = 7000, hold_ms = 60 },
+]
+expect = [
+    "module: slot 0 SPI lab module",
+    "module: slot 0 claimed by emu",
+    'menu: sel=2 "Diagnostics"',
+    'menu: sel=4 "App Test"',
+    'menu: sel=2 "Diagnostics"',
+    "module: slot 0 no id",
+    "stopped: Invalid state",
+]
+forbid = ["emutraffic: attach failed", "panic", "render error", "overruns=1"]

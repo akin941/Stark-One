@@ -653,7 +653,7 @@ target_compile_options(nfc_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZ
 set(FAKE_24C02 ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_24c02.c)
 set(MODULE_INCLUDES ${STARK_COMPONENTS}/stark_module ${STARK_COMPONENTS}/stark_module/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
-foreach(mod_test module_desc fake_24c02 module_core)
+foreach(mod_test module_desc fake_24c02 module_core module_claim)
     add_executable(run_${mod_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${mod_test}.c
         ${STARK_COMPONENTS}/stark_module/module_desc.c
         ${STARK_COMPONENTS}/stark_module/module_core.c ${FAKE_24C02})

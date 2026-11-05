@@ -4071,6 +4071,9 @@ coexistence on the emulator's bus model, **not** signal integrity.
    `stark_module_spi.c` call `spi_device_*` (lint).
 4. ROADMAP V0.5 exit 3 remains, marked as V1 gate 11.
 
+**As built.** `check_layers.py` is the SPI lint. A conflict also revokes claims on the
+slots involved. A claim hands out only the lines it asked for.
+
 **Security.** No generic raw-SPI app or passthrough. **Budget.** Flash ≤ 2 kB; static ≤
 100 B; attached device handles only while a driver holds them. **Physical HIL (V1).** Two
 modules on SPI with the display (logic analyser), CS isolation, MISO release, bus contention

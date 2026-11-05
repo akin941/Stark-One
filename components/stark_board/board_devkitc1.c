@@ -41,6 +41,13 @@ static const stark_board_pins_t s_pins = {
     .ir_tx = 47, /* HARDWARE.md §2.2; STARK-0303 */
     .ir_rx = 48, /* also the DevKitC-1 v1.0 RGB LED: cosmetic flicker only */
     .tft_spi_hz = CONFIG_STARK_DISPLAY_SPI_HZ,
+    /* HARDWARE.md §6, ADR-0021 §5: slot 1 is identification only, and MOD_EN has
+     * no GPIO, until the V1 board allocates them. */
+    .module =
+        {
+            {.cs = 40, .irq0 = 41, .irq1 = 42, .en = -1, .eeprom_addr = 0x50},
+            {.cs = -1, .irq0 = -1, .irq1 = -1, .en = -1, .eeprom_addr = 0x51},
+        },
 };
 
 static i2c_master_bus_handle_t s_i2c;
@@ -109,6 +116,24 @@ stark_err_t stark_board_init(void)
         err = gpio_config(&sd_cs_cfg);
         if (err != ESP_OK) {
             return STARK_ERR_IO;
+        }
+    }
+
+    /* The same for module chip selects: a module ignores panel and SD traffic
+     * from boot, before any driver claims its slot (STARK-0503). */
+    for (int i = 0; i < STARK_BOARD_MODULE_SLOTS; i++) {
+        if (s_pins.module[i].cs >= 0) {
+            gpio_config_t cs_cfg = {
+                .pin_bit_mask = 1ULL << s_pins.module[i].cs,
+                .mode = GPIO_MODE_INPUT,
+                .pull_up_en = GPIO_PULLUP_ENABLE,
+                .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                .intr_type = GPIO_INTR_DISABLE,
+            };
+            err = gpio_config(&cs_cfg);
+            if (err != ESP_OK) {
+                return STARK_ERR_IO;
+            }
         }
     }
 
