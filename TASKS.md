@@ -3755,14 +3755,469 @@ V1).** `docs/bringup/v1-nfc.md` in full.
 
 # V0.5 — expansion / module bus
 
-| ID | Goal |
-| --- | --- |
-| STARK-0501 | Module descriptor format + I²C ID EEPROM layout spec (first appearance of module discovery anywhere in the project) |
-| STARK-0502 | `stark_module`: enumeration, **introduction of capability bits and `stark_app_t.caps_required`**, hotplug |
-| STARK-0503 | SPI CS / IRQ arbitration for multiple modules |
-| STARK-0504 | Retrofit IR and NFC behind the module interface |
-| STARK-0505 | Module inspector app + capability-gated (disabled) menu entries |
-| STARK-0506 | Optional: evaluate link-time app registration against the static array (ADR-0009 revisit) — decide and record, implement only if the app count justifies it |
+**Scope source:** [ROADMAP.md](ROADMAP.md) "V0.5". Nothing from V0.6+ is pulled forward:
+no Sub-GHz driver or capability bit, no dynamic app loading, no EEPROM programming tool
+in firmware.
+
+**Completion levels (ADR-0021, owner decision 2026-11-05).** *V0.5 complete* means
+**software / module-protocol verified**. It never means a real module was plugged in.
+Every task lists its **physical HIL evidence (deferred to V1)**, collected in ROADMAP V1
+exit 11 and `docs/bringup/v1-modules.md`.
+
+**Topology (ADR-0021).** IR is onboard. The NFC reader is a detachable bus device with no
+EEPROM of its own. Slots hold ID EEPROMs. The connector has no presence pin. Slot 0 is
+wired (EEPROM 0x50, `MOD_CS` 40, `MOD_IRQ0` 41, `MOD_IRQ1` 42); slot 1 is identification
+only (EEPROM 0x51). `MOD_EN` is unassigned.
+
+**Validation layers.**
+
+* **Host (Tier 1).** Pure core: descriptor parser, discovery state machine, capability
+  resolution, claims. Committed vectors from `scripts/gen_module_vectors.py`, an
+  independent Python encoder (`test/fake/fake_module_catalog.h`).
+* **Host, fake 24C02.** Production discovery over `test/fake/fake_24c02.c`.
+* **Host UI port (Tier 4B).** Launcher gating and the inspector, inspected goldens.
+* **Emulator, production image.** An empty bus: both slots "no ID", NFC dimmed, boot
+  unaffected.
+* **Emulator, test image.** `stark_module_transport` substituted (third allowed
+  substitution). Pokes: `emu_mod_slot0`, `emu_mod_slot1` (catalogue entry, 0 = none),
+  `emu_mod_fault` (a `fake_24c02_fault_t`). The PN532 is absented with the existing
+  `emu_nfc_fault`. Integration evidence only.
+
+**Exit-criteria map** (each row's V1 half is ROADMAP V1 exit 11):
+
+| Exit criterion | V0.5 software evidence | Proven by |
+| --- | --- | --- |
+| 1. Plugging a module changes the app list without a firmware change | Same firmware image: the module's PN532 appears → NFC row enabled; it leaves → dimmed; slot EEPROM appears and leaves in the inspector | STARK-0502, STARK-0504, STARK-0505 (`storage/v05-hotplug.toml`) |
+| 2. Unknown/absent EEPROM gives a generic entry, never a boot failure | Every corrupt vector → generic, no capabilities; absent → "no ID"; production empty bus boots | STARK-0501, STARK-0502, STARK-0505 (`v05-empty-bus.toml`) |
+| 3. Two modules share SPI without corrupting the display | **V1 HIL gate.** Software half: claims, chip-select assignment and lease revocation for two wired slots on the host; module SPI traffic alongside rendering on the test image | STARK-0503 |
+
+**System event id** (ARCHITECTURE §6.3): 6 `STARK_SYS_MODULE` (`arg` = 0, the table or
+effective capabilities changed).
+
+**Capability bits** (`components/stark_module/include/stark_caps.h`; `0` in
+`caps_required` means "no requirement"):
+
+| Bit | Name | Meaning | Confirmed by |
+| --- | --- | --- | --- |
+| 0 | `STARK_CAP_IR_TX` | Can emit IR through the onboard LED driver | `stark_ir` (board has the pin, RMT channel up) |
+| 1 | `STARK_CAP_IR_RX` | Can receive IR through the onboard demodulator | `stark_ir` (same) |
+| 2 | `STARK_CAP_NFC` | A PN532-class reader answers on the shared I²C bus | `stark_nfc` |
+| 3 | `STARK_CAP_MOD_SPI` | Slot module uses `MOD_CS` on the shared SPI2 | Descriptor; enables a claim, never an app |
+| 4 | `STARK_CAP_MOD_IRQ` | Slot module uses `MOD_IRQ0/1` | Descriptor; enables a claim, never an app |
+
+Bits 5–31 are unknown to this firmware: shown in the inspector, otherwise ignored, so a
+future module is listed rather than refused. Bits 0–1 are onboard-only: a slot declaring
+them is an unsupported combination. Bit 2 with bit 3 is unsupported (our NFC path is I²C
+only).
+
+---
+
+## STARK-0501 — Module descriptor format + I²C ID EEPROM layout
+
+**Goal.** A module's ID EEPROM has one documented, versioned layout. Any content either
+parses to validated fields or is rejected with a reason, without overrunning or
+allocating.
+
+**Layer.** L2 pure core in new `stark_module`; `test/fake` for the device.
+
+**Files.** `components/stark_module/{CMakeLists.txt,module_desc.c,include/module_desc.h,include/stark_caps.h}`,
+`scripts/gen_module_vectors.py`, `scripts/test_gen_module_vectors.py`,
+`test/fake/{fake_24c02.c,fake_24c02.h,fake_module_catalog.h}`,
+`test/host/{test_module_desc.c,test_fake_24c02.c,CMakeLists.txt}`, `scripts/check_layers.py`,
+`.github/workflows/ci.yml` (lint: `gen_module_vectors.py --check`),
+`docs/module-format.md`, `HARDWARE.md` §6 (frozen pinout).
+
+**Deps.** None in V0.5 (V0.4 complete).
+
+**Format v1** (24C02: 256 B, 8-byte pages; 32 bytes at offset 0, little-endian; the rest
+of the chip is unused and never read):
+
+| Offset | Size | Field | Rule |
+| --- | --- | --- | --- |
+| 0 | 2 | Magic | `53 4D` ("SM") |
+| 2 | 1 | Format version | 1 |
+| 3 | 1 | Reserved | 0 |
+| 4 | 2 | Module ID | Non-zero, not 0xFFFF |
+| 6 | 1 | Hardware revision | Any |
+| 7 | 1 | Reserved | 0 |
+| 8 | 4 | Capability bits | See the table above |
+| 12 | 18 | Name | 1–18 printable ASCII (0x20–0x7E), first byte not a space, NUL-padded; nothing after the first NUL |
+| 30 | 2 | CRC-16/CCITT-FALSE | Over bytes 0–29 |
+
+**API.**
+
+```c
+#define MODULE_DESC_SIZE 32
+#define MODULE_NAME_MAX  18
+typedef struct { uint16_t id; uint8_t rev; uint32_t caps; char name[MODULE_NAME_MAX + 1]; } module_desc_t;
+typedef enum { MODULE_DESC_OK = 0, MODULE_DESC_BLANK, MODULE_DESC_BAD_MAGIC, MODULE_DESC_BAD_VERSION,
+               MODULE_DESC_BAD_CRC, MODULE_DESC_BAD_FIELD, MODULE_DESC_TRUNCATED } module_desc_result_t;
+module_desc_result_t module_desc_parse(const uint8_t *raw, size_t len, module_desc_t *out);
+bool module_desc_caps_supported(uint32_t caps);  /* the combination rules above */
+const char *module_desc_result_str(module_desc_result_t r);
+```
+
+`*out` is written only on `MODULE_DESC_OK`. All-0xFF is `BLANK`. Order of checks: length,
+blank, magic, version, CRC, fields; a future version is reported as `BAD_VERSION`, not as
+a CRC failure. There is no encoder in firmware: the firmware cannot produce or write a
+descriptor. The Python encoder is the independent implementation.
+
+**Fake 24C02.** Up to 8 devices by address. `fake_24c02_put(addr, image, len)`,
+`_remove(addr)`, `_probe(addr)`, `_read_at(addr, off, buf, len)`, and raw `_write`/`_read`
+that keep the word-address pointer (auto-increment, wraps at 256). Faults
+`fake_24c02_fault(kind, count)`, `count` -1 = until cleared: `NACK_ADDR`, `NACK_DATA`,
+`TIMEOUT`, `BUS_ERROR`, `TRUNCATE` (removed after n bytes), `BIT_FLIP`.
+
+**Host tests.** Every catalogue vector. Valid: minimum and maximum name, every known cap,
+unknown bits, zero caps, id 1 and 0xFFFE. Invalid, each with its exact result: blank, all
+zero, bad magic, versions 0/2/255, a CRC flip at every byte and every bit, id 0 and
+0xFFFF, non-zero reserved bytes, unprintable names, bytes after the NUL, leading space,
+empty name, truncation at every length. 10,000 seeded mutations under ASan/UBSan. Fake
+tests: pointer wrap, 8-byte reads, every fault.
+
+**Fake EEPROM scenarios.** Catalogue load and read through the raw transaction API.
+
+**Emulator.** None. **Fault injection.** Truncation, flips, fuzzing, fake faults.
+
+**AC.**
+1. Each vector yields its documented result; no allocation; `*out` untouched on failure.
+2. Fuzzing is clean under sanitizers; the core is at 100 % line coverage.
+3. `gen_module_vectors.py --check` is enforced in CI; `docs/module-format.md` and
+   HARDWARE §6 document the format and pinout.
+4. `grep` proves no EEPROM write path exists under `components/`.
+
+**Security.** Input is untrusted; names are sanitised before any log or screen.
+**Budget.** Flash ≤ 1 kB; no static RAM. **Physical HIL (V1).** Programming and reading a
+real 24C02, its write-cycle time, and address straps.
+
+---
+
+## STARK-0502 — `stark_module`: enumeration, capability bits, `caps_required`, hotplug
+
+**Goal.** Slots are discovered at boot and followed afterwards. Malformed or missing
+devices are handled in bounded time. Capabilities are published. `stark_app_t` gains
+`caps_required`, and launching an app whose capabilities are missing is refused.
+
+**Layers.** L2 `module_core.c` (pure, injected I/O); L1 new `stark_module_transport`
+(`i2c_master`, the only module code on the I²C bus); L3 `stark_module.c` (task, mutex,
+event); L4 `stark_app`; root `main/module_bridge.c` (bus event → `stark_app_set_caps()`).
+
+**Files.** `components/stark_module/{module_core.c,module_core.h,stark_module.c,include/stark_module.h,Kconfig.stark}`,
+`components/stark_module_transport/*`, `components/stark_app/{app_manager.c,include/stark_app.h}`,
+`main/{module_bridge.c,module_bridge.h,stark_main.c,CMakeLists.txt}`,
+`test/emu/storage_image/{CMakeLists.txt,components/stark_module_transport/*}`,
+`scripts/{check_emu_image.py,test_check_emu_image.py,check_layers.py,test_emu.py}`,
+`test/host/{test_module_core.c,test_app_caps.c,CMakeLists.txt}`, `test/emu/v05-empty-bus.toml`,
+`test/emu/storage/v05-discovery.toml`, ARCHITECTURE §6.3, §6.9f, §7, §8, §10.
+
+**API.**
+
+```c
+typedef enum { STARK_MODULE_ONBOARD, STARK_MODULE_BUS, STARK_MODULE_SLOT } stark_module_kind_t;
+typedef enum { STARK_MODULE_ABSENT,  /* a slot: "no ID" (no presence pin, ADR-0021 §4) */
+               STARK_MODULE_KNOWN,   /* a valid descriptor, or a driver-confirmed provider */
+               STARK_MODULE_GENERIC, /* answered, content unusable: no capabilities */
+               STARK_MODULE_CONFLICT /* overlaps another entry: its capabilities are withheld */
+} stark_module_state_t;
+typedef struct {
+    stark_module_kind_t kind; stark_module_state_t state;
+    uint8_t slot;             /* STARK_MODULE_SLOT */
+    uint16_t id; uint8_t rev;
+    uint32_t declared;        /* descriptor bits, unknown ones included */
+    uint32_t confirmed;       /* the subset a driver has confirmed */
+    module_desc_result_t why; /* GENERIC: why it was rejected */
+    char name[MODULE_NAME_MAX + 1];
+} stark_module_entry_t;
+
+stark_err_t stark_module_init(void);
+size_t stark_module_list(stark_module_entry_t *out, size_t max);  /* copies; returns the total */
+uint32_t stark_module_caps(void);                                  /* effective; any task */
+void stark_module_confirm(uint32_t caps, bool present);            /* drivers, via the root */
+
+/* stark_module_transport.h: read-only by construction */
+stark_err_t stark_module_transport_open(void);
+stark_err_t stark_module_transport_probe(uint8_t addr, uint32_t timeout_ms);
+stark_err_t stark_module_transport_read(uint8_t addr, uint8_t off, uint8_t *buf, size_t len, uint32_t timeout_ms);
+
+/* stark_app.h */
+uint32_t caps_required;   /* new last field of stark_app_t; 0 = no requirement */
+void stark_app_set_caps(uint32_t caps);  /* UI task; logs `app: caps 0x%08x` */
+bool stark_app_available(const stark_app_t *app);
+/* stark_app_launch: STARK_ERR_NOT_SUPPORTED + `app: <id> needs caps 0x%08x` when missing */
+```
+
+**Discovery rules** (`module_core_tick()`, once per `CONFIG_STARK_MODULE_POLL_MS`, default
+1000). Each tick does at most one probe and one 32-byte read per slot, each bounded by
+`CONFIG_STARK_MODULE_I2C_TIMEOUT_MS` (20), so a tick is bounded even if every call times
+out.
+* **Presence.** Probe = address ACK with no data transaction, so an empty slot logs
+  nothing. 2 consecutive misses remove a module. One miss does nothing.
+* **Content.** A present slot is read every tick. A new or changed descriptor is accepted
+  only after 2 identical reads. A valid entry survives a single bad read.
+* **Read errors.** 3 consecutive read errors on a new slot give `GENERIC`; a later good
+  pair upgrades it. Errors never stop polling, so recovery is automatic.
+* **Replacement.** A different valid descriptor replaces the entry within 2 ticks,
+  revoking claims (STARK-0503) as a removal does.
+* **Unsupported.** Unsupported combinations give `GENERIC`, with `declared` kept for
+  display and no capabilities.
+* **Conflict.** Two slots declaring the same exclusive capability (`NFC`), or the same
+  module ID with any exclusive capability, are both `CONFLICT`, and that capability is
+  withheld from the effective set until one leaves. Two slots with the same ID and no
+  exclusive capability are compatible.
+* **Effective set.** `confirmed & ~withheld & KNOWN_MASK`. Declared bits alone never
+  count. Bits 3–4 are never effective.
+
+Logs: `module: slot <n> <name> id=0x%04x rev=%u caps=0x%08x`, `module: slot <n> generic
+(<why>)`, `module: slot <n> removed`, `module: slot <n> conflict`, `module: caps 0x%08x`.
+Boot logs a line per slot. A change publishes `STARK_SYS_MODULE`.
+
+**Task.** `stark_module`, static stack `CONFIG_STARK_MODULE_TASK_STACK` (2560), priority
+below the UI, core 0, no allocation after init. It cannot live on `esp_timer` because
+bus calls may block for the timeout. Init failure is logged and never fails the boot.
+
+**Host tests.** Over the fake: valid; absent; insertion; removal; replacement; two
+compatible; duplicate ID; conflicting caps; every corrupt catalogue entry → generic with
+reason; unsupported combination; unknown bits; NACK, timeout, bus error (count bounded,
+polling continues); a transient of 1 changes nothing; recovery; removal mid-read; 10,000
+random ticks of random presence and faults hold the invariants (effective ⊆ confirmed,
+table consistent, I/O calls per tick bounded). `test_app_caps.c`: all, one, none present;
+launch refused; `caps_required = 0` unaffected.
+
+**Emulator.** Production `v05-empty-bus.toml`: `module: slot 0 no id`, `module: slot 1 no
+id`, heap ≥ 200 kB, no I²C error log spam (`forbid`). Test image `storage/v05-discovery.toml`:
+insertion, corruption, replacement, removal and recovery by pokes. `check_emu_image.py`
+allows exactly three substitutions, with a negative test.
+
+**Fault injection.** All fake faults and poke-driven faults above.
+
+**AC.**
+1. Host tests cover each discovery rule; ASan/UBSan clean; core at 100 % lines.
+2. A tick's I/O is bounded, proven by the host call counter; no allocation after init.
+3. No descriptor, however malformed, makes an entry `KNOWN` or adds a capability.
+4. `caps_required = 0` apps behave exactly as before: all existing goldens and scenarios
+   pass unchanged.
+5. Both emulator scenarios pass; production has no fake or simulator reference.
+
+**Security.** A descriptor grants nothing (ADR-0021 §2). **Budget.** `stark_module` +
+transport static ≤ 3.5 kB including the stack; flash ≤ 6 kB; boot heap cost ≤ 1 kB; task
+stack peak ≤ 2 kB, measured. **Physical HIL (V1).** Real probe and read, pull-ups, hotplug
+on a live bus, bus recovery if SDA is held low by a departing module.
+
+---
+
+## STARK-0503 — SPI CS / IRQ arbitration for multiple modules
+
+**Goal.** A module driver can use a slot's chip select and IRQ lines only through a claim
+that names its owner, and a removed module's claim stops working at once. Module chip
+selects idle high from boot, so modules ignore panel and SD traffic.
+
+**Layers.** L0 `stark_board` (slot table, CS pull-ups); L2 `module_core.c` claims; L3
+`stark_module_spi.c` (the third legitimate SPI2 user, ARCHITECTURE §8).
+
+**Files.** `components/stark_board/{board_devkitc1.c,stark_board.c,include/stark_board.h}`,
+`components/stark_module/{module_core.c,stark_module_spi.c,include/stark_module.h}`,
+`test/emu/storage_image/components/stark_module_transport/module_traffic.c` (test only),
+`test/host/{test_module_claim.c,test_board.c}`, `test/emu/storage/v05-spi-traffic.toml`,
+`scripts/test_emu.py`, HARDWARE §2.2, §2.3, §6, ARCHITECTURE §8, §13.
+
+**API.**
+
+```c
+typedef struct { int cs, irq0, irq1, en; uint8_t eeprom_addr; } stark_board_module_slot_t;
+/* stark_board_pins_t gains: stark_board_module_slot_t module[STARK_BOARD_MODULE_SLOTS]; */
+
+typedef struct { uint8_t slot; uint32_t gen; } stark_module_lease_t;
+stark_err_t stark_module_claim(uint8_t slot, uint32_t caps, const char *owner, stark_module_lease_t *out);
+void stark_module_release(const stark_module_lease_t *l);
+bool stark_module_lease_valid(const stark_module_lease_t *l);
+stark_err_t stark_module_lease_pins(const stark_module_lease_t *l, int *cs, int *irq0, int *irq1);
+stark_err_t stark_module_spi_attach(const stark_module_lease_t *l, uint32_t hz, uint8_t mode, stark_module_spi_t **out);
+stark_err_t stark_module_spi_xfer(stark_module_spi_t *d, const void *tx, void *rx, size_t len);
+void stark_module_spi_detach(stark_module_spi_t *d);
+```
+
+**Rules.** A claim needs a `KNOWN` slot whose descriptor declares every requested
+`MOD_SPI`/`MOD_IRQ` bit and whose lines are wired (else `STARK_ERR_NOT_SUPPORTED`). One
+owner per slot (`STARK_ERR_BUSY`). Removal or replacement increments `gen`, so every old
+lease, and every `xfer` on it, returns `STARK_ERR_STATE`; a `STARK_SYS_MODULE` event
+follows and the owner detaches. Transactions go through ESP-IDF's `spi_master` bus lock;
+STARK adds no bus mutex (ADR-0018 §4). Validation rejects duplicate slot pins and any
+collision with the existing map. Module chip selects are pulled up in `stark_board_init()`
+as `SD_CS` is.
+
+**Host tests.** Against an injected table with **two wired slots**: independent claims,
+distinct chip selects never crossed, double claim, missing declared bit, unwired slot,
+claim on empty, generic and conflict slots, release and reclaim, stale lease after removal,
+replacement and reinsertion, 10,000 random claim/remove sequences. `test_board.c`: slot
+table collisions.
+
+**Fake EEPROM scenarios.** Removal during an active claim, by fake removal plus ticks.
+
+**Emulator.** Test image: `module_traffic.c` (test only) claims slot 0 when
+`emu_mod_traffic` is set and runs real `spi_device` transactions on `MOD_CS` to nothing,
+while the launcher renders. Scenario asserts `xfer` results, a stale lease after poke
+removal, frames rendered, and no frame overruns or display errors. This shows software
+coexistence on the emulator's bus model, **not** signal integrity.
+
+**AC.**
+1. All listed claim rules are proven on the host; a stale lease can never reach an SPI call.
+2. Production slot table matches ADR-0021 §5; slot 1 SPI claim is refused.
+3. `v05-spi-traffic` passes; only `stark_display`, `stark_storage_medium` and
+   `stark_module_spi.c` call `spi_device_*` (lint).
+4. ROADMAP V0.5 exit 3 remains, marked as V1 gate 11.
+
+**Security.** No generic raw-SPI app or passthrough. **Budget.** Flash ≤ 2 kB; static ≤
+100 B; attached device handles only while a driver holds them. **Physical HIL (V1).** Two
+modules on SPI with the display (logic analyser), CS isolation, MISO release, bus contention
+and timing, a chip select for the second slot.
+
+---
+
+## STARK-0504 — Retrofit IR and NFC behind the module interface
+
+**Goal.** IR and NFC publish their capabilities and appear in the module table. The NFC
+reader is followed while no app is open, so the capability reflects reality. Protocol
+logic is untouched.
+
+**Layers.** L3 `stark_nfc`, `stark_ir` (status only); L1 transport; pure `nfc_poll`; root
+`module_bridge.c`.
+
+**Files.** `components/stark_nfc/{stark_nfc.c,nfc_poll.c,nfc_poll.h,Kconfig.stark}`,
+`components/stark_nfc_transport/{nfc_transport_i2c.c,include/stark_nfc_transport.h}`,
+`test/emu/storage_image/components/stark_nfc_transport/nfc_transport_fake.c`,
+`components/stark_ir/{stark_ir.c,include/stark_ir.h}`, `components/stark_module/*`,
+`main/{module_bridge.c,stark_main.c}`, `test/host/{test_nfc_poll.c,test_module_core.c}`,
+`test/emu/storage/v05-nfc-module.toml`, ARCHITECTURE §6.9d, §6.9e, §6.9f.
+
+**API.**
+
+```c
+stark_err_t stark_nfc_transport_present(uint32_t timeout_ms); /* address ACK only */
+void stark_module_provide(stark_module_kind_t kind, const char *name, uint32_t caps); /* onboard/bus entry */
+bool stark_ir_fitted(void);
+/* nfc_poll.h, pure: 2 misses lose an idle module; an answer triggers detection */
+nfc_idle_action_t nfc_idle_step(nfc_idle_t *s, bool answered, bool ready);
+```
+
+**Behaviour.**
+* The NFC task always runs when the bus exists. With no field on, it checks presence every
+  `CONFIG_STARK_NFC_IDLE_MS` (2000). An answer from an absent reader runs the existing
+  `pn532_detect`; 2 misses mark a ready idle reader absent; each change publishes the
+  existing `STARK_NFC_EVT_MODULE`. Polling, read, write and dump flows do not change. The
+  RF field stays off while idle (detection leaves it off).
+* `stark_nfc_start()` keeps its semantics. An open app on a lost reader keeps its
+  "module lost" view and recovers as in V0.4. The capability drops at once and returns
+  with the module.
+* The bridge maps `STARK_NFC_EVT_MODULE` → `stark_module_confirm(STARK_CAP_NFC, ready)`.
+  IR: `stark_ir_fitted()` at boot → `confirm(IR_TX | IR_RX, true)`. A failed `stark_ir_init`
+  leaves them off.
+* A slot declaring NFC is shown as declared; only the reader's answer confirms it.
+
+**Host tests.** `nfc_idle_step` table; over the fake PN532: appears, disappears, wrong
+chip, garbage, recovery, an app-open loss. Confirm mapping: removal during background work
+drops the bit; restoration returns it; a slot's declaration with no PN532 confirms nothing.
+All V0.3/V0.4 tests unchanged.
+
+**Emulator.** `storage/v05-nfc-module.toml`: PN532 leaves and returns while idle
+(`emu_nfc_fault`), `module: caps` changes both ways, no `nfc: field on` while idle.
+Regression: every `v03-*`, `v04-*` scenario.
+
+**Fault injection.** Existing PN532 faults, idle.
+
+**AC.**
+1. Capability bits follow the reader while idle, both ways, in both image types' logs.
+2. No field while idle (asserted); protocol files are not in the diff beyond the listed ones.
+3. All earlier IR/NFC host tests and scenarios pass unchanged.
+
+**Security.** The field rule of ADR-0020 §5 stands. **Budget.** ≤ 500 B flash; no new
+task; idle bus load ≤ one address probe per 2 s. **Physical HIL (V1).** Module unplugged
+and replugged idle; real PN532 power-up time after insertion.
+
+---
+
+## STARK-0505 — Module inspector app + capability-gated menu entries
+
+**Goal.** Apps grey out when their capabilities are absent, without a firmware change.
+The inspector shows what the device found. The V0.5 exit scenarios and V1 checklist exist.
+
+**Layers.** L4 `stark_app`; L5 new `app_modules`, `app_ir`, `app_nfc`; root.
+
+**Files.** `components/stark_app/app_manager.c`, `apps/app_modules/*`, `apps/app_ir/app_ir.c`,
+`apps/app_nfc/app_nfc.c`, `main/{app_registry.c,app_registry.h,CMakeLists.txt}`,
+`test/host/{test_ui_launcher_caps.c,test_ui_modules.c,CMakeLists.txt}`, `port/ui_port_*`,
+`test/emu/{v04-nfc-absent.toml,v05-empty-bus.toml}`, launcher-walking scenarios,
+`test/emu/storage/v05-hotplug.toml`, `test/emu/soak/v05-soak.toml`,
+`docs/bringup/v1-modules.md`, `docs/measurements.md`, `docs/VALIDATION.md` §3.8, `TESTING.md`,
+`ROADMAP.md` (status, V1 exit 11), `README.md`, ARCHITECTURE §12.
+
+**Behaviour.**
+* `app_ir`: `caps_required = IR_TX | IR_RX`. `app_nfc`: `caps_required = NFC`.
+* `stark_app_set_caps()` updates the launcher's `disabled` flags on the UI task. The
+  selection stays on its app if that app is still enabled, otherwise moves to the nearest
+  enabled row. Rows repaint; nothing allocates. An open app is not closed by a capability
+  change: it uses its own lost-module view, and the launcher is correct when it returns.
+* `app_modules` ("Modules", category Device, no capabilities required): a list of every
+  entry (`IR  Onboard`, `NFC reader  Absent`, `Slot 0  <name>`, `Slot 1  No ID`). OK opens
+  a read-only detail: kind, state, ID, revision, declared and confirmed bits by name,
+  unknown bits in hex, reason for generic. It refreshes on `STARK_SYS_MODULE`. It has no
+  write or SPI action. Text states "not proof of identity" in its generic and declared
+  lines where relevant. Registry n = 12; Device rows become Modules 14, Settings 15,
+  Storage 16.
+* `v04-nfc-absent.toml`: the row is dimmed on the empty bus, so the scenario asserts it
+  cannot be opened and the app is never started. The app's no-module screen stays covered
+  by `test_ui_nfc.c` and by module loss in `v04-nfc-app`.
+
+**Host tests.** Launcher: all, one and none present; selection on a row that becomes
+disabled; restored; unknown `caps` bits ignored; goldens after inspection. Inspector:
+known, generic, conflict, no-ID, unknown bits, 18-character name, refresh, removal while
+viewing detail (returns to a valid view, no stale data).
+
+**Emulator.** `storage/v05-hotplug.toml` (exit 1, same image): reader leaves → NFC
+dimmed, row skipped → reader returns → enabled and opens; EEPROM inserted, corrupted,
+replaced, removed → inspector follows; module removed while the NFC app is open → lost
+view → back → launcher dimmed → restored → recovers. `v05-empty-bus.toml` (exit 2).
+`soak/v05-soak.toml`: 60 s of hotplug cycles and navigation, heap Δ within the existing
+tolerance, drops 0. Existing scenarios updated only for the new row index or dimmed NFC.
+
+**Fault injection.** Corrupt EEPROM and bus faults during the hotplug scenario.
+
+**AC.**
+1. ROADMAP V0.5 exits 1–2 are met in software as mapped above; exit 3 is an open V1 gate.
+2. Only row index and dimmed-NFC changes appear in pre-existing scenarios, each explained.
+3. Inspector goldens are inspected and pinned; removal while viewing is safe under ASan.
+4. `docs/bringup/v1-modules.md` has blank checks for every item below; ROADMAP V1 exit 11
+   and `docs/measurements.md` are updated.
+5. Boot heap ≥ 200 kB; heap and binary deltas, stack peaks and per-component RAM and flash
+   are recorded.
+
+**Security.** Read-only inspector; no raw bus tools (those are V0.7). **Budget.** `app_modules`
+static ≤ 1.5 kB, flash ≤ 3 kB, launcher ≤ 100 B extra.
+
+**Physical HIL (deferred to V1, `docs/bringup/v1-modules.md`).** Real 24C02 communication;
+pull-up values and I²C signal integrity; connector pinout continuity; 3V3 and VBAT limits,
+300 mA budget; physical insertion and removal; hotplug electrical safety; bus recovery
+after disconnection; two modules on SPI without display corruption; CS isolation; bus
+contention and timing; module power-up behaviour; `MOD_EN`; second-slot pin allocation;
+IR and NFC module operation on the final topology. None of these is claimed by V0.5.
+
+---
+
+## STARK-0506 — Optional: link-time app registration (ADR-0009 revisit)
+
+**Goal.** Evaluate the trigger and record the decision. Implement only if the app count
+justifies it.
+
+**Files.** `DECISIONS.md` (ADR-0009 revisit note), `ARCHITECTURE.md` if the note changes it.
+
+**Deps.** STARK-0505. **Tests.** Docs lint only; no firmware change unless the trigger fires.
+
+**Evaluation.** The trigger is ~15 apps or apps outside the repository. V0.5 has 12 apps,
+all in the repository. Expected result: keep the static array and record when to look
+again. Link-time registration is implemented only if measurement contradicts this.
+
+**AC.** The decision and the numbers behind it are written down. If kept, no code changes.
+
+**Security.** Unchanged: no dynamic loading. **Physical HIL.** None.
 
 # V0.6 — Sub-GHz laboratory module
 

@@ -876,7 +876,7 @@ fake.
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
-| `stark_module` | V0.5 | Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
+| `stark_module` + `stark_module_transport` | V0.5 | Planned (ADR-0021, TASKS STARK-0501…0506). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
@@ -1040,6 +1040,7 @@ task.
 
 | Risk | Mitigation |
 | --- | --- |
+| The module connector has no presence pin, `MOD_EN` has no GPIO, and a second wired slot has no CS/IRQ pins (all 25 usable GPIOs are allocated) | Slot 1 is identification only; the arbitration core takes an injected pin table and is tested with two wired slots. **Open until the V1 board:** the pin allocation, and whether to add a presence pin (ADR-0021, ROADMAP V1 exit 11) |
 | Band rendering complicates apps that want a framebuffer | Provide `stark_display_render()` region API only; if a real need appears, add an opt-in PSRAM framebuffer path behind the same interface |
 | Single UI task blocks on a slow app | Apps must not block > 16 ms in a callback; `stark_diag` reports frame overruns; long work goes to a worker task |
 | The static app array is a shared file (merge conflicts) | Accepted knowingly (ADR-0009); one line per app, and `stark_app_list()` is dumped at boot at INFO level |

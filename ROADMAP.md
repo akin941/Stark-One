@@ -233,11 +233,16 @@ deferred to V1:
 * Retrofit IR and NFC as modules behind this interface
 * Module inspector app
 
+**Completion levels (ADR-0021).** *V0.5 complete* = **software / module-protocol
+verified**. Physical module-bus behaviour is verified at the **V1 prototype**.
+
 **Exit criteria**
 
-1. Plugging a module changes the app list without a firmware change.
-2. Unknown/absent EEPROM yields a "generic module" entry, never a boot failure.
-3. Two modules can share the SPI bus without corrupting the display.
+| # | Criterion (unchanged) | V0.5 software evidence (required) | V1 physical HIL evidence (deferred) |
+| --- | --- | --- | --- |
+| 1 | Plugging a module changes the app list without a firmware change | Same image, driven through the fake 24C02 and fake PN532: the module appears, NFC enabled; it leaves, NFC dimmed; EEPROM entries follow in the inspector; host and test image | A real module plugged in and removed |
+| 2 | Unknown/absent EEPROM yields a "generic module" entry, never a boot failure | Corrupt vectors give generic entries with no capabilities; absent gives a "no ID" slot entry (no presence pin, ADR-0021 §4); production image on an empty bus | A blank and an absent EEPROM on a real connector |
+| 3 | Two modules can share the SPI bus without corrupting the display | Software half only: claims and chip-select assignment for two wired slots (host), module traffic alongside rendering (test image). **The criterion itself is a V1 gate (V1 exit 11)** | Two real modules and the panel, with a logic analyser |
 
 ---
 
@@ -339,6 +344,12 @@ simulated milestones (ADR-0011):
    and read back by the device and a phone; removal timing; weak, noisy and several
    nearby tags; module absent and unplugged while running; current with the field on
    and off; I²C bus sharing with the rest of the device.
+11. **Deferred V0.5 module-bus gates** (ADR-0021): real 24C02 communication; pull-ups and
+    I²C signal integrity; connector pinout; supply voltage and current limits; physical
+    insertion and removal; hotplug electrical safety; bus recovery after disconnection;
+    **two modules sharing SPI without corrupting the display** (ROADMAP V0.5 exit 3);
+    chip-select isolation; bus contention and timing; module power-up behaviour; IR and
+    NFC operating as the final topology has them; `MOD_EN` and second-slot pins allocated.
 
 ---
 
