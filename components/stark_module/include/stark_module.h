@@ -13,8 +13,9 @@
 #include "stark_caps.h"
 #include "stark_err.h"
 
-#define STARK_SYS_MODULE   6u
-#define STARK_MODULE_SLOTS 2u /* HARDWARE.md §6 */
+#define STARK_SYS_MODULE     6u
+#define STARK_MODULE_SLOTS   2u                        /* HARDWARE.md §6 */
+#define STARK_MODULE_ENTRIES (STARK_MODULE_SLOTS + 2u) /* the slots, then two providers */
 
 typedef enum {
     STARK_MODULE_ONBOARD, /* soldered to the board: IR */
@@ -57,6 +58,13 @@ uint32_t stark_module_caps(void);
 
 /* A driver's word on capability bits, through the composition root. */
 void stark_module_confirm(uint32_t caps, bool present);
+
+/*
+ * Lists a provider with no EEPROM of its own: onboard IR, the PN532 on the bus
+ * (ADR-0021 §3). `name` must outlive the firmware. It reads as present while a
+ * driver confirms `caps`. Up to two; extras are ignored.
+ */
+void stark_module_provide(stark_module_kind_t kind, const char *name, uint32_t caps);
 
 /* ---- CS / IRQ arbitration (STARK-0503) ----------------------------------- */
 

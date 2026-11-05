@@ -837,10 +837,11 @@ timeout to `STARK_ERR_TIMEOUT`. Boot logs `nfc: pn532 fw <ver>.<rev>`,
 `nfc: no module (<err>)`, `nfc: unexpected chip 0x<ic>` or `nfc: not fitted`, and
 carries on either way.
 
-**Polling (STARK-0403).** With a module, init starts the NFC task (`stark_nfc`, prio 3,
+**Polling (STARK-0403).** Init starts the NFC task (`stark_nfc`, prio 3,
 4 kB, core 0); every PN532 command after init is the task's. Between `start` and `stop`
-the field is on and the task polls every `STARK_NFC_POLL_MS` (250). Otherwise it sleeps
-with the field off. The pure poll machine (`nfc_poll.c`) decides each poll's outcome:
+the field is on and the task polls every `STARK_NFC_POLL_MS` (250). Otherwise it checks
+every `STARK_NFC_IDLE_MS` (2000) whether the reader answers, with the field off
+(STARK-0504). The pure poll machine (`nfc_poll.c`) decides each poll's outcome:
 - a new UID is a tag, so the pure reader (`nfc_reader.c`) identifies it (`nfc_ident.c`)
   and reads its Type 2 CC and NDEF TLV (`nfc_type2.c`) into the snapshot;
 - two empty polls mean it left;
@@ -894,6 +895,13 @@ lease, and every SPI transfer on it, returns `STARK_ERR_STATE` and nothing reach
 bus. Module chip selects are pulled up from `stark_board_init()`. Whether two real modules
 share SPI cleanly with the panel is ROADMAP V1 exit 11.
 
+**IR and NFC (STARK-0504).** They appear in the table as providers: IR onboard, the PN532
+on the bus, each with no EEPROM (ADR-0021 §3). `main/module_bridge.c` carries each
+driver's word to `stark_module_confirm()`. The NFC task now always runs: with no app
+polling it checks for an address ACK every 2 s, so the capability follows the reader
+while idle, with the field off. Protocol, polling, read, write and dump flows are
+unchanged. An app open on a lost reader keeps its own lost view and recovers as before.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -902,7 +910,7 @@ share SPI cleanly with the panel is ROADMAP V1 exit 11.
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
-| `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery and capabilities implemented (§6.9f, STARK-0501/0502); the rest planned (ADR-0021, TASKS STARK-0503…0506). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
+| `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the rest planned (ADR-0021, TASKS STARK-0505, 0506). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 

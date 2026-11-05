@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "ir_types.h"
 #include "stark_err.h"
@@ -35,6 +36,9 @@ typedef struct {
  * every other call is STARK_ERR_NOT_SUPPORTED. STARK_ERR_STATE if already
  * initialised. Logs `ir: init rx=<gpio> tx=<gpio>`. */
 stark_err_t stark_ir_init(void);
+
+/* The board has the pins and both channels came up (STARK-0504). */
+bool stark_ir_fitted(void);
 
 /* Listening on / off (`ir: rx on` / `ir: rx off`). Any task. */
 stark_err_t stark_ir_rx_start(void);

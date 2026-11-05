@@ -16,6 +16,7 @@ static stark_err_t map(esp_err_t err)
     switch (err) {
         case ESP_OK:
             return STARK_OK;
+        case ESP_ERR_NOT_FOUND:        /* i2c_master_probe() */
         case ESP_ERR_INVALID_RESPONSE: /* the address was not acknowledged */
             return STARK_ERR_NOT_FOUND;
         case ESP_ERR_TIMEOUT:
@@ -48,6 +49,15 @@ void stark_nfc_transport_close(void)
         (void)i2c_master_bus_rm_device(s_dev);
         s_dev = NULL;
     }
+}
+
+stark_err_t stark_nfc_transport_present(uint32_t timeout_ms)
+{
+    i2c_master_bus_handle_t bus = stark_board_i2c_bus();
+    if (bus == NULL) {
+        return STARK_ERR_NOT_SUPPORTED;
+    }
+    return map(i2c_master_probe(bus, PN532_I2C_ADDR, (int)timeout_ms));
 }
 
 stark_err_t stark_nfc_transport_write(const uint8_t *buf, size_t len, uint32_t timeout_ms)

@@ -38,6 +38,8 @@ static stark_nfc_read_t s_snap;
 static bool s_has_tag;
 static stark_nfc_read_t s_work; /* the NFC task's own read */
 static nfc_poll_t s_poll;
+static nfc_idle_t s_idle;
+static stark_err_t s_idle_err = STARK_OK; /* the last failed detection, logged once */
 static bool s_field;
 static atomic_bool s_write_pending; /* the request below belongs to the task while set */
 static nfc_tag_t s_write_tag;
@@ -215,6 +217,44 @@ static void dump_once(void)
     publish(err == STARK_OK ? STARK_NFC_EVT_DUMP_DONE : STARK_NFC_EVT_DUMP_FAILED);
 }
 
+/* No app polls: follow the reader, field off (STARK-0504). */
+static void idle_once(void)
+{
+    bool ready = stark_nfc_module() == STARK_NFC_READY;
+    bool answered = stark_nfc_transport_present(CONFIG_STARK_NFC_I2C_TIMEOUT_MS) == STARK_OK;
+    switch (nfc_idle_step(&s_idle, answered, ready)) {
+        case NFC_IDLE_LOST:
+            atomic_store(&s_module, STARK_NFC_LOST);
+            STARK_LOGW("nfc", "module lost");
+            publish(STARK_NFC_EVT_MODULE);
+            break;
+        case NFC_IDLE_DETECT: {
+            uint8_t ic = 0;
+            uint8_t ver = 0;
+            uint8_t rev = 0;
+            stark_err_t err = pn532_detect(&s_pn532, &ic, &ver, &rev);
+            if (err == STARK_OK) {
+                s_idle_err = STARK_OK;
+                s_field = false; /* detection leaves it off */
+                nfc_poll_init(&s_poll);
+                atomic_store(&s_module, STARK_NFC_READY);
+                STARK_LOGI("nfc", "pn532 fw %u.%u", (unsigned)ver, (unsigned)rev);
+                publish(STARK_NFC_EVT_MODULE);
+            } else if (err != s_idle_err) {
+                s_idle_err = err; /* something answers, and it is not a reader we can use */
+                STARK_LOGW("nfc", "device at 0x24 is not usable: %s", stark_err_str(err));
+            }
+            break;
+        }
+        case NFC_IDLE_NONE:
+        default:
+            if (!answered) {
+                s_idle_err = STARK_OK;
+            }
+            break;
+    }
+}
+
 static void nfc_task(void *arg)
 {
     (void)arg;
@@ -224,14 +264,20 @@ static void nfc_task(void *arg)
          * apply_field() turns it on again, and waiting forever would stop
          * polling for good (caught by storage/v04-nfc-app). */
         bool polling = atomic_load(&s_want_poll) || s_field || s_poll.state == NFC_POLL_RECOVERING;
-        (void)ulTaskNotifyTake(pdTRUE,
-                               polling ? pdMS_TO_TICKS(CONFIG_STARK_NFC_POLL_MS) : portMAX_DELAY);
+        (void)ulTaskNotifyTake(
+            pdTRUE, pdMS_TO_TICKS(polling ? CONFIG_STARK_NFC_POLL_MS : CONFIG_STARK_NFC_IDLE_MS));
         if (s_poll.state != NFC_POLL_RECOVERING) {
             apply_field();
         }
         if (!atomic_load(&s_want_poll)) {
             if (s_poll.state == NFC_POLL_RECOVERING) {
                 nfc_poll_init(&s_poll); /* stopped while lost: try again at the next start */
+            }
+            if (stark_nfc_module() != STARK_NFC_READY) {
+                s_field = false; /* nothing there to hold a field on */
+            }
+            if (!s_field) {
+                idle_once();
             }
             continue;
         }
@@ -353,6 +399,8 @@ stark_err_t stark_nfc_init(void)
         return STARK_OK;
     }
     pn532_bind(&s_pn532, &k_io);
+    nfc_poll_init(&s_poll);
+    s_lock = xSemaphoreCreateMutexStatic(&s_lock_buf);
     uint8_t ic = 0;
     uint8_t ver = 0;
     uint8_t rev = 0;
@@ -360,22 +408,19 @@ stark_err_t stark_nfc_init(void)
     if (err == STARK_OK) {
         atomic_store(&s_module, STARK_NFC_READY);
         STARK_LOGI("nfc", "pn532 fw %u.%u", (unsigned)ver, (unsigned)rev);
-        nfc_poll_init(&s_poll);
-        s_lock = xSemaphoreCreateMutexStatic(&s_lock_buf);
-        s_task = xTaskCreateStaticPinnedToCore(
-            nfc_task, "stark_nfc", (uint32_t)(sizeof s_stack / sizeof s_stack[0]), NULL,
-            CONFIG_STARK_NFC_TASK_PRIO, s_stack, &s_tcb, NFC_CORE);
-        if (s_task == NULL) {
-            return STARK_ERR_NO_MEM;
-        }
     } else if (err == STARK_ERR_NOT_SUPPORTED) {
         atomic_store(&s_module, STARK_NFC_ABSENT);
+        s_idle_err = err;
         STARK_LOGW("nfc", "unexpected chip 0x%02x", (unsigned)ic);
     } else {
         atomic_store(&s_module, STARK_NFC_ABSENT);
         STARK_LOGI("nfc", "no module (%s)", stark_err_str(err));
     }
-    return STARK_OK;
+    /* The task runs with or without a reader: it notices one arriving (STARK-0504). */
+    s_task = xTaskCreateStaticPinnedToCore(nfc_task, "stark_nfc",
+                                           (uint32_t)(sizeof s_stack / sizeof s_stack[0]), NULL,
+                                           CONFIG_STARK_NFC_TASK_PRIO, s_stack, &s_tcb, NFC_CORE);
+    return s_task != NULL ? STARK_OK : STARK_ERR_NO_MEM;
 }
 
 stark_nfc_module_t stark_nfc_module(void)

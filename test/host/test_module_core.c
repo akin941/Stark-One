@@ -298,6 +298,44 @@ static void test_list_limits(void)
     TEST_ASSERT_EQUAL(2, module_core_list(&s_c, NULL, 0));
 }
 
+/* STARK-0504: IR and the PN532 have no EEPROM; they read as present while a
+ * driver confirms them. A slot's declaration confirms nothing. */
+static void test_providers(void)
+{
+    module_core_provide(&s_c, STARK_MODULE_ONBOARD, "IR", STARK_CAP_IR_TX | STARK_CAP_IR_RX);
+    module_core_provide(&s_c, STARK_MODULE_BUS, "NFC reader", STARK_CAP_NFC);
+    module_core_provide(&s_c, STARK_MODULE_BUS, "ignored", STARK_CAP_NFC); /* the table is full */
+    stark_module_entry_t list[STARK_MODULE_ENTRIES];
+    TEST_ASSERT_EQUAL(4, module_core_list(&s_c, list, 4));
+    TEST_ASSERT_EQUAL(STARK_MODULE_ONBOARD, list[2].kind);
+    TEST_ASSERT_EQUAL(STARK_MODULE_ABSENT, list[2].state);
+    TEST_ASSERT_EQUAL_STRING("NFC reader", list[3].name);
+
+    fit(A0, FAKE_MODULE_NFC_CARRIER); /* declares NFC; the reader does not answer */
+    ticks(2);
+    (void)module_core_list(&s_c, list, 4);
+    TEST_ASSERT_EQUAL(STARK_MODULE_ABSENT, list[3].state);
+    TEST_ASSERT_EQUAL_HEX32(0, module_core_caps(&s_c));
+
+    module_core_confirm(&s_c, STARK_CAP_NFC, true); /* it answers */
+    (void)module_core_list(&s_c, list, 4);
+    TEST_ASSERT_EQUAL(STARK_MODULE_KNOWN, list[3].state);
+    TEST_ASSERT_EQUAL_HEX32(STARK_CAP_NFC, list[0].confirmed);
+    TEST_ASSERT_EQUAL_HEX32(STARK_CAP_NFC, module_core_caps(&s_c));
+
+    module_core_confirm(&s_c, STARK_CAP_NFC, false); /* lost during background work */
+    TEST_ASSERT_EQUAL_HEX32(0, module_core_caps(&s_c));
+    module_core_confirm(&s_c, STARK_CAP_IR_TX | STARK_CAP_IR_RX, true);
+    (void)module_core_list(&s_c, list, 4);
+    TEST_ASSERT_EQUAL(STARK_MODULE_KNOWN, list[2].state);
+    TEST_ASSERT_EQUAL(STARK_MODULE_ABSENT, list[3].state);
+    module_core_confirm(&s_c, STARK_CAP_NFC, true); /* restored */
+    TEST_ASSERT_EQUAL_HEX32(STARK_CAP_NFC | STARK_CAP_IR_TX | STARK_CAP_IR_RX,
+                            module_core_caps(&s_c));
+    stark_module_entry_t two[2];
+    TEST_ASSERT_EQUAL(4, module_core_list(&s_c, two, 2)); /* a short list stops at the slots */
+}
+
 static uint32_t s_seed = 0x0DDBA11u;
 static uint32_t rnd(void)
 {
@@ -364,6 +402,7 @@ int main(void)
     RUN_TEST(test_persistent_corruption_is_accepted_as_generic);
     RUN_TEST(test_removal_during_read);
     RUN_TEST(test_list_limits);
+    RUN_TEST(test_providers);
     RUN_TEST(test_random_ticks_hold_invariants);
     return UNITY_END();
 }

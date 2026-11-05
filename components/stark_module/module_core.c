@@ -2,6 +2,7 @@
  * module_core.c — discovery and capability state (module_core.h). Pure.
  */
 #include "module_core.h"
+#include <stdio.h>
 #include <string.h>
 
 /* An exclusive capability can have only one provider on the bus (the PN532
@@ -223,15 +224,41 @@ uint32_t module_core_caps(module_core_t *c)
     return caps;
 }
 
+void module_core_provide(module_core_t *c, stark_module_kind_t kind, const char *name,
+                         uint32_t caps)
+{
+    lock(c);
+    size_t max = sizeof c->provider / sizeof c->provider[0];
+    if (c->n_providers < max) {
+        c->provider[c->n_providers].kind = kind;
+        c->provider[c->n_providers].name = name;
+        c->provider[c->n_providers].caps = caps;
+        c->n_providers++;
+    }
+    unlock(c);
+}
+
 size_t module_core_list(module_core_t *c, stark_module_entry_t *out, size_t max)
 {
     lock(c);
-    for (size_t i = 0; out != NULL && i < c->n && i < max; i++) {
-        out[i] = c->slot[i].e;
-        out[i].confirmed = c->slot[i].e.declared & c->confirmed;
+    size_t count = 0;
+    for (size_t i = 0; out != NULL && i < c->n && count < max; i++) {
+        out[count] = c->slot[i].e;
+        out[count].confirmed = c->slot[i].e.declared & c->confirmed;
+        count++;
     }
+    for (size_t i = 0; out != NULL && i < c->n_providers && count < max; i++) {
+        stark_module_entry_t *e = &out[count++];
+        memset(e, 0, sizeof *e);
+        e->kind = c->provider[i].kind;
+        e->declared = c->provider[i].caps;
+        e->confirmed = c->provider[i].caps & c->confirmed;
+        e->state = e->confirmed != 0 ? STARK_MODULE_KNOWN : STARK_MODULE_ABSENT;
+        (void)snprintf(e->name, sizeof e->name, "%s", c->provider[i].name);
+    }
+    size_t total = c->n + c->n_providers;
     unlock(c);
-    return c->n;
+    return total;
 }
 
 static module_slot_t *leased(module_core_t *c, const stark_module_lease_t *l)

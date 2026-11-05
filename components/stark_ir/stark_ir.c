@@ -261,6 +261,11 @@ stark_err_t stark_ir_init(void)
     return STARK_OK;
 }
 
+bool stark_ir_fitted(void)
+{
+    return s_fitted;
+}
+
 stark_err_t stark_ir_rx_start(void)
 {
     if (!s_fitted) {

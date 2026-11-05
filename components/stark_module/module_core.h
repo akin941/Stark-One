@@ -45,6 +45,12 @@ typedef struct {
     module_io_t io;
     module_slot_t slot[STARK_MODULE_SLOTS];
     size_t n;
+    struct {
+        stark_module_kind_t kind;
+        const char *name;
+        uint32_t caps;
+    } provider[STARK_MODULE_ENTRIES - STARK_MODULE_SLOTS];
+    size_t n_providers;
     uint32_t confirmed; /* what drivers have confirmed */
     uint32_t caps;      /* effective */
 } module_core_t;
@@ -61,6 +67,9 @@ uint32_t module_core_tick(module_core_t *c);
 /* True if the effective capabilities changed. */
 bool module_core_confirm(module_core_t *c, uint32_t caps, bool present);
 uint32_t module_core_caps(module_core_t *c);
+void module_core_provide(module_core_t *c, stark_module_kind_t kind, const char *name,
+                         uint32_t caps);
+/* Copies up to max entries: the slots, then the providers; returns how many exist. */
 size_t module_core_list(module_core_t *c, stark_module_entry_t *out, size_t max);
 
 /* stark_module.h's arbitration, purely. */

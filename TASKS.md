@@ -4137,6 +4137,10 @@ Regression: every `v03-*`, `v04-*` scenario.
 2. No field while idle (asserted); protocol files are not in the diff beyond the listed ones.
 3. All earlier IR/NFC host tests and scenarios pass unchanged.
 
+**As built.** Providers are listed after the slots. A device at 0x24 that answers and is
+not a usable reader logs once and stays absent. An idle reader that goes away reads
+`LOST`, as an app-open one does.
+
 **Security.** The field rule of ADR-0020 §5 stands. **Budget.** ≤ 500 B flash; no new
 task; idle bus load ≤ one address probe per 2 s. **Physical HIL (V1).** Module unplugged
 and replugged idle; real PN532 power-up time after insertion.

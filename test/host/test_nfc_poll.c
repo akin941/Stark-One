@@ -101,6 +101,28 @@ static void test_recover_due_wraps(void)
     TEST_ASSERT_TRUE(nfc_poll_recover_due(&s_p, UINT32_MAX - 100 + NFC_POLL_RECOVER_MS));
 }
 
+static void test_idle_steps(void)
+{
+    nfc_idle_t s = {0};
+    /* absent: nothing until it answers */
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, false, false));
+    TEST_ASSERT_EQUAL(NFC_IDLE_DETECT, nfc_idle_step(&s, true, false));
+    /* ready and answering: nothing */
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, true, true));
+    /* one miss is forgiven */
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, false, true));
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, true, true));
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, false, true));
+    /* two in a row lose it, and the count starts over */
+    TEST_ASSERT_EQUAL(NFC_IDLE_LOST, nfc_idle_step(&s, false, true));
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, false, true));
+    TEST_ASSERT_EQUAL(NFC_IDLE_LOST, nfc_idle_step(&s, false, true));
+    /* a miss count does not survive into the absent state */
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, false, true));
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, false, false));
+    TEST_ASSERT_EQUAL(NFC_IDLE_NONE, nfc_idle_step(&s, false, true));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -109,5 +131,6 @@ int main(void)
     RUN_TEST(test_replaced_without_a_gap);
     RUN_TEST(test_module_lost_and_back);
     RUN_TEST(test_recover_due_wraps);
+    RUN_TEST(test_idle_steps);
     return UNITY_END();
 }
