@@ -760,3 +760,85 @@ gates, and `docs/bringup/v1-nfc.md` (STARK-0405) is written now and filled in at
 
 **Revisit trigger:** an esp-emu release with an I²C device model, the V1 prototype, or a
 module other than the PN532 (ST25R-class) being chosen.
+
+---
+
+## ADR-0021 — V0.5 module bus: protocol-verified against a test-only fake 24C02, physical module bus at V1
+
+**Status:** accepted (owner decision, 2026-11-05). Applies ADR-0017 to V0.5 the way
+ADR-0019 and ADR-0020 applied it to V0.3 and V0.4. Closes the V0.5 half of ADR-0009.
+
+**Context.** ROADMAP V0.5 makes hardware modules discoverable: an ID EEPROM per slot,
+capability bits, `caps_required`, gated apps, IR and NFC retrofitted, an inspector. No
+connector, EEPROM or second module exists before the V1 prototype. esp-emu 0.44.0 has no
+I²C device model. Reading the authoritative hardware documents gives this topology:
+
+* **IR is onboard.** `IR_TX`/`IR_RX` are fixed GPIOs (HARDWARE §2.2), not connector pins,
+  and the IR front-end is on the V1 PCB (HARDWARE §8).
+* **NFC is a detachable off-the-shelf reader on the shared I²C bus** (HARDWARE §3, §7;
+  not on the §8 PCB list). A PN532 breakout has no ID EEPROM; only the chip's own answer
+  at 0x24 identifies it.
+* **The connector has no presence pin** (HARDWARE §6). An empty slot and a module without
+  an EEPROM look the same on the bus.
+* **The 25 usable GPIOs are all spent** (HARDWARE §1, §2). Slot 0 can use the pins
+  reserved for Sub-GHz (`SUBGHZ_CS` 40, `GDO0` 41, `GDO2` 42) as `MOD_CS`, `MOD_IRQ0/1`.
+  `MOD_EN` and a second slot's chip select and IRQ lines have no GPIO.
+
+**Decision.**
+1. **Two levels of completion.** *V0.5 complete* means **software / module-protocol
+   verified**: descriptor format, discovery, hotplug state machine, capabilities, app
+   gating, arbitration logic, the IR/NFC retrofit, the inspector, and error and recovery
+   behaviour. It never means a real module was plugged in. ROADMAP V0.5 exit 3, two
+   modules sharing SPI without corrupting the display, is physical: it **becomes a V1 HIL
+   gate** (ROADMAP V1 exit 11) and is not removed. Its software half is the arbitration
+   logic.
+2. **A capability counts only when a driver in this firmware confirms it.** A descriptor
+   *declares* capabilities; `stark_module_confirm()` *confirms* them; only confirmed,
+   unconflicted capabilities are effective and reach `caps_required`. A descriptor is
+   device metadata. It is not a credential, grants nothing, and is never executed:
+   nothing is loaded from it, its strings are sanitised, and the firmware has no way to
+   write an EEPROM.
+3. **Retrofit by provider, not by a new topology.** Entries in the module table come from
+   three providers: *onboard* (IR, confirmed by `stark_ir` when the board has its pins),
+   *bus device* (the PN532, confirmed by `stark_nfc` from the chip's answer, with or
+   without an EEPROM) and *slot* (an ID EEPROM). A slot declaring NFC does not turn NFC on;
+   it is shown as declared until the PN532 answers. IR and NFC protocol code is unchanged.
+4. **Exit 2 under this topology.** "Unknown" EEPROM content gives a generic entry with no
+   capabilities. An absent EEPROM gives a slot entry reading "no ID" with no capabilities,
+   because a module without an EEPROM cannot be told from an empty slot. Neither ever
+   fails the boot.
+5. **Pins.** Slot 0 = EEPROM 0x50, `MOD_CS` 40, `MOD_IRQ0` 41, `MOD_IRQ1` 42. Slot 1 =
+   EEPROM 0x51, identification only: no chip select or IRQ lines on this board, so an SPI
+   claim is refused. `MOD_EN` is unassigned (the prototype ties it high). The arbitration
+   core takes its pin table by injection and is tested with two fully wired slots. Which
+   pins a second wired slot and `MOD_EN` get is a V1 hardware decision, recorded as a risk
+   (ARCHITECTURE §13), not guessed here.
+6. **The fake 24C02 is test-only.** `test/fake/fake_24c02.c` models the chip as seen over
+   I²C: address ACK/NACK per device, the word-address pointer with auto-increment and
+   wrap, and fault switches. Every test runs production API → discovery → descriptor
+   parser → transport seam → fake. It is linked by the host tests and by the test image's
+   substitute `stark_module_transport`; `check_emu_image.py` allows exactly that third
+   substitution. Production code has no fake mode and no simulator branch (ADR-0010).
+7. **The emulator is integration evidence only.** The production image shows the empty
+   bus. The test image shows hotplug, the launcher, the inspector and the IR/NFC apps
+   working together. Neither is evidence about connectors, pull-ups, power or SPI signals.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| A physical breadboard as a V0.5 prerequisite | Owner decision; hardware is V1 |
+| Capabilities effective from the descriptor alone | A corrupt or wrong EEPROM would enable an app with no hardware behind it (owner: descriptor is not authorization) |
+| Requiring an EEPROM for NFC | HARDWARE names an off-the-shelf PN532 module, which has none |
+| Moving IR to the connector | Contradicts HARDWARE §2.2 and §8 |
+| Assigning `MOD_EN` and slot 1 lines from the V0.7 lab UART or strapping pins now | A hardware trade-off with no consumer before V0.6; decided with the V1 board |
+| Reading descriptors only at boot | ROADMAP requires hotplug |
+| GPIO strapping for the module ID (ADR-0009 alternative) | Only a few IDs, no revision or name, and no free pins |
+
+**Consequences.** The launcher dims NFC on an empty bus instead of opening a "no module"
+screen; the screen remains for a module lost while the app is open. The V0.5 report
+separates software, fake-device, host, emulator and deferred physical evidence.
+`docs/bringup/v1-modules.md` (STARK-0505) is written now and filled in at V1.
+
+**Revisit trigger:** an esp-emu release with an I²C device model, the V1 board's pin
+allocation, or a module that must expose more than one slot.

@@ -266,6 +266,13 @@ claimed below V1.
 
 ---
 
+### 3.8 V0.5 — module bus (ADR-0021)
+
+V0.5 completion means **software / module-protocol verified**; a real module, connector
+or shared-SPI signal is never claimed below V1. Host tests run production discovery over
+the test-only fake 24C02. The production image shows an empty bus; the test image
+substitutes `stark_module_transport`. STARK-0505 fills in the coverage table and evidence.
+
 ## 4. Hardware-in-the-loop (future tier, V1 prototype)
 
 Not a V0.x prerequisite. When the breadboard exists (ROADMAP "V1 prototype"):

@@ -175,7 +175,7 @@ holding it at reset must keep its firmware-download meaning.
 
 ---
 
-## 6. Expansion / module bus (V0.5 target, defined here for pin discipline)
+## 6. Expansion / module bus (V0.5; pinout frozen by STARK-0501, ADR-0021)
 
 A single 12-pin connector carrying:
 
@@ -193,6 +193,17 @@ Identification: a 24C02-class EEPROM at a fixed I²C address per slot holding a 
 descriptor (module ID, revision, capability bits). `stark_module` reads it at boot and
 publishes capabilities; apps enable themselves accordingly. This is what makes "plug in
 a Sub-GHz module and the radio apps light up" work without firmware edits.
+
+GPIO allocation (ADR-0021 §5):
+
+| Slot | ID EEPROM | `MOD_CS` | `MOD_IRQ0` | `MOD_IRQ1` | `MOD_EN` |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 0x50 | 40 (`SUBGHZ_CS`) | 41 (`SUBGHZ_GDO0`) | 42 (`SUBGHZ_GDO2`) | none: tied high on the prototype |
+| 1 | 0x51 | none: identification only | none | none | none |
+
+All 25 usable GPIOs are already allocated (§1, §2), and the connector has no presence
+pin. `MOD_EN` and the lines of a second wired slot are open until the V1 board. IR stays
+onboard on its own pins; the PN532 is a bus device at 0x24 with no EEPROM of its own.
 
 ---
 
