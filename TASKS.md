@@ -3886,6 +3886,9 @@ tests: pointer wrap, 8-byte reads, every fault.
    HARDWARE §6 document the format and pinout.
 4. `grep` proves no EEPROM write path exists under `components/`.
 
+**As built.** Fault `count` 0 clears. The parser needs at least 32 bytes and ignores
+anything after them. `module_desc_caps_supported()` allows unknown bits.
+
 **Security.** Input is untrusted; names are sanitised before any log or screen.
 **Budget.** Flash ≤ 1 kB; no static RAM. **Physical HIL (V1).** Programming and reading a
 real 24C02, its write-cycle time, and address straps.

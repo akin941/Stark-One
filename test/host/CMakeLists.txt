@@ -639,6 +639,20 @@ target_include_directories(nfc_core_nocov PRIVATE ${STARK_COMPONENTS}/stark_nfc
     ${STARK_COMPONENTS}/stark_nfc/include)
 target_compile_options(nfc_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
 
+# The module descriptor (STARK-0501, ADR-0021) and the test-only fake 24C02.
+set(FAKE_24C02 ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_24c02.c)
+set(MODULE_INCLUDES ${STARK_COMPONENTS}/stark_module ${STARK_COMPONENTS}/stark_module/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+foreach(mod_test module_desc fake_24c02)
+    add_executable(run_${mod_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${mod_test}.c
+        ${STARK_COMPONENTS}/stark_module/module_desc.c ${FAKE_24C02})
+    target_include_directories(run_${mod_test}_tests PRIVATE ${MODULE_INCLUDES})
+    target_compile_options(run_${mod_test}_tests PRIVATE ${OUR_C_FLAGS})
+    target_link_options(run_${mod_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+    target_link_libraries(run_${mod_test}_tests PRIVATE unity)
+    add_test(NAME stark_${mod_test}_tests COMMAND run_${mod_test}_tests)
+endforeach()
+
 # The real NFC app on the UI port (STARK-0404) with a fake stark_nfc.
 add_executable(run_ui_nfc_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_nfc.c

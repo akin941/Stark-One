@@ -43,6 +43,7 @@ LAYERS = {
     "stark_settings": 3,  # L2 core + L3 NVS port
     "stark_ir": 3,  # L2 codec core + L3 RMT port (STARK-0301…0304)
     "stark_nfc": 3,  # L2 NFC core + L3 PN532 task (STARK-0401…0405)
+    "stark_module": 3,  # L2 descriptor and discovery core + L3 task (STARK-0501…0505)
     "stark_ui": 4,
     "stark_app": 4,
 }
