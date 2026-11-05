@@ -52,6 +52,17 @@ void stark_nfc_transport_close(void)
     s_open = false;
 }
 
+stark_err_t stark_nfc_transport_present(uint32_t timeout_ms)
+{
+    (void)timeout_ms;
+    if (!s_open) {
+        return STARK_ERR_STATE;
+    }
+    follow_pokes();
+    uint8_t status;
+    return fake_pn532_read(&status, 1); /* the fake's NACK and bus faults, as a probe sees them */
+}
+
 stark_err_t stark_nfc_transport_write(const uint8_t *buf, size_t len, uint32_t timeout_ms)
 {
     (void)timeout_ms;

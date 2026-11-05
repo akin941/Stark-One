@@ -18,6 +18,11 @@ config STARK_NFC_POLL_MS
     range 100 2000
     default 250
 
+config STARK_NFC_IDLE_MS
+    int "NFC: presence check period while no app polls (ms)"
+    range 500 10000
+    default 2000
+
 config STARK_NFC_TASK_PRIO
     int "NFC task priority"
     range 1 4

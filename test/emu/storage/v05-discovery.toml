@@ -19,6 +19,7 @@ presses = [
 ]
 expect = [
     "module: slot 0 no id",
+    "module: caps 0x00000007",
     "module: slot 0 NFC carrier id=0x0101 rev=2 caps=0x00000004",
     "module: slot 0 SPI lab module id=0x0202 rev=1 caps=0x00000018",
     "module: slot 1 generic (blank)",
@@ -27,4 +28,4 @@ expect = [
     "module: slot 0 no id",
     'menu: sel=2 "Diagnostics"',
 ]
-forbid = ["module: caps", "panic"]
+forbid = ["module: caps 0x00000000", "panic"]

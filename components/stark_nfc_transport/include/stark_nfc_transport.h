@@ -16,5 +16,7 @@
 
 stark_err_t stark_nfc_transport_open(void);
 void stark_nfc_transport_close(void);
+/* An address-only check, quiet on a NACK: is anything there? (STARK-0504) */
+stark_err_t stark_nfc_transport_present(uint32_t timeout_ms);
 stark_err_t stark_nfc_transport_write(const uint8_t *buf, size_t len, uint32_t timeout_ms);
 stark_err_t stark_nfc_transport_read(uint8_t *buf, size_t len, uint32_t timeout_ms);

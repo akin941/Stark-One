@@ -49,3 +49,16 @@ bool nfc_poll_recover_due(const nfc_poll_t *p, uint32_t now_ms);
 
 /* The outcome of that attempt. */
 nfc_poll_event_t nfc_poll_recovered(nfc_poll_t *p, stark_err_t err, uint32_t now_ms);
+
+/*
+ * While no app polls (STARK-0504): an answer from an absent reader means detect
+ * it; NFC_IDLE_MISSES misses in a row lose a ready one. Field off throughout.
+ */
+#define NFC_IDLE_MISSES 2u
+
+typedef enum { NFC_IDLE_NONE, NFC_IDLE_DETECT, NFC_IDLE_LOST } nfc_idle_action_t;
+typedef struct {
+    uint8_t misses;
+} nfc_idle_t;
+
+nfc_idle_action_t nfc_idle_step(nfc_idle_t *s, bool answered, bool ready);

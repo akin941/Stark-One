@@ -182,4 +182,5 @@ void app_main(void)
     if (err != STARK_OK) {
         STARK_LOGE("boot", "module init failed: %s", stark_err_str(err));
     }
+    module_bridge_start();
 }

@@ -1,0 +1,21 @@
+# STARK-0504 on the test image: no app is open, yet the capability follows the
+# reader both ways (the fake PN532 leaves and returns), with the RF field never on.
+# IR stays confirmed throughout. Integration evidence: unplugging a real module and
+# its power-up time are V1.
+name = "emu-v05-nfc-module"
+image = "storage"
+end_ms = 11000
+heap_min = 200000
+pokes = [
+    { at_ms = 1500, var = "emu_nfc_fault", value = 1 },  # no device
+    { at_ms = 7000, var = "emu_nfc_fault", value = 0 },
+]
+expect = [
+    "nfc: pn532 fw 1.6",
+    "module: caps 0x00000007",
+    "nfc: module lost",
+    "module: caps 0x00000003",
+    "nfc: pn532 fw 1.6",
+    "module: caps 0x00000007",
+]
+forbid = ["nfc: field on", "nfc init failed"]

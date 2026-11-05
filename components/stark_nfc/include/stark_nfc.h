@@ -29,7 +29,7 @@ typedef enum {
     STARK_NFC_NOT_FITTED, /* the board has no I2C pins */
     STARK_NFC_ABSENT,     /* nothing (or not a PN532) answers at 0x24 */
     STARK_NFC_READY,
-    STARK_NFC_LOST /* answered at boot, stopped answering (STARK-0403) */
+    STARK_NFC_LOST /* answered, then stopped answering (STARK-0403, STARK-0504) */
 } stark_nfc_module_t;
 
 /*
@@ -37,7 +37,9 @@ typedef enum {
  * SAMConfiguration, one passive retry, field off). Logs `nfc: pn532 fw
  * <ver>.<rev>`, `nfc: no module (<err>)`, `nfc: unexpected chip 0x<ic>` or
  * `nfc: not fitted`. A missing module is not an error: returns STARK_OK and
- * stark_nfc_module() says what was found.
+ * stark_nfc_module() says what was found. With an I2C bus the NFC task runs
+ * either way and follows the reader while no app polls (field off, STARK-0504);
+ * each change publishes STARK_NFC_EVT_MODULE.
  */
 stark_err_t stark_nfc_init(void);
 stark_nfc_module_t stark_nfc_module(void);

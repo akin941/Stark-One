@@ -60,3 +60,20 @@ nfc_poll_event_t nfc_poll_recovered(nfc_poll_t *p, stark_err_t err, uint32_t now
     nfc_poll_init(p);
     return NFC_POLL_BACK;
 }
+
+nfc_idle_action_t nfc_idle_step(nfc_idle_t *s, bool answered, bool ready)
+{
+    if (answered) {
+        s->misses = 0;
+        return ready ? NFC_IDLE_NONE : NFC_IDLE_DETECT;
+    }
+    if (!ready) {
+        s->misses = 0;
+        return NFC_IDLE_NONE;
+    }
+    if (++s->misses < NFC_IDLE_MISSES) {
+        return NFC_IDLE_NONE;
+    }
+    s->misses = 0;
+    return NFC_IDLE_LOST;
+}

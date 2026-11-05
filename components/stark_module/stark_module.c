@@ -86,8 +86,8 @@ static void publish_change(void)
 static void log_all(void)
 {
     stark_module_entry_t list[STARK_MODULE_SLOTS];
-    size_t n = module_core_list(&s_core, list, STARK_MODULE_SLOTS);
-    for (size_t i = 0; i < n; i++) {
+    (void)module_core_list(&s_core, list, STARK_MODULE_SLOTS);
+    for (size_t i = 0; i < STARK_MODULE_SLOTS; i++) {
         log_slot(&list[i]);
     }
 }
@@ -100,8 +100,8 @@ static void module_task(void *arg)
         uint32_t changed = module_core_tick(&s_core);
         if (changed != 0) {
             stark_module_entry_t list[STARK_MODULE_SLOTS];
-            size_t n = module_core_list(&s_core, list, STARK_MODULE_SLOTS);
-            for (size_t i = 0; i < n; i++) {
+            (void)module_core_list(&s_core, list, STARK_MODULE_SLOTS);
+            for (size_t i = 0; i < STARK_MODULE_SLOTS; i++) {
                 if ((changed & (UINT32_C(1) << i)) != 0) {
                     log_slot(&list[i]);
                 }
@@ -155,6 +155,13 @@ void stark_module_confirm(uint32_t caps, bool present)
 {
     if (s_lock != NULL && module_core_confirm(&s_core, caps, present)) {
         publish_change();
+    }
+}
+
+void stark_module_provide(stark_module_kind_t kind, const char *name, uint32_t caps)
+{
+    if (s_lock != NULL) {
+        module_core_provide(&s_core, kind, name, caps);
     }
 }
 
