@@ -51,9 +51,9 @@ static const module_io_t k_io = {io_probe, io_read, io_lock, io_unlock, NULL};
 
 void setUp(void)
 {
-    static const uint8_t addrs[] = {A0, A1};
+    static const module_wiring_t wires[] = {{A0, 40, 41, 42}, {A1, 38, 39, 3}};
     fake_24c02_reset();
-    module_core_init(&s_c, &k_io, addrs, 2);
+    module_core_init(&s_c, &k_io, wires, 2);
     s_calls = 0;
 }
 void tearDown(void)

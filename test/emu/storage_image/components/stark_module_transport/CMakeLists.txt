@@ -4,6 +4,7 @@ idf_component_register(
     SRCS
         "module_transport_fake.c"
         "../../../../fake/fake_24c02.c"
+        "module_traffic.c"
     INCLUDE_DIRS
         "../../../../../components/stark_module_transport/include"
     PRIV_INCLUDE_DIRS
@@ -11,4 +12,8 @@ idf_component_register(
         "../../../../../components/stark_module/include"
     REQUIRES
         stark_err
+    PRIV_REQUIRES
+        stark_log
+        stark_module
+        freertos
 )

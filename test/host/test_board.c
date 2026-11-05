@@ -26,6 +26,8 @@ static stark_board_pins_t good_map(void)
         .ir_tx = 47,
         .ir_rx = 48,
         .tft_spi_hz = 20000000,
+        .module = {{.cs = 40, .irq0 = 41, .irq1 = 42, .en = -1, .eeprom_addr = 0x50},
+                   {.cs = -1, .irq0 = -1, .irq1 = -1, .en = -1, .eeprom_addr = 0x51}},
     };
     return p;
 }
@@ -33,6 +35,23 @@ static stark_board_pins_t good_map(void)
 void test_stark_board_validate_accepts_good_map(void)
 {
     stark_board_pins_t p = good_map();
+    TEST_ASSERT_EQUAL(STARK_OK, stark_board_validate(&p));
+}
+
+/* STARK-0503: module lines join the map's collision and reserved checks. */
+void test_stark_board_validate_checks_module_slots(void)
+{
+    stark_board_pins_t p = good_map();
+    p.module[1].cs = p.module[0].cs; /* crossed chip selects */
+    TEST_ASSERT_NOT_EQUAL(STARK_OK, stark_board_validate(&p));
+    p = good_map();
+    p.module[0].irq0 = p.tft_cs; /* a collision with the panel */
+    TEST_ASSERT_NOT_EQUAL(STARK_OK, stark_board_validate(&p));
+    p = good_map();
+    p.module[1].en = 30; /* reserved: flash/PSRAM */
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, stark_board_validate(&p));
+    p = good_map();
+    p.module[1].cs = 38; /* a second wired slot is legal when the pin is free */
     TEST_ASSERT_EQUAL(STARK_OK, stark_board_validate(&p));
 }
 
@@ -78,6 +97,7 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_stark_board_validate_accepts_good_map);
     RUN_TEST(test_stark_board_validate_rejects_colliding_map);
+    RUN_TEST(test_stark_board_validate_checks_module_slots);
     RUN_TEST(test_stark_board_validate_rejects_reserved_pin);
     RUN_TEST(test_stark_board_validate_checks_ir_pins);
     RUN_TEST(test_stark_board_validate_rejects_null);

@@ -19,9 +19,19 @@ typedef struct {
     void *ctx;
 } module_io_t;
 
+/* One slot's wiring (stark_board_module_slot_t, injected so that a two-slot
+ * board can be tested on a board table that has one). */
+typedef struct {
+    uint8_t addr;
+    int cs, irq0, irq1;
+} module_wiring_t;
+
 typedef struct {
     stark_module_entry_t e;
-    uint8_t addr;
+    module_wiring_t wire;
+    const char *owner; /* holds the claim; NULL when free */
+    uint32_t claimed;  /* the lines it holds */
+    uint32_t gen;      /* changes on removal or replacement: old leases go stale */
     uint8_t misses;
     uint8_t read_errors;
     bool valid;    /* a parsed, supported descriptor (conflict is judged from these) */
@@ -39,7 +49,8 @@ typedef struct {
     uint32_t caps;      /* effective */
 } module_core_t;
 
-void module_core_init(module_core_t *c, const module_io_t *io, const uint8_t *addrs, size_t n);
+void module_core_init(module_core_t *c, const module_io_t *io, const module_wiring_t *wires,
+                      size_t n);
 
 /*
  * One polling round: at most one probe and one read per slot. Returns the
@@ -51,3 +62,11 @@ uint32_t module_core_tick(module_core_t *c);
 bool module_core_confirm(module_core_t *c, uint32_t caps, bool present);
 uint32_t module_core_caps(module_core_t *c);
 size_t module_core_list(module_core_t *c, stark_module_entry_t *out, size_t max);
+
+/* stark_module.h's arbitration, purely. */
+stark_err_t module_core_claim(module_core_t *c, uint8_t slot, uint32_t caps, const char *owner,
+                              stark_module_lease_t *out);
+void module_core_release(module_core_t *c, const stark_module_lease_t *l);
+bool module_core_lease_valid(module_core_t *c, const stark_module_lease_t *l);
+stark_err_t module_core_lease_pins(module_core_t *c, const stark_module_lease_t *l, int *cs,
+                                   int *irq0, int *irq1);

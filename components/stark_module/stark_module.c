@@ -11,11 +11,12 @@
 #include "sdkconfig.h"
 #include "stark_event.h"
 #include "stark_log.h"
+#include "stark_board.h"
 #include "stark_module_transport.h"
 
 #define MODULE_CORE 0 /* the UI task runs on core 1 */
 
-static const uint8_t k_addrs[STARK_MODULE_SLOTS] = {0x50, 0x51}; /* HARDWARE.md §6 */
+_Static_assert(STARK_MODULE_SLOTS == STARK_BOARD_MODULE_SLOTS, "one entry per board slot");
 
 static module_core_t s_core;
 static StackType_t s_stack[CONFIG_STARK_MODULE_TASK_STACK / sizeof(StackType_t)];
@@ -116,7 +117,12 @@ stark_err_t stark_module_init(void)
         return STARK_ERR_STATE;
     }
     s_lock = xSemaphoreCreateMutexStatic(&s_lock_buf);
-    module_core_init(&s_core, &k_io, k_addrs, STARK_MODULE_SLOTS);
+    module_wiring_t wires[STARK_MODULE_SLOTS];
+    for (size_t i = 0; i < STARK_MODULE_SLOTS; i++) {
+        const stark_board_module_slot_t *b = &stark_board_pins()->module[i];
+        wires[i] = (module_wiring_t){b->eeprom_addr, b->cs, b->irq0, b->irq1};
+    }
+    module_core_init(&s_core, &k_io, wires, STARK_MODULE_SLOTS);
     stark_err_t err = stark_module_transport_open();
     if (err != STARK_OK) {
         STARK_LOGI("module", "not fitted (%s)", stark_err_str(err));
@@ -150,4 +156,34 @@ void stark_module_confirm(uint32_t caps, bool present)
     if (s_lock != NULL && module_core_confirm(&s_core, caps, present)) {
         publish_change();
     }
+}
+
+stark_err_t stark_module_claim(uint8_t slot, uint32_t caps, const char *owner,
+                               stark_module_lease_t *out)
+{
+    if (s_lock == NULL) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = module_core_claim(&s_core, slot, caps, owner, out);
+    if (err == STARK_OK) {
+        STARK_LOGI("module", "slot %u claimed by %s", (unsigned)slot, owner);
+    }
+    return err;
+}
+
+void stark_module_release(const stark_module_lease_t *l)
+{
+    if (s_lock != NULL) {
+        module_core_release(&s_core, l);
+    }
+}
+
+bool stark_module_lease_valid(const stark_module_lease_t *l)
+{
+    return s_lock != NULL && module_core_lease_valid(&s_core, l);
+}
+
+stark_err_t stark_module_lease_pins(const stark_module_lease_t *l, int *cs, int *irq0, int *irq1)
+{
+    return s_lock != NULL ? module_core_lease_pins(&s_core, l, cs, irq0, irq1) : STARK_ERR_STATE;
 }

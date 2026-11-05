@@ -131,6 +131,22 @@ def check_component(name, deps):
     return errors
 
 
+# Who may put a device on SPI2 (ARCHITECTURE.md §8): the panel and microSD go
+# through esp_lcd and sdspi; only this file calls the driver directly (STARK-0503).
+SPI_USERS = {"components/stark_module/stark_module_spi.c"}
+
+
+def check_spi_users(root):
+    errors = []
+    for pattern in ("components/**/*.c", "apps/**/*.c", "main/*.c"):
+        for path in sorted(root.glob(pattern)):
+            rel = path.relative_to(root).as_posix()
+            if rel not in SPI_USERS and re.search(r"\bspi_(device_|bus_add_device)",
+                                                  path.read_text()):
+                errors.append("%s: SPI2 devices go through stark_module (ARCHITECTURE.md §8)" % rel)
+    return errors
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Check component layer rules.")
     ap.add_argument("--root", default=Path(__file__).resolve().parent.parent, type=Path)
@@ -148,6 +164,7 @@ def main(argv=None):
         checked += 1
         errors += ["%s: %s" % (cmake.relative_to(args.root), e)
                    for e in check_component(name, deps)]
+    errors += check_spi_users(args.root)
     for e in errors:
         print("ERROR: " + e, file=sys.stderr)
     if errors:

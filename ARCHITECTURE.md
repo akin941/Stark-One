@@ -887,6 +887,13 @@ publish `STARK_SYS_MODULE`; `main/module_bridge.c` passes them to
 are missing. Capability bits are in `stark_caps.h`; the format in
 [docs/module-format.md](docs/module-format.md).
 
+**Arbitration (STARK-0503).** A driver reaches a slot's chip select and IRQ lines only
+through a claim: one owner per slot, a known module that declares those lines, and lines
+the board wires. A removal or replacement changes the slot's generation, so every old
+lease, and every SPI transfer on it, returns `STARK_ERR_STATE` and nothing reaches the
+bus. Module chip selects are pulled up from `stark_board_init()`. Whether two real modules
+share SPI cleanly with the panel is ROADMAP V1 exit 11.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -952,11 +959,11 @@ asserts on the **presence and ordering** of that line, never on the number in it
 
 **Rules:**
 
-* SPI2 has exactly two users (ADR-0008/0018): `stark_display` (panel transactions, UI
-  task) and `stark_storage_medium` (the microSD, called only from `stark_storage` under
-  its mutex — the storage task or an app worker). ESP-IDF's `spi_master` bus lock keeps
-  their transactions apart; no other code calls `spi_device_*` on SPI2, and a future
-  SPI2 device goes through `stark_module` arbitration (V0.5).
+* SPI2 has three users (ADR-0008/0018/0021): `stark_display` (panel transactions, UI
+  task), `stark_storage_medium` (the microSD, called only from `stark_storage` under
+  its mutex — the storage task or an app worker) and `stark_module_spi.c` (a claimed
+  module's driver, STARK-0503). ESP-IDF's `spi_master` bus lock keeps their transactions
+  apart; `check_layers.py` fails any other direct SPI2 use.
 * Only the event bus crosses task boundaries. No shared mutable globals between tasks.
 * All allocation happens during init. The render and input paths are allocation-free.
 * Static memory budget V0: band buffers 51.2 kB + event ring 2 kB + UI/app state < 8 kB.

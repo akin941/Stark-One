@@ -6,13 +6,16 @@ idf_component_register(
         "module_desc.c"
         "module_core.c"
         "stark_module.c"
+        "stark_module_spi.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
         stark_err
     PRIV_REQUIRES
         stark_event
+        stark_board
         stark_log
+        esp_driver_spi
         stark_module_transport
         freertos
 )

@@ -17,7 +17,15 @@
  *   _Static_assert(STARK_KEY_COUNT == STARK_KEY_BACK + 1, "...");
  * — rather than redefine it, so the two can never silently drift apart.
  */
-#define STARK_KEY_COUNT 6
+#define STARK_KEY_COUNT          6
+
+#define STARK_BOARD_MODULE_SLOTS 2
+
+/* One module slot (HARDWARE.md §6); a line the board does not wire is -1. */
+typedef struct {
+    int cs, irq0, irq1, en;
+    uint8_t eeprom_addr;
+} stark_board_module_slot_t;
 
 typedef struct {
     int sclk, mosi, miso; /* shared SPI2 bus */
@@ -28,6 +36,7 @@ typedef struct {
     int i2c_sda, i2c_scl; /* -1 when absent */
     int ir_tx, ir_rx; /* RMT TX -> IR LED driver, RMT RX <- 38 kHz demodulator; -1 when absent */
     uint32_t tft_spi_hz;
+    stark_board_module_slot_t module[STARK_BOARD_MODULE_SLOTS];
 } stark_board_pins_t;
 
 /* Returns the active board variant's pin map (selected by Kconfig). */

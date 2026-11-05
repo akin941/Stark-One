@@ -14,6 +14,8 @@
 
 #define SLOTS 2
 
+void module_traffic_start(void); /* module_traffic.c */
+
 volatile uint8_t emu_mod_slot0;
 volatile uint8_t emu_mod_slot1;
 volatile uint8_t emu_mod_fault;
@@ -50,6 +52,7 @@ static void follow_pokes(void)
 stark_err_t stark_module_transport_open(void)
 {
     fake_24c02_reset();
+    module_traffic_start();
     return STARK_OK;
 }
 
