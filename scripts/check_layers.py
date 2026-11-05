@@ -33,6 +33,7 @@ LAYERS = {
     "stark_log": 1,
     "stark_storage_medium": 1,  # hardware port (ADR-0018 §2)
     "stark_nfc_transport": 1,  # the PN532's I2C port (ADR-0020 §2)
+    "stark_module_transport": 1,  # ID EEPROMs' I2C port (ADR-0021 §6)
     "stark_gfx": 2,
     "stark_event": 3,  # L2 core + L3 port
     "stark_input": 3,  # L2 core + L3 service
@@ -59,6 +60,7 @@ SIDEWAYS = {
     ("stark_settings", "stark_event"),  # change events (STARK-0204)
     ("stark_ir", "stark_event"),  # capture / transmit events (STARK-0303)
     ("stark_nfc", "stark_event"),  # tag / module events (STARK-0403)
+    ("stark_module", "stark_event"),  # table and capability changes (STARK-0502)
 }
 
 PURE = {"stark_err", "stark_gfx"}

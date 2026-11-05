@@ -1,0 +1,30 @@
+# STARK-0502 on the test image, whose stark_module_transport is the test-only
+# fake 24C02 (ADR-0021 §6): production discovery follows pokes for insertion,
+# corrupt content, replacement, a bus fault and recovery, and removal, while the
+# UI keeps responding. Integration evidence, not connector evidence.
+name = "emu-v05-discovery"
+image = "storage"
+end_ms = 16000
+heap_min = 200000
+pokes = [
+    { at_ms = 1000, var = "emu_mod_slot0", value = 1 },   # NFC carrier
+    { at_ms = 4000, var = "emu_mod_slot0", value = 2 },   # replaced: SPI lab module
+    { at_ms = 7000, var = "emu_mod_slot1", value = 15 },  # blank chip
+    { at_ms = 9500, var = "emu_mod_fault", value = 1 },   # the bus stops answering
+    { at_ms = 12000, var = "emu_mod_fault", value = 0 },  # recovery
+    { at_ms = 14000, var = "emu_mod_slot0", value = 0 },  # removed
+]
+presses = [
+    { key = "DOWN", at_ms = 15200, hold_ms = 60 },
+]
+expect = [
+    "module: slot 0 no id",
+    "module: slot 0 NFC carrier id=0x0101 rev=2 caps=0x00000004",
+    "module: slot 0 SPI lab module id=0x0202 rev=1 caps=0x00000018",
+    "module: slot 1 generic (blank)",
+    "module: slot 0 no id",
+    "module: slot 0 SPI lab module id=0x0202 rev=1 caps=0x00000018",
+    "module: slot 0 no id",
+    'menu: sel=2 "Diagnostics"',
+]
+forbid = ["module: caps", "panic"]

@@ -32,6 +32,7 @@ idf_component_register(
         stark_main.c
         app_registry.c
         storage_ui.c
+        module_bridge.c
         settings_apply.c
     INCLUDE_DIRS
         "."
@@ -47,6 +48,7 @@ idf_component_register(
         stark_event
         stark_input
         stark_ir
+        stark_module
         stark_nfc
         stark_settings
         stark_storage

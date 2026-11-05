@@ -321,6 +321,16 @@ target_compile_options(run_ui_launcher_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_launcher_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_launcher_tests PRIVATE unity)
 
+# caps_required on the UI port (STARK-0502).
+add_executable(run_ui_app_caps_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_app_caps.c
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_app_caps_tests BEFORE PRIVATE ${UI_PORT_INCLUDES})
+target_compile_options(run_ui_app_caps_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_app_caps_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_app_caps_tests PRIVATE unity)
+
 # The real Display Test screen on the UI port (STARK-0102).
 add_executable(run_ui_displaytest_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_displaytest.c
@@ -643,9 +653,10 @@ target_compile_options(nfc_core_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZ
 set(FAKE_24C02 ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_24c02.c)
 set(MODULE_INCLUDES ${STARK_COMPONENTS}/stark_module ${STARK_COMPONENTS}/stark_module/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
-foreach(mod_test module_desc fake_24c02)
+foreach(mod_test module_desc fake_24c02 module_core)
     add_executable(run_${mod_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${mod_test}.c
-        ${STARK_COMPONENTS}/stark_module/module_desc.c ${FAKE_24C02})
+        ${STARK_COMPONENTS}/stark_module/module_desc.c
+        ${STARK_COMPONENTS}/stark_module/module_core.c ${FAKE_24C02})
     target_include_directories(run_${mod_test}_tests PRIVATE ${MODULE_INCLUDES})
     target_compile_options(run_${mod_test}_tests PRIVATE ${OUR_C_FLAGS})
     target_link_options(run_${mod_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
@@ -740,6 +751,7 @@ add_test(NAME stark_ui_storage_tests COMMAND run_ui_storage_tests)
 add_test(NAME stark_ui_settings_tests COMMAND run_ui_settings_tests)
 add_test(NAME stark_ui_ir_tests COMMAND run_ui_ir_tests)
 add_test(NAME stark_ui_nfc_tests COMMAND run_ui_nfc_tests)
+add_test(NAME stark_ui_app_caps_tests COMMAND run_ui_app_caps_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)
 add_test(NAME stark_ui_format_tests COMMAND run_ui_format_tests)
 

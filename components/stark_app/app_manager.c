@@ -30,6 +30,7 @@ static const stark_app_t **s_row_app;
 static size_t s_rows;
 static ui_menu_t s_launcher;
 static bool s_ready;
+static uint32_t s_caps; /* effective capabilities (STARK-0502) */
 
 /* The running app, if any, and the on_exit its screen had before launch. */
 static const stark_app_t *s_current;
@@ -121,6 +122,19 @@ static void launch_fail(const char *id, stark_err_t err)
     STARK_LOGE("app", "start %s failed: %s", id, stark_err_str(err));
 }
 
+void stark_app_set_caps(uint32_t caps)
+{
+    if (caps != s_caps) {
+        s_caps = caps;
+        STARK_LOGI("app", "caps 0x%08x", (unsigned)caps);
+    }
+}
+
+bool stark_app_available(const stark_app_t *app)
+{
+    return app != NULL && (app->caps_required & ~s_caps) == 0;
+}
+
 stark_err_t stark_app_launch(const char *id)
 {
     if (!s_ready) {
@@ -133,6 +147,10 @@ stark_err_t stark_app_launch(const char *id)
     }
     if (s_current != NULL) {
         return STARK_ERR_BUSY;
+    }
+    if (!stark_app_available(app)) {
+        STARK_LOGW("app", "%s needs caps 0x%08x", app->id, (unsigned)app->caps_required);
+        return STARK_ERR_NOT_SUPPORTED;
     }
 
     void *state = NULL;

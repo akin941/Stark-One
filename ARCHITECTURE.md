@@ -308,6 +308,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 3 | `STARK_SYS_SETTING` | `stark_settings` (STARK-0204) | the `stark_setting_t` that changed |
 | 4 | `STARK_SYS_IR` | `stark_ir` (STARK-0303) | `STARK_IR_EVT_RX` / `_TX_DONE` / `_TX_FAILED` |
 | 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
+| 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -868,6 +869,24 @@ image substitutes `stark_nfc_transport` with one built on the same fake
 (`check_emu_image.py` allows exactly that and the medium). No production file names the
 fake.
 
+### 6.9f `stark_module` (L3) and `stark_module_transport` (L1) — STARK-0501…0505, ADR-0021
+
+`module_desc.c` and `module_core.c` are pure and host-tested over an injected I/O table.
+`stark_module_transport` is read-only by construction: an address-only probe and a
+word-address read, with no write call. The `stark_module` task (prio 2, 2.5 kB static,
+core 0) polls each slot once a second: at most one probe and one 32-byte read per slot,
+each with a 20 ms timeout, so a round is bounded. The table lock is never held across a
+bus call. Two failed probes remove a module; a descriptor is accepted after two
+identical reads; a known entry survives read errors. Discovery settles at boot in two
+synchronous rounds, then logs `module: slot <n> …` per slot.
+
+A descriptor only declares. `stark_module_confirm()` is a driver's word, through the
+composition root, and only confirmed, unconflicted, known bits are effective. Changes
+publish `STARK_SYS_MODULE`; `main/module_bridge.c` passes them to
+`stark_app_set_caps()`, and `stark_app_launch()` refuses an app whose `caps_required`
+are missing. Capability bits are in `stark_caps.h`; the format in
+[docs/module-format.md](docs/module-format.md).
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -876,7 +895,7 @@ fake.
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
-| `stark_module` + `stark_module_transport` | V0.5 | Planned (ADR-0021, TASKS STARK-0501…0506). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
+| `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery and capabilities implemented (§6.9f, STARK-0501/0502); the rest planned (ADR-0021, TASKS STARK-0503…0506). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
@@ -902,7 +921,8 @@ app_main()
  ├─ stark_diag_init(ui adapter)            – 1 s diagnostics sampler (STARK-0109)
  ├─ stark_storage_init()                   – storage task; mounts in the background (STARK-0201)
  ├─ stark_ir_init()                        – RMT RX channel + IR task, RX off (STARK-0303)
- └─ stark_nfc_init()                       – PN532 detection on the I2C bus, field off (STARK-0402)
+ ├─ stark_nfc_init()                       – PN532 detection on the I2C bus, field off (STARK-0402)
+ └─ stark_module_init()                    – slots read twice, then a 1 s polling task (STARK-0502)
 ```
 
 Since STARK-0017 the UI task (`stark_ui_task`, created by `main`) is the event bus's one
@@ -925,6 +945,7 @@ asserts on the **presence and ordering** of that line, never on the number in it
 | `app_worker` | 4 | 4 kB (static) | The running app's optional background worker, core 0 (STARK-0108); joined before the app's `on_stop` |
 | `stark_ir` | 3 | 3 kB (static) | IR captures: symbols → timings → decode → ring → event (STARK-0303), core 0 |
 | `stark_storage` | 2 | 4 kB (static) | Card mount/probe/retry (STARK-0201), core 0. The only caller of the storage medium |
+| `stark_module` | 2 | 2.5 kB (static) | Module slot polling (STARK-0502), core 0. The only caller of the module transport |
 | `esp_timer` (input) | high | – | 5 ms key sample → publish events. Never blocks. |
 | `esp_timer` (led/buzzer) | high | – | Heartbeat blink, tone sequence steps. |
 | IDLE/main | – | – | Standard IDF. |
@@ -988,9 +1009,9 @@ to set differently (ADR-0010).
   | --- | --- |
   | universal | `stark_err` (any layer may require it; it requires nothing) |
   | L0 | `stark_board` |
-  | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018) |
+  | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018), `stark_nfc_transport` (the PN532's I²C port, ADR-0020), `stark_module_transport` (ID EEPROMs' I²C port, ADR-0021) |
   | L2 | `stark_gfx` (the only all-pure component) |
-  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port) |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port), `stark_nfc` (L2 NFC core + L3 PN532 task), `stark_module` (L2 descriptor and discovery core + L3 task) |
   | L4 | `stark_ui`, `stark_app` |
   | L5 | every `apps/app_*` |
   | root | `main` — the composition root, may require anything |
@@ -1000,7 +1021,9 @@ to set differently (ADR-0010).
   `stark_diag → stark_event` (event-drop counters and the sample event, STARK-0109) and
   `stark_storage → stark_event` (state-change events, STARK-0201) and
   `stark_settings → stark_event` (change events, STARK-0204) and
-  `stark_ir → stark_event` (capture and transmit events, STARK-0303). Pure
+  `stark_ir → stark_event` (capture and transmit events, STARK-0303) and
+  `stark_nfc → stark_event` (tag and module events, STARK-0403) and
+  `stark_module → stark_event` (table and capability changes, STARK-0502). Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with

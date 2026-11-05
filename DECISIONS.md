@@ -771,7 +771,9 @@ ADR-0019 and ADR-0020 applied it to V0.3 and V0.4. Closes the V0.5 half of ADR-0
 **Context.** ROADMAP V0.5 makes hardware modules discoverable: an ID EEPROM per slot,
 capability bits, `caps_required`, gated apps, IR and NFC retrofitted, an inspector. No
 connector, EEPROM or second module exists before the V1 prototype. esp-emu 0.44.0 has no
-I²C device model. Reading the authoritative hardware documents gives this topology:
+configurable I²C device model; found at STARK-0502, it acknowledges 0x50 and reads zeros
+there, so the production image shows an unknown EEPROM in slot 0 and nothing in slot 1.
+Reading the authoritative hardware documents gives this topology:
 
 * **IR is onboard.** `IR_TX`/`IR_RX` are fixed GPIOs (HARDWARE §2.2), not connector pins,
   and the IR front-end is on the V1 PCB (HARDWARE §8).
