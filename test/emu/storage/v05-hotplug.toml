@@ -1,0 +1,73 @@
+# STARK-0505 on the test image (ROADMAP V0.5 exit 1, software half): one firmware,
+# no rebuild. The reader (fake PN532) leaves, so NFC dims and the walk skips it; an
+# EEPROM declaring NFC appears, which confirms nothing; the reader returns, so the
+# capability and the row come back; the EEPROM is corrupted and removed while the
+# inspector shows it; the reader is lost while the NFC app is open, the app stays
+# on its own view, and the launcher moves off the row only when the app leaves. Integration evidence:
+# real connectors and insertion are ROADMAP V1 exit 11.
+name = "emu-v05-hotplug"
+image = "storage"
+end_ms = 26000
+heap_min = 200000
+pokes = [
+    { at_ms = 1000, var = "emu_nfc_fault", value = 1 },   # the reader leaves
+    { at_ms = 6700, var = "emu_mod_slot0", value = 1 },   # EEPROM declaring NFC
+    { at_ms = 10000, var = "emu_nfc_fault", value = 0 },  # the reader returns
+    { at_ms = 12500, var = "emu_mod_slot0", value = 15 }, # the chip now reads blank
+    { at_ms = 15000, var = "emu_mod_slot0", value = 0 },  # removed
+    { at_ms = 19000, var = "emu_nfc_fault", value = 1 },  # lost while the app is open
+    { at_ms = 21500, var = "emu_nfc_fault", value = 0 },  # restored
+]
+presses = [
+    { key = "UP", at_ms = 5300, hold_ms = 60 },    # Storage
+    { key = "UP", at_ms = 5500, hold_ms = 60 },    # Settings
+    { key = "UP", at_ms = 5700, hold_ms = 60 },    # Modules
+    { key = "UP", at_ms = 5900, hold_ms = 60 },    # IR: NFC is dimmed, skipped
+    { key = "DOWN", at_ms = 6100, hold_ms = 60 },  # back to Modules
+    { key = "OK", at_ms = 6400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 9000, hold_ms = 60 },  # NFC reader
+    { key = "DOWN", at_ms = 9200, hold_ms = 60 },  # Slot 0
+    { key = "OK", at_ms = 9400, hold_ms = 60 },
+    { key = "BACK", at_ms = 17800, hold_ms = 60 }, # details -> list
+    { key = "BACK", at_ms = 18100, hold_ms = 60 }, # list -> launcher
+    { key = "UP", at_ms = 18400, hold_ms = 60 },   # NFC, enabled again
+    { key = "OK", at_ms = 18700, hold_ms = 60 },
+    { key = "BACK", at_ms = 21000, hold_ms = 60 },
+    { key = "UP", at_ms = 24500, hold_ms = 60 },   # selection moved to Modules; up to NFC
+    { key = "OK", at_ms = 24800, hold_ms = 60 },
+    { key = "BACK", at_ms = 25400, hold_ms = 60 },
+]
+expect = [
+    "module: caps 0x00000007",
+    "nfc: module lost",
+    "module: caps 0x00000003",
+    'menu: sel=14 "Modules"',
+    'menu: sel=11 "IR"',
+    'menu: sel=14 "Modules"',
+    "app: start modules",
+    "modules: NFC reader: Absent",
+    "modules: Slot 0: NFC carrier",
+    "modules: detail NFC: declared",
+    "nfc: pn532 fw 1.6",
+    "module: caps 0x00000007",
+    "modules: detail NFC: confirmed",
+    "modules: detail State: Generic",
+    "modules: detail Why: blank",
+    "modules: detail State: No ID",
+    "app: stop modules",
+    'menu: sel=12 "NFC"',
+    "app: start nfc",
+    "nfc: field on",
+    "nfc: module lost",
+    "module: caps 0x00000003",
+    "app: stop nfc",
+    'menu: sel=14 "Modules"',
+    "nfc: pn532 fw 1.6",
+    "module: caps 0x00000007",
+    'menu: sel=12 "NFC"',
+    "app: start nfc",
+    "nfc: field on",
+    "app: stop nfc",
+    "nfc: field off",
+]
+forbid = ["panic", "app: start modules failed", "nfc needs caps", "app: fault"]

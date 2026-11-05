@@ -211,7 +211,7 @@ jobs:
             exit 1
           fi
 
-      - name: check_emu_image.py (only stark_storage_medium differs)
+      - name: check_emu_image.py (only the three allowed substitutions differ)
         run: python3 scripts/check_emu_image.py
 
       - name: scripts/test_emu.sh --image storage
@@ -254,6 +254,9 @@ jobs:
 
       - name: scripts/test_emu.sh --image storage (60 s V0.4 NFC soak, STARK-0405)
         run: scripts/test_emu.sh --image storage test/emu/soak/v04-soak.toml
+
+      - name: scripts/test_emu.sh --image storage (60 s V0.5 module soak, STARK-0505)
+        run: scripts/test_emu.sh --image storage test/emu/soak/v05-soak.toml
 
       - name: Upload soak logs
         if: always()

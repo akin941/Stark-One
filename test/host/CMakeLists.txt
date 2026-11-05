@@ -297,6 +297,7 @@ set(UI_PORT_SOURCES
 set(UI_PORT_INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}/port/include
     ${STARK_COMPONENTS}/stark_ir/include
+    ${STARK_COMPONENTS}/stark_module/include
     ${CMAKE_CURRENT_SOURCE_DIR}/port
     ${CMAKE_CURRENT_SOURCE_DIR}/support
     ${STARK_COMPONENTS}/stark_log/include
@@ -320,6 +321,21 @@ target_include_directories(run_ui_launcher_tests BEFORE PRIVATE ${UI_PORT_INCLUD
 target_compile_options(run_ui_launcher_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_launcher_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_launcher_tests PRIVATE unity)
+
+# The real inspector on the UI port (STARK-0505) with a fake stark_module.
+add_executable(run_ui_modules_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_modules.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_modules/app_modules.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_modules/modules_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_module.c
+    ${STARK_COMPONENTS}/stark_module/module_desc.c
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_modules_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_modules)
+target_compile_options(run_ui_modules_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_modules_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_modules_tests PRIVATE unity)
 
 # caps_required on the UI port (STARK-0502).
 add_executable(run_ui_app_caps_tests
@@ -752,6 +768,7 @@ add_test(NAME stark_ui_settings_tests COMMAND run_ui_settings_tests)
 add_test(NAME stark_ui_ir_tests COMMAND run_ui_ir_tests)
 add_test(NAME stark_ui_nfc_tests COMMAND run_ui_nfc_tests)
 add_test(NAME stark_ui_app_caps_tests COMMAND run_ui_app_caps_tests)
+add_test(NAME stark_ui_modules_tests COMMAND run_ui_modules_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)
 add_test(NAME stark_ui_format_tests COMMAND run_ui_format_tests)
 

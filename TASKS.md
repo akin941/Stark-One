@@ -4202,6 +4202,12 @@ tolerance, drops 0. Existing scenarios updated only for the new row index or dim
 5. Boot heap ≥ 200 kB; heap and binary deltas, stack peaks and per-component RAM and flash
    are recorded.
 
+**As built.** The launcher moves a selection off a dimmed row without a click: nobody
+pressed anything. With an app open it waits until the app leaves, so a reader that drops
+out and returns does not move the cursor off its app's row (found by `v04-soak`, which CI
+runs only on pull requests). Walks in `v03-*`/`v04-*` on the test image press UP every 100 ms to fit
+the extra Modules row before their first OK. `v04-nfc-absent` now asserts the skip.
+
 **Security.** Read-only inspector; no raw bus tools (those are V0.7). **Budget.** `app_modules`
 static ≤ 1.5 kB, flash ≤ 3 kB, launcher ≤ 100 B extra.
 

@@ -60,3 +60,10 @@ typedef struct {
  */
 void ui_menu_init(ui_menu_t *m, const char *title, const ui_menu_item_t *items, size_t count,
                   ui_menu_activate_fn on_activate, void *ctx);
+
+/*
+ * After a change to items[].disabled (STARK-0505): the selection stays on its
+ * row if that is still enabled, otherwise moves to the next enabled one
+ * (logged like any move), and the list repaints.
+ */
+void ui_menu_refresh(ui_menu_t *m);

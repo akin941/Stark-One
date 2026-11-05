@@ -11,6 +11,7 @@
 #include <string.h>
 #include "ndef.h"
 #include "stark_app.h"
+#include "stark_caps.h"
 #include "stark_display.h"
 #include "stark_event.h"
 #include "stark_hal_host_control.h"
@@ -81,6 +82,7 @@ static void test_no_module(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_display_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_ui_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_app_init(k_apps, 1));
+    stark_app_set_caps(STARK_CAP_NFC); /* the launcher's gate; this tests the app's own views */
     TEST_ASSERT_EQUAL(STARK_OK, stark_app_launch("nfc"));
     frame();
     TEST_ASSERT_TRUE(ui_port_log_contains("nfcapp: no module"));

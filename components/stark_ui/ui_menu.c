@@ -209,3 +209,19 @@ void ui_menu_init(ui_menu_t *m, const char *title, const ui_menu_item_t *items, 
     };
     ui_menu_model_init(&m->model, m->count, visible_rows(), item_enabled, m);
 }
+
+void ui_menu_refresh(ui_menu_t *m)
+{
+    bool has = ui_menu_model_has_selection(&m->model);
+    if (has && !item_enabled(ui_menu_model_selected(&m->model), m)) {
+        has = ui_menu_model_move(&m->model, 1);
+        if (has) { /* no click: the user did not press anything */
+            size_t sel = ui_menu_model_selected(&m->model);
+            STARK_LOGI("menu", "sel=%u \"%s\"", (unsigned)sel, m->items[sel].label);
+        }
+    }
+    if (!has) {
+        ui_menu_model_init(&m->model, m->count, visible_rows(), item_enabled, m);
+    }
+    stark_ui_invalidate(&m->screen, list_rect());
+}

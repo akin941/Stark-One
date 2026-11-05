@@ -40,7 +40,8 @@ pokes = [
 ]
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },  # Storage
-    { key = "UP", at_ms = 450, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 400, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 500, hold_ms = 60 },  # Modules (STARK-0505)
     { key = "UP", at_ms = 600, hold_ms = 60 },  # NFC (Lab: IR 11, NFC 12)
     { key = "OK", at_ms = 800, hold_ms = 60 },
     { key = "OK", at_ms = 3800, hold_ms = 60 },  # Write URI
@@ -62,7 +63,8 @@ presses = [
     { key = "BACK", at_ms = 30000, hold_ms = 60 },  # receive view
     { key = "BACK", at_ms = 30400, hold_ms = 60 },  # leave IR
     { key = "DOWN", at_ms = 30800, hold_ms = 60 },  # NFC
-    { key = "DOWN", at_ms = 30950, hold_ms = 60 },  # Settings
+    { key = "DOWN", at_ms = 30900, hold_ms = 60 },  # Modules (STARK-0505)
+    { key = "DOWN", at_ms = 31000, hold_ms = 60 },  # Settings
     { key = "DOWN", at_ms = 31100, hold_ms = 60 },  # Storage
     { key = "OK", at_ms = 31400, hold_ms = 60 },
     { key = "DOWN", at_ms = 31700, hold_ms = 60 },

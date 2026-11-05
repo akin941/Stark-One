@@ -626,6 +626,7 @@ time, one screen per app in V0.
 disabled-because-hardware-is-absent menu items arrive at V0.5 together with
 `stark_module` and the hardware they describe. V0 lists the apps that exist and
 launches them.
+They now exist: see §6.9f (STARK-0502, STARK-0505).
 
 STARK-0108 specifics — **worker, join contract, fault containment.** An app may start one
 background worker, `stark_app_worker_start(fn, ctx)`: a FreeRTOS task in a static slot
@@ -902,6 +903,11 @@ polling it checks for an address ACK every 2 s, so the capability follows the re
 while idle, with the field off. Protocol, polling, read, write and dump flows are
 unchanged. An app open on a lost reader keeps its own lost view and recovers as before.
 
+**Launcher and inspector (STARK-0505).** `stark_app_set_caps()` dims rows whose
+`caps_required` are missing and moves a selection off a dimmed row, without a click; with
+an app open the move waits until the app leaves. The Modules app (Device) lists every entry and shows one's details read-only, following
+`STARK_SYS_MODULE`, so a removed module never leaves stale data on screen.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -910,7 +916,7 @@ unchanged. An app open on a lost reader keeps its own lost view and recovers as 
 | `stark_settings` | V0.2 | Implemented (§6.9c, STARK-0204); edited in the Settings app (STARK-0205), which commits on exit |
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
-| `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the rest planned (ADR-0021, TASKS STARK-0505, 0506). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
+| `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
@@ -1068,9 +1074,13 @@ task.
 
 ## 12. Extension recipe: adding a hardware module (V0.5+)
 
-1. Add the pins/caps to `stark_board` for the target variants.
-2. Implement a driver component at L3 with its own bus ownership rules.
-3. Register its capability bit so dependent apps enable themselves automatically.
+1. Give the module an ID EEPROM ([docs/module-format.md](docs/module-format.md)) and, for
+   a new kind of capability, a documented bit in `stark_caps.h`. Pin changes go through
+   `stark_board` and HARDWARE §6.
+2. Implement a driver component at L3. It reaches SPI and IRQ lines only through a
+   `stark_module_claim()`, and detaches when `STARK_SYS_MODULE` shows its lease is stale.
+3. Have the driver confirm its capability through `main/module_bridge.c`, and declare
+   `caps_required` on dependent apps; the launcher enables them automatically.
 4. Model it in `diagram.json` if Wokwi has a compatible part; otherwise document the
    gap in [WOKWI.md](WOKWI.md) §Limitations and rely on host tests + hardware tests.
 

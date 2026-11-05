@@ -18,6 +18,7 @@
 #include "ir_raw.h"
 #include "irapp.h"
 #include "stark_app.h"
+#include "stark_caps.h"
 #include "stark_display.h"
 #include "stark_event.h"
 #include "stark_hal_host_control.h"
@@ -55,6 +56,7 @@ static void test_ir_app(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_display_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_ui_init());
     TEST_ASSERT_EQUAL(STARK_OK, stark_app_init(k_apps, 1));
+    stark_app_set_caps(STARK_CAP_IR_TX | STARK_CAP_IR_RX);
     TEST_ASSERT_FALSE(ui_port_ir_rx_on());
     TEST_ASSERT_EQUAL(STARK_OK, stark_app_launch("ir"));
     frame();
