@@ -57,6 +57,8 @@ jobs:
 
       - name: NFC test vectors are current (STARK-0401)
         run: python3 scripts/gen_nfc_vectors.py --check
+      - name: Module vectors are current
+        run: python3 scripts/gen_module_vectors.py --check
 
       - name: Script unit tests (emulator harness, Wokwi gate)
         run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
