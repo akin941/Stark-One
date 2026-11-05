@@ -233,6 +233,10 @@ deferred to V1:
 * Retrofit IR and NFC as modules behind this interface
 * Module inspector app
 
+**Status: complete (software / module-protocol-verified), 2026-11-05** — exits 1 and 2
+in software, evidence in docs/measurements.md; exit 3 and every physical half are
+ROADMAP V1 exit 11 and `docs/bringup/v1-modules.md`, none of them claimed.
+
 **Completion levels (ADR-0021).** *V0.5 complete* = **software / module-protocol
 verified**. Physical module-bus behaviour is verified at the **V1 prototype**.
 

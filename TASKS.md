@@ -4235,6 +4235,8 @@ again. Link-time registration is implemented only if measurement contradicts thi
 
 **AC.** The decision and the numbers behind it are written down. If kept, no code changes.
 
+**As built.** Kept: 12 apps, all in the repository (ADR-0009 revisit note). No code changed.
+
 **Security.** Unchanged: no dynamic loading. **Physical HIL.** None.
 
 # V0.6 — Sub-GHz laboratory module
