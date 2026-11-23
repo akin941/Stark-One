@@ -33,7 +33,10 @@ permissions:
 jobs:
   lint:
     name: lint
-    runs-on: ubuntu-latest
+    # NOTE: pinned, not ubuntu-latest. clang-format's output changes between major
+    # versions; 24.04 ships 18.x, the same as the stark-fmt image used locally. On
+    # ubuntu-latest (26.04, clang-format 21) an untouched file failed the check.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -41,7 +44,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install clang-format
-        run: sudo apt-get update -qq && sudo apt-get install -y clang-format
+        run: sudo apt-get update -qq && sudo apt-get install -y clang-format && clang-format --version
 
       - name: clang-format --check
         run: scripts/fmt.sh --check
