@@ -113,6 +113,18 @@ void sgview_hist_text(const subghz_hist_t *h, char *out, size_t size);
 /* ---- file view rows (subghz_view.c) ---- */
 void sgview_set_file(const char *name, const subghz_raw_t *raw);
 
+/* ---- replay (subghz_send.c; STARK-0605): one saved capture, once, after a confirmation ---- */
+bool sgview_is_replay_row(size_t index); /* FILE: send it (opens the confirmation) */
+/* From the open file: asks the policy, then the confirmation dialog; a refusal is an alert. */
+void sgsend_confirm(void);
+bool sgsend_busy(void);        /* a transmission is queued or running: keys are swallowed */
+const char *sgsend_note(void); /* "", "sent", "failed" or "refused": the last outcome */
+void sgsend_reset(void);       /* the app (re)started: nothing is in flight */
+void sgsend_bind(void (*refresh)(void));   /* redraws the file view when the send state changes */
+bool sgsend_event(const stark_event_t *e); /* the TX events; true when consumed */
+/* "Off-time: wait 2 s." and the other refusals, as the alert says them. */
+void sgsend_refusal_text(subghz_tx_verdict_t v, uint32_t wait_ms, char *out, size_t size);
+
 /* ---- analysis (subghz_view.c; STARK-0604): display only, nothing here can transmit ---- */
 /* Runs the decoders over the finished capture (from_file false) or the open file. */
 stark_err_t sgview_decode(bool from_file);

@@ -9,6 +9,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "stark_err.h"
@@ -39,7 +40,42 @@ size_t stark_subghz_transport_rx_take(subghz_sym_t *out, size_t max, uint32_t ti
 void stark_subghz_transport_rx_stop(void);
 
 /*
- * GDO0. NOTE: STARK_ERR_NOT_SUPPORTED until STARK-0605: this task has no
- * transmit path, so nothing here can put a signal on GDO0.
+ * GDO0 (STARK-0605): sends the symbols as the data line, high = carrier on (OOK), and returns
+ * when the last one has left, STARK_ERR_TIMEOUT after timeout_ms. The line is low again when it
+ * returns, on every outcome. The caller has already put the chip in TX (cc1101_tx_start()) and
+ * puts it back in IDLE afterwards; this call moves no chip state. The transport enforces the
+ * transmit limits itself, whatever the caller says: STARK_ERR_INVALID_ARG, before anything
+ * moves, for a symbol list stark_subghz_tx_ok() refuses; STARK_ERR_STATE when closed or the
+ * lease is stale.
  */
 stark_err_t stark_subghz_transport_tx(const subghz_sym_t *s, size_t n, uint32_t timeout_ms);
+
+/* The limits of one transmission (ADR-0022 §6): constants, never options. */
+#define STARK_SUBGHZ_TX_MAX_SYMBOLS 2048u
+#define STARK_SUBGHZ_TX_MAX_US      2000000u /* the sum of |symbol| */
+#define STARK_SUBGHZ_TX_MARGIN_MS   100u     /* the timeout is the signal plus this, at most */
+
+/*
+ * True for 1..2048 symbols, each |v| 1..1 000 000 µs, their sum at most 2 s, and a timeout of
+ * at least 1 ms and at most the signal plus STARK_SUBGHZ_TX_MARGIN_MS. Shared by the hardware
+ * transport and the test one, so neither can send what the policy refuses.
+ */
+static inline bool stark_subghz_tx_ok(const subghz_sym_t *s, size_t n, uint32_t timeout_ms)
+{
+    if (s == NULL || n < 1u || n > STARK_SUBGHZ_TX_MAX_SYMBOLS) {
+        return false;
+    }
+    uint32_t total = 0;
+    for (size_t i = 0; i < n; i++) {
+        int64_t v = s[i];
+        uint32_t us = (uint32_t)(v < 0 ? -v : v);
+        if (us < 1u || us > 1000000u) {
+            return false;
+        }
+        total += us; /* at most 2048 x 1e6 < 2^32 */
+        if (total > STARK_SUBGHZ_TX_MAX_US) {
+            return false;
+        }
+    }
+    return timeout_ms >= 1u && timeout_ms <= (total + 999u) / 1000u + STARK_SUBGHZ_TX_MARGIN_MS;
+}

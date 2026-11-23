@@ -81,6 +81,8 @@ typedef struct {
     uint8_t patable_max;     /* the largest byte ever written to PATABLE */
     uint32_t patable_other;  /* bytes written that were neither 0x00 nor 0x60 */
     uint32_t tx_strobes;     /* STX seen */
+    uint32_t gdo0_symbols;   /* symbols GDO0 carried while in TX (STARK-0605), since reset */
+    uint32_t gdo0_refused;   /* symbols offered on GDO0 while not in TX (they went nowhere) */
     uint8_t reg[0x2F];       /* the configuration registers */
     uint8_t patable[8];
 } fake_cc1101_stats_t;

@@ -6,8 +6,9 @@
  * saved captures read back, and a read-only analysis of either by the generic PWM, PPM and
  * Manchester decoders (STARK-0604). The radio listens only while a view is open: BACK from
  * a view, or leaving the app, returns it to IDLE. One menu shows the home list or a view;
- * BACK from a view returns to the home list. The app never transmits (that is
- * STARK-0605, behind a confirmation).
+ * BACK from a view returns to the home list. The only transmission is Replay on a saved
+ * file (STARK-0605): a confirmation that names the file, the frequency, the duration and the
+ * duty budget left, then one send, within the fixed policy of subghz_txpolicy.h.
  */
 #include "stark_app.h"
 #include "stark_caps.h"
@@ -23,6 +24,15 @@ static bool (*s_menu_event)(stark_screen_t *self, const stark_event_t *e);
 
 static bool subghz_event(stark_screen_t *self, const stark_event_t *e);
 static void show(sgapp_mode_t mode);
+
+/* The send state changed (sending..., refused): the file view shows it. */
+static void refresh_file_view(void)
+{
+    if (s_mode == SGAPP_FILE) {
+        sgview_refresh();
+        show(SGAPP_FILE);
+    }
+}
 
 static const char *value_of(size_t index, void *ctx)
 {
@@ -175,6 +185,8 @@ static void activate(size_t index, void *ctx)
         sgfile_open(index); /* SGFILE_NOTE_OPENED shows it */
     } else if (s_mode == SGAPP_FILE && sgview_is_decode_row(index)) {
         open_decode(true);
+    } else if (s_mode == SGAPP_FILE && sgview_is_replay_row(index)) {
+        sgsend_confirm(); /* a dialog: nothing is sent until its OK */
     }
 }
 
@@ -230,6 +242,15 @@ static void file_note(sgfile_note_t what)
 static bool subghz_event(stark_screen_t *self, const stark_event_t *e)
 {
     sgfile_note_t note = SGFILE_NOTE_NONE;
+    if (sgsend_busy() && e->type == STARK_EVT_KEY) {
+        return true; /* a transmission is running: a key can neither stop nor repeat it */
+    }
+    if (sgsend_event(e)) {
+        stark_subghz_stop(); /* the result is read: the status goes back to idle */
+        sgview_refresh();
+        show(SGAPP_FILE);
+        return true;
+    }
     if (sgfile_event(e, &note)) {
         file_note(note);
         return true;
@@ -248,6 +269,7 @@ static bool subghz_event(stark_screen_t *self, const stark_event_t *e)
         sgview_refresh();
         switch (e->system.arg) {
             case STARK_SUBGHZ_EVT_MODULE:
+                sgsend_reset();   /* a lost module takes its transmission with it */
                 show(SGAPP_HOME); /* a module came or went: the radio is idle either way */
                 break;
             case STARK_SUBGHZ_EVT_RSSI:
@@ -298,6 +320,8 @@ static stark_err_t subghz_start(void **state)
 {
     (void)state;
     sgview_reset();
+    sgsend_reset();
+    sgsend_bind(refresh_file_view);
     sgview_refresh();
     return STARK_OK;
 }
@@ -305,8 +329,10 @@ static stark_err_t subghz_start(void **state)
 static void subghz_stop(void *state)
 {
     (void)state;
-    stark_subghz_stop(); /* the radio is never left receiving */
-    sgfile_stop();       /* and the capture buffer goes back to the heap (the worker is joined) */
+    stark_subghz_stop(); /* the radio is never left receiving, and a request not yet sent is dropped
+                          */
+    sgsend_reset();
+    sgfile_stop(); /* and the capture buffer goes back to the heap (the worker is joined) */
 }
 
 static stark_screen_t *subghz_screen(void *state)

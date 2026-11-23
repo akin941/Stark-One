@@ -10,6 +10,7 @@ void subghz_svc_init(subghz_svc_t *s, const subghz_svc_io_t *io)
     s->io = *io;
     const cc1101_io_t drv_io = {io->xfer, io->now_ms, io->delay_ms, io->ctx};
     cc1101_bind(&s->drv, &drv_io);
+    subghz_txpolicy_init(&s->pol, io->now_ms(io->ctx)); /* the boot lock starts now */
 }
 
 bool subghz_svc_ready(const subghz_svc_t *s)
@@ -91,6 +92,7 @@ static void reset_measure(subghz_svc_t *s)
     s->cap_active = false;
     s->cap_finish = false;
     s->cap_rx = false;
+    s->tx_pending = false; /* a request that had not started never starts later */
 }
 
 static void leave_ready(subghz_svc_t *s, subghz_log_t what, unsigned a, unsigned b, bool wait)
@@ -220,6 +222,13 @@ static void end_capture(subghz_svc_t *s)
     s->cap_finish = false;
 }
 
+/* A request that replaces what was asked before also drops a send that has not started. */
+static void drop_requests(subghz_svc_t *s)
+{
+    end_capture(s);
+    s->tx_pending = false;
+}
+
 stark_err_t subghz_svc_meter(subghz_svc_t *s, uint32_t hz)
 {
     uint8_t words[3];
@@ -236,7 +245,7 @@ stark_err_t subghz_svc_meter(subghz_svc_t *s, uint32_t hz)
     s->meter_hz = hz;
     s->retune = true;
     s->scan_active = false;
-    end_capture(s);
+    drop_requests(s);
     s->rx_on = true; /* from here the chip may be receiving, until it is told otherwise */
     s->idle_log = false;
     s->have_logged = false;
@@ -253,7 +262,7 @@ stark_err_t subghz_svc_scan(subghz_svc_t *s)
     s->st.mode = STARK_SUBGHZ_SCAN;
     s->retune = false;
     s->scan_active = true;
-    end_capture(s);
+    drop_requests(s);
     s->rx_on = true;
     s->idle_log = false;
     s->op_misses = 0;
@@ -277,6 +286,7 @@ stark_err_t subghz_svc_capture(subghz_svc_t *s, subghz_mod_t mod, uint32_t hz, s
     s->st.hz = hz;
     s->retune = false;
     s->scan_active = false;
+    s->tx_pending = false;
     s->cap_mod = mod;
     s->cap_hz = hz;
     s->cap_setup = true;
@@ -297,11 +307,115 @@ void subghz_svc_capture_finish(subghz_svc_t *s)
     }
 }
 
+/* ---- replay (STARK-0605) ------------------------------------------------------------- */
+
+static void log_tx(subghz_svc_t *s, const char *name, subghz_tx_verdict_t v, stark_err_t err,
+                   uint32_t freq_hz, uint32_t symbols, uint32_t ms)
+{
+    if (s->io.log_tx != NULL) {
+        const subghz_tx_log_t what = {v, err, name != NULL ? name : "", freq_hz, symbols, ms};
+        s->io.log_tx(s->io.ctx, &what);
+    }
+}
+
+static void name_copy(subghz_svc_t *s, const char *name)
+{
+    size_t n = 0;
+    for (; name != NULL && name[n] != '\0' && n < sizeof s->tx_name - 1u; n++) {
+        s->tx_name[n] = name[n];
+    }
+    s->tx_name[n] = '\0';
+}
+
+/*
+ * Every check a transmission passes, on the request and again on the transmit path: a ready
+ * module, nothing pending, a description whose numbers are computed here from the symbols (the
+ * caller's own say-so counts for nothing), the policy's limits, and then that it is an OOK
+ * capture that would read back as itself. The span is only summed for a plausible length.
+ */
+static subghz_tx_verdict_t tx_gate(subghz_svc_t *s, const subghz_raw_t *raw, subghz_tx_info_t *info)
+{
+    if (info != NULL) {
+        memset(info, 0, sizeof *info);
+    }
+    if (!s->ready) {
+        return SUBGHZ_TX_REFUSE_NO_MODULE;
+    }
+    if (s->tx_pending) {
+        return SUBGHZ_TX_REFUSE_BUSY;
+    }
+    if (raw == NULL || raw->sym == NULL) {
+        return SUBGHZ_TX_REFUSE_FILE;
+    }
+    subghz_tx_plan_t plan = {raw->freq_hz, raw->n, 0};
+    if (raw->n >= 1u && raw->n <= SUBGHZ_TX_MAX_SYMBOLS) {
+        uint64_t span = 0;
+        for (size_t i = 0; i < raw->n; i++) {
+            int64_t v = raw->sym[i];
+            span += (uint64_t)(v < 0 ? -v : v);
+        }
+        plan.span_us = span > UINT32_MAX ? UINT32_MAX : (uint32_t)span;
+    }
+    subghz_tx_verdict_t v = subghz_txpolicy_check(&s->pol, s->io.now_ms(s->io.ctx), &plan, info);
+    if (v != SUBGHZ_TX_OK) {
+        return v;
+    }
+    if (raw->mod != SUBGHZ_MOD_OOK || !subghz_raw_valid(raw)) {
+        return SUBGHZ_TX_REFUSE_FILE; /* an OOK profile is the only one there is to send with */
+    }
+    if (info != NULL) {
+        info->hash = subghz_raw_hash(raw->sym, raw->n);
+    }
+    return SUBGHZ_TX_OK;
+}
+
+subghz_tx_verdict_t subghz_svc_tx_check(subghz_svc_t *s, const subghz_raw_t *raw, const char *name,
+                                        subghz_tx_info_t *info)
+{
+    subghz_tx_info_t local;
+    subghz_tx_info_t *out = info != NULL ? info : &local;
+    subghz_tx_verdict_t v = tx_gate(s, raw, out);
+    if (v != SUBGHZ_TX_OK) {
+        log_tx(s, name, v, STARK_OK, raw != NULL ? raw->freq_hz : 0u, raw != NULL ? raw->n : 0u,
+               out->duration_ms);
+    }
+    return v;
+}
+
+subghz_tx_verdict_t subghz_svc_tx(subghz_svc_t *s, const subghz_raw_t *raw, const char *name,
+                                  uint32_t hash, subghz_tx_info_t *out)
+{
+    subghz_tx_info_t info;
+    subghz_tx_verdict_t v = tx_gate(s, raw, &info);
+    if (v == SUBGHZ_TX_OK && info.hash != hash) {
+        v = SUBGHZ_TX_REFUSE_FILE; /* it is not what was shown and confirmed */
+    }
+    if (out != NULL) {
+        *out = info;
+    }
+    if (v != SUBGHZ_TX_OK) {
+        log_tx(s, name, v, STARK_OK, raw != NULL ? raw->freq_hz : 0u, raw != NULL ? raw->n : 0u,
+               info.duration_ms);
+        return v;
+    }
+    memset(&s->st, 0, sizeof s->st);
+    s->st.mode = STARK_SUBGHZ_TX;
+    s->retune = false;
+    s->scan_active = false;
+    end_capture(s);
+    name_copy(s, name);
+    s->tx_raw = *raw;
+    s->tx_hash = hash;
+    s->tx_pending = true;
+    return SUBGHZ_TX_OK;
+}
+
 void subghz_svc_stop(subghz_svc_t *s)
 {
     if (s->st.mode != STARK_SUBGHZ_IDLE) {
         s->idle_log = true;
     }
+    s->tx_pending = false;
     memset(&s->st, 0, sizeof s->st);
     s->retune = false;
     s->scan_active = false;
@@ -311,6 +425,64 @@ void subghz_svc_stop(subghz_svc_t *s)
 void subghz_svc_status(const subghz_svc_t *s, stark_subghz_status_t *out)
 {
     *out = s->st;
+}
+
+static void tx_refused(subghz_svc_t *s, subghz_tx_verdict_t v, const subghz_raw_t *raw,
+                       const subghz_tx_info_t *info)
+{
+    log_tx(s, s->tx_name, v, STARK_OK, raw->freq_hz, raw->n, info->duration_ms);
+    s->st.tx_done = true;
+    s->st.tx_verdict = (uint8_t)v;
+    s->io.notify(s->io.ctx, STARK_SUBGHZ_EVT_TX_REFUSED);
+}
+
+/*
+ * The one transmission a confirmation bought. The request is consumed first, so nothing
+ * here can run twice; the checks run again on this path; then the OOK_TX profile, the chip's
+ * own band and power read-back and STX (cc1101_tx_start), the symbols on GDO0 with a timeout,
+ * and, whatever happened, SIDLE and the receive profile back. An attempt that got as far as
+ * touching the radio is charged in full, success or not. A radio that cannot be shown to be
+ * IDLE again is dropped like any failed module (it is reset when it answers again).
+ */
+static uint32_t run_tx(subghz_svc_t *s)
+{
+    const subghz_raw_t raw = s->tx_raw;
+    subghz_tx_info_t info;
+    s->tx_pending = false;
+    subghz_tx_verdict_t v = tx_gate(s, &raw, &info);
+    if (v == SUBGHZ_TX_OK && info.hash != s->tx_hash) {
+        v = SUBGHZ_TX_REFUSE_FILE;
+    }
+    if (v != SUBGHZ_TX_OK) {
+        tx_refused(s, v, &raw, &info);
+        return 1;
+    }
+    uint32_t start = s->io.now_ms(s->io.ctx);
+    s->rx_on = true; /* from here the chip is not in IDLE until it has been shown to be */
+    stark_err_t err = cc1101_configure(&s->drv, CC1101_PRESET_OOK_TX, raw.freq_hz, raw.rate);
+    if (err == STARK_OK) {
+        err = cc1101_tx_start(&s->drv, raw.freq_hz);
+    }
+    if (err == STARK_OK) {
+        err = s->io.tx(s->io.ctx, raw.sym, raw.n, info.duration_ms + STARK_SUBGHZ_TX_MARGIN_MS);
+    }
+    stark_err_t idle = cc1101_idle(&s->drv);
+    if (idle == STARK_OK) {
+        idle = cc1101_configure(&s->drv, CC1101_PRESET_OOK_RX, SUBGHZ_DEFAULT_HZ,
+                                SUBGHZ_DEFAULT_BAUD); /* the meter and the scan expect it */
+    }
+    subghz_txpolicy_record(&s->pol, start, s->io.now_ms(s->io.ctx), info.duration_ms);
+    log_tx(s, s->tx_name, SUBGHZ_TX_OK, err, raw.freq_hz, raw.n, info.duration_ms);
+    if (idle != STARK_OK) {
+        leave_ready(s, SUBGHZ_LOG_ERROR, (unsigned)idle, 0, true);
+        return SUBGHZ_IDLE_MS;
+    }
+    s->rx_on = false;
+    s->st.tx_done = true;
+    s->st.tx_err = err;
+    s->io.notify(s->io.ctx,
+                 err == STARK_OK ? STARK_SUBGHZ_EVT_TX_DONE : STARK_SUBGHZ_EVT_TX_FAILED);
+    return 1;
 }
 
 static void run_idle(subghz_svc_t *s)
@@ -514,6 +686,12 @@ static uint32_t run_mode(subghz_svc_t *s)
                 return 1;
             }
             return SUBGHZ_IDLE_MS;
+        case STARK_SUBGHZ_TX:
+            if (s->tx_pending) {
+                return run_tx(s);
+            }
+            run_idle(s); /* done or refused: the radio is idle, or is idled again */
+            return SUBGHZ_IDLE_MS;
         case STARK_SUBGHZ_IDLE:
         default:
             run_idle(s);
@@ -523,6 +701,7 @@ static uint32_t run_mode(subghz_svc_t *s)
 
 uint32_t subghz_svc_step(subghz_svc_t *s)
 {
+    subghz_txpolicy_tick(&s->pol, s->io.now_ms(s->io.ctx));
     if (s->ready) {
         check_ready(s);
         return s->ready ? run_mode(s) : SUBGHZ_IDLE_MS;

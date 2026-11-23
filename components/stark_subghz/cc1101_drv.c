@@ -192,7 +192,38 @@ stark_err_t cc1101_configure(cc1101_t *d, cc1101_preset_t preset, uint32_t hz, u
         err = STARK_ERR_IO;
     }
     d->configured = err == STARK_OK;
+    d->preset = preset;
+    d->freq_hz = hz;
     return err;
+}
+
+stark_err_t cc1101_tx_start(cc1101_t *d, uint32_t hz)
+{
+    uint8_t freq[3];
+    stark_err_t err = cc1101_freq_regs(hz, freq); /* the band lock, once more, before anything */
+    if (err != STARK_OK) {
+        return err;
+    }
+    if (!d->configured || d->preset != CC1101_PRESET_OOK_TX || d->freq_hz != hz) {
+        return STARK_ERR_STATE;
+    }
+    uint8_t back[CC1101_PATABLE_SIZE];
+    err =
+        read_n(d, (uint8_t)(CC1101_HDR_READ | CC1101_HDR_BURST | CC1101_FREQ2), back, sizeof freq);
+    if (err == STARK_OK && memcmp(back, freq, sizeof freq) != 0) {
+        err = STARK_ERR_IO;
+    }
+    if (err == STARK_OK) {
+        err = read_n(d, (uint8_t)(CC1101_HDR_READ | CC1101_HDR_BURST | CC1101_PATABLE), back,
+                     sizeof back);
+    }
+    if (err == STARK_OK && memcmp(back, cc1101_patable(), sizeof back) != 0) {
+        err = STARK_ERR_IO;
+    }
+    if (err == STARK_OK) {
+        err = strobe_raw(d, CC1101_STX);
+    }
+    return err != STARK_OK ? err : wait_state(d, CC1101_MARC_TX, CC1101_TX_TIMEOUT_MS);
 }
 
 stark_err_t cc1101_strobe(cc1101_t *d, uint8_t strobe)
@@ -209,7 +240,7 @@ stark_err_t cc1101_strobe(cc1101_t *d, uint8_t strobe)
         case CC1101_SNOP:
             return strobe_raw(d, strobe);
         case CC1101_STX:
-            return STARK_ERR_NOT_SUPPORTED; /* NOTE: no transmit path before STARK-0605 */
+            return STARK_ERR_NOT_SUPPORTED; /* NOTE: only cc1101_tx_start() transmits */
         default:
             return STARK_ERR_INVALID_ARG;
     }

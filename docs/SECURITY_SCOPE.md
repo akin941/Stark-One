@@ -71,11 +71,17 @@ tasks:
 3. **Rate and duty limiting.** Sub-GHz transmission respects a firmware duty-cycle cap
    and a power cap, consistent with the SRD band rules in
    [HARDWARE.md §7](../HARDWARE.md). The limiter is not user-adjustable past the legal
-   envelope. V0.6's values are fixed constants (ADR-0022 §6), not settings.
+   envelope. V0.6's values are fixed constants (ADR-0022 §6), not settings: tune 433.05–434.79 MHz,
+   `PATABLE` 0x60, at most 2048 symbols and 2 s per transmission, at most 360 s in any rolling
+   3600 s and an off-time of 9× each transmission, one transmission per confirmation, only from a
+   saved raw capture. They live in `subghz_txpolicy.c` and are enforced on the request, on the
+   transmit path and on the chip itself (STARK-0605); a boot starts with the longest off-time
+   running, so a reboot is not a way round them.
 4. **No unattended transmission loops.** No "repeat forever", no sweep-transmit, no
    scheduled emission.
 5. **Transmission is logged.** What was sent, when, at what frequency — visible to the
-   user and written to the log.
+   user and written to the log. Every Sub-GHz refusal is logged with its reason
+   (`subghz: tx refused: offtime`).
 6. **Pin safety.** Lab GPIO tooling refuses reserved pins and confirms before driving
    an output.
 7. **Test vectors come from our own hardware** and are documented as such.

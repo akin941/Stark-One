@@ -1,0 +1,107 @@
+# STARK-0605 on the test image, whose stark_subghz_transport is the test-only fake CC1101
+# (ADR-0022 §3). The CC1101 module (catalogue entry 32) is in slot 0 and answers, GDO2 plays the
+# spec-derived pulse-width scene "pwm24" (192 symbols, 201 600 us, fingerprint 0x78a82ac5 as
+# scripts/gen_subghz_vectors.py computes it) and `emu_sg_own_rx = 1` makes the fake hear on GDO2
+# whatever GDO0 carried. The production service, app, policy and UI run unchanged.
+#
+# Capture the scene and save it (rf_0001.rf), open the saved file, and ask to replay it:
+#  1. the first ask comes ~16 s after boot, inside the boot lock (the longest off-time, 18 s,
+#     starts running when the service does: a reboot is not a way round the off-time rule), so it
+#     is refused at once with `subghz: tx refused: offtime` and an alert; nothing reached GDO0;
+#  2. once the lock has run out the dialog opens (file, 433.920 MHz, 202 ms, 192 symbols, the
+#     duty left, "Own devices only"); BACK logs `tx cancelled`, and still nothing was sent;
+#  3. OK sends: exactly one `subghz: tx rf_0001.rf 433920000 Hz 192 sym 202 ms` and then `sent`;
+#  4. an immediate second ask is refused for the off-time (9 x 202 ms), again before any dialog;
+#  5. Capture -> Start now receives what the fake's GDO0 carried: 192 symbols with the very
+#     fingerprint of the file, so the replayed waveform is the file exactly (every symbol, to the
+#     microsecond), through the production receive pipeline.
+# Integration evidence, not RF: no signal exists behind any of it (ROADMAP V1 exit 12).
+name = "emu-v06-replay"
+image = "storage"
+end_ms = 31000
+wall_limit_s = 1500
+heap_min = 200000
+pokes = [
+    { at_ms = 500, var = "emu_mod_slot0", value = 32 },
+    { at_ms = 500, var = "emu_sg_chip", value = 1 },
+    { at_ms = 500, var = "emu_sg_scene", value = 1 },    # the pulse-width scene
+    { at_ms = 17500, var = "emu_sg_own_rx", value = 1 }, # GDO0 is heard on GDO2
+]
+presses = [
+    { key = "UP", at_ms = 5300, hold_ms = 60 },      # Storage
+    { key = "UP", at_ms = 5500, hold_ms = 60 },      # Settings
+    { key = "UP", at_ms = 5700, hold_ms = 60 },      # Modules
+    { key = "UP", at_ms = 5900, hold_ms = 60 },      # Sub-GHz
+    { key = "OK", at_ms = 6300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 7000, hold_ms = 60 },    # Band scan
+    { key = "DOWN", at_ms = 7300, hold_ms = 60 },    # Capture
+    { key = "OK", at_ms = 7600, hold_ms = 60 },      # the setup: Frequency, Modulation, Start
+    { key = "DOWN", at_ms = 8300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 8600, hold_ms = 60 },    # Start
+    { key = "OK", at_ms = 8900, hold_ms = 60 },      # captures the scene
+    { key = "OK", at_ms = 10500, hold_ms = 60 },     # Stop
+    { key = "OK", at_ms = 11500, hold_ms = 60 },     # Save: rf_0001.rf
+    { key = "BACK", at_ms = 12600, hold_ms = 60 },   # capture -> home (the radio idles)
+    { key = "DOWN", at_ms = 13100, hold_ms = 60 },
+    { key = "DOWN", at_ms = 13400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 13700, hold_ms = 60 },   # Saved
+    { key = "OK", at_ms = 14100, hold_ms = 60 },     # the list: rf_0001.rf
+    { key = "OK", at_ms = 15100, hold_ms = 60 },     # reads it back: Decode, Replay, ...
+    { key = "DOWN", at_ms = 16000, hold_ms = 60 },   # Replay
+    { key = "OK", at_ms = 16300, hold_ms = 60 },     # inside the boot lock: refused, an alert
+    { key = "OK", at_ms = 17000, hold_ms = 60 },     # dismiss it
+    { key = "DOWN", at_ms = 19600, hold_ms = 60 },   # Replay (the lock has run out)
+    { key = "OK", at_ms = 19900, hold_ms = 60 },     # the confirmation
+    { key = "BACK", at_ms = 20300, hold_ms = 60 },   # cancel: nothing is sent
+    { key = "OK", at_ms = 20800, hold_ms = 60 },     # the confirmation again
+    { key = "OK", at_ms = 21200, hold_ms = 60 },     # OK: one transmission
+    { key = "DOWN", at_ms = 22000, hold_ms = 60 },   # Replay again, at once
+    { key = "OK", at_ms = 22300, hold_ms = 60 },     # refused for the off-time, an alert
+    { key = "OK", at_ms = 22900, hold_ms = 60 },     # dismiss it
+    { key = "BACK", at_ms = 23500, hold_ms = 60 },   # file -> list
+    { key = "BACK", at_ms = 23900, hold_ms = 60 },   # list -> home
+    { key = "DOWN", at_ms = 24400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 24700, hold_ms = 60 },   # Capture
+    { key = "OK", at_ms = 25000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 25600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 25900, hold_ms = 60 },   # Start: receives what GDO0 carried
+    { key = "OK", at_ms = 26200, hold_ms = 60 },
+    { key = "OK", at_ms = 28000, hold_ms = 60 },     # Stop
+    { key = "BACK", at_ms = 29000, hold_ms = 60 },   # capture -> home
+    { key = "BACK", at_ms = 29500, hold_ms = 60 },   # home -> launcher
+]
+expect = [
+    "subghz: cc1101 version 0x14",
+    'menu: sel=13 "Sub-GHz"',
+    "app: start subghz",
+    "subghz: capture 192 sym hash 0x78a82ac5",
+    "subghzapp: saved rf_0001.rf (192 sym) hash 0x78a82ac5",
+    "subghzapp: opened rf_0001.rf (192 sym) hash 0x78a82ac5",
+    "subghz: tx refused: offtime",
+    "subghzapp: confirm rf_0001.rf: 433.920 MHz, 202 ms, 192 symbols. Duty left 360 s. Own devices only.",
+    'dialog: open "Send rf_0001.rf?"',
+    "subghzapp: tx cancelled",
+    "subghzapp: confirm rf_0001.rf: 433.920 MHz, 202 ms, 192 symbols. Duty left 360 s. Own devices only.",
+    "subghzapp: tx confirmed rf_0001.rf",
+    "subghz: tx rf_0001.rf 433920000 Hz 192 sym 202 ms",
+    "subghzapp: sent rf_0001.rf",
+    "subghz: idle",
+    "subghz: tx refused: offtime",
+    "subghz: capture 192 sym hash 0x78a82ac5",
+    "app: stop subghz",
+]
+# Nothing reaches GDO0 before a confirmation: no transmission, and no confirmed request, between
+# the file being opened and the cancel; and the one confirmation sent exactly one transmission.
+forbid_between = [
+    { after = "subghzapp: opened rf_0001.rf", before = "subghzapp: tx cancelled", text = "subghz: tx rf_" },
+    { after = "subghzapp: opened rf_0001.rf", before = "subghzapp: tx cancelled", text = "tx confirmed" },
+    { after = "subghzapp: opened rf_0001.rf", before = "subghzapp: tx cancelled", text = "subghzapp: sent" },
+]
+forbid_after = [
+    { after = "subghz: tx rf_0001.rf 433920000", text = "subghz: tx rf_0001.rf 433920000" },
+    { after = "subghzapp: tx confirmed", text = "subghzapp: tx confirmed" },
+]
+forbid = ["module not usable", "subghz init failed", "save failed", "save refused", "open failed",
+          "capture refused", "tx failed", "tx refused: band", "tx refused: length",
+          "tx refused: duration", "tx refused: budget", "tx refused: file", "tx refused: busy",
+          "tx refused: no module", "send failed", "send refused", "panic", "app: fault"]

@@ -303,10 +303,12 @@ size_t fake_cc1101_gdo2_take(subghz_sym_t *out, size_t max)
 bool fake_cc1101_gdo0_put(const subghz_sym_t *sy, size_t n)
 {
     if (s.marc != MARC_TX || s.rec == NULL || s.rec_n + n > FAKE_CC1101_SCENE_MAX) {
+        s.st.gdo0_refused += (uint32_t)n;
         return false;
     }
     memcpy(s.rec + s.rec_n, sy, n * sizeof sy[0]);
     s.rec_n += n;
+    s.st.gdo0_symbols += (uint32_t)n;
     if (s.own_rx) {
         s.scene = s.rec;
         s.scene_n = s.rec_n;

@@ -148,8 +148,8 @@ static void io_changed(void *ctx, bool ready)
 
 /* No receiver and no notify: this file never measures or captures. */
 static const subghz_svc_io_t k_io = {
-    io_list, io_claim, io_release, io_lease_valid, io_open, io_close,   io_xfer, NULL,
-    NULL,    NULL,     io_now,     io_delay,       io_log,  io_changed, NULL,    NULL};
+    io_list, io_claim, io_release, io_lease_valid, io_open,    io_close, io_xfer, NULL, NULL,
+    NULL,    io_now,   io_delay,   io_log,         io_changed, NULL,     NULL,    NULL, NULL};
 
 void setUp(void)
 {

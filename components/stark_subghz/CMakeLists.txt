@@ -8,6 +8,7 @@ idf_component_register(
         "subghz_rssi.c"
         "subghz_raw.c"
         "subghz_decode.c"
+        "subghz_txpolicy.c"
         "subghz_svc.c"
         "stark_subghz.c"
     INCLUDE_DIRS

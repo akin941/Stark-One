@@ -4799,6 +4799,95 @@ symbol; an immediate second OK → `tx refused: offtime`.
 **Budget.** Flash ≤ 4 kB. **Physical HIL (V1).** Our own receiver triggered; power and
 on-air time on a spectrum analyser.
 
+**As built.** Differences from the plan and the readings the spec left open, each the smallest
+sound choice (ADR-0022's STARK-0605 addendum records them):
+
+* **The policy is `subghz_txpolicy.{c,h}`** (pure, injected clock, 100 % lines, public header
+  because the app shows its numbers): the limits are constants, `subghz_txpolicy_check()` reports
+  the first broken limit in the order band, length, duration, budget, off-time, and
+  `subghz_txpolicy_record()` charges an attempt. The refusal reasons are the spec's plus `file`
+  (not an OOK capture, or its symbols changed since the confirmation), `no module` and `busy`; the
+  log text is `subghz: tx refused: <reason>` exactly.
+* **The duty window is RAM and starts with the longest off-time running.** The ADR said "starts
+  empty at boot"; the task asked that a boot not reopen more than a fresh window. A boot (the start
+  of the service) therefore begins with an 18 s off-time (9 × the longest transmission) already
+  running: a reboot cannot dodge the off-time rule, and because the off-time alone holds the duty
+  at 10 %, power-cycling cannot exceed the cap. The first Replay is refused as `offtime` for the
+  first 18 s after boot; the test image shows it (`v06-replay`). The window lives in the service, so
+  unplugging and replugging the radio does not reset it. The ledger is 192 entries (1.5 kB of
+  static RAM), exact up to 192 transmissions an hour (180 × 2 s fill the budget), conservative
+  beyond (the two oldest merge). Time is a wrapping `uint32` ms clock and every comparison is a
+  difference; a clock that steps back only makes the policy stricter.
+* **Accounting.** A transmission is charged its signal rounded up to a ms. An attempt that
+  reached the radio is charged in full whether it succeeded, failed or timed out, and its end is
+  the later of the planned and the real end; a refusal is not charged. A transmission leaves the
+  window exactly 3600 s after it ended; the budget is spent at exactly 360 000 ms.
+* **`cc1101_tx_start()` is the only way into TX** (`cc1101_strobe()` still refuses `STX`). It
+  needs the `OOK_TX` profile at that very frequency, re-checks the band, reads `FREQ2..0` and
+  `PATABLE` back from the chip (`STARK_ERR_IO` on any difference), sends `STX` and waits (bounded)
+  for `MARCSTATE` TX. The driver remembers the preset and frequency it configured.
+* **Four checks, then the line.** The app's `stark_subghz_tx_check()` when Replay is chosen (it
+  shows the file, `433.920 MHz, 202 ms, 192 symbols`, the duty left and "Own devices only";
+  refusals are alerts with the reason, the wait for an off-time included), `stark_subghz_tx_start()`
+  on OK (checks again and refuses unless the symbols still hash to what was shown), the service
+  task's own check when it carries the request out, and the chip read-back; the transport enforces
+  1–2048 symbols, 2 s and its own timeout whoever calls it (`stark_subghz_tx_ok()`, shared with the
+  test transport). Numbers are recomputed from the symbols every time.
+* **One confirmation, one attempt.** The request is consumed before the radio is touched; nothing
+  retries a failure; `stop()`, any other request or a lost module drops one that has not started.
+  The attempt is `OOK_TX` (the file's rate), read-back, `STX`, the symbols on GDO0 with a timeout of
+  the signal plus 100 ms, then `SIDLE` and the receive profile back on every outcome; a chip that
+  cannot be shown IDLE afterwards is dropped like any failed module. Only `mod ook` files are
+  sent: a 2-FSK capture is `file`.
+* **The service mutex is held for the transmission** (at most 2.1 s). The capture buffer belongs
+  to the app and is freed on exit, so `stop()` must not run while symbols are read from it; the app
+  therefore swallows every key while a transmission runs, and only closing the app waits. The
+  alternative (release around the transport call and copy 8 kB) was rejected.
+* **App.** The file view gained a Replay row after Decode (a freshly made capture has no Replay:
+  only a file read back through the strict parser can be sent). The send state redraws the view
+  (`sending...`, then `sent`, `failed` or `refused` as the row's value); after the result the app
+  calls `stop()` so the status returns to idle. The dialog title is `Send rf_0001.rf?`. `sgsend_*`
+  is `apps/app_subghz/subghz_send.c`, modelled on `ir_send.c`.
+* **Production transport.** `stark_subghz_transport_tx()` creates an RMT transmit channel on the
+  lease's GDO0 for one transmission (a streaming simple encoder, durations over 15 bits split, the
+  line ending low), deletes it after every outcome, and is exercised only on hardware (V1), like
+  the receive path. GDO0 is not touched at any other time.
+* **Test image.** The fake transport's `tx` waits out the on-air time, refuses what
+  `stark_subghz_tx_ok()` refuses and a symbol that arrives while the fake chip is not in TX;
+  the fake counts symbols carried and refused on GDO0 (`gdo0_symbols`, `gdo0_refused`). No fifth
+  substitution (`check_emu_image.py` still allows exactly four). `emu_sg_own_rx` and the existing
+  pokes are all `v06-replay` needs.
+* **Pre-existing tests touched.** The three service-test initialisers gained the two new I/O
+  members (`NULL`); `test_cc1101_drv.c` renamed `test_transmit_is_not_available_in_this_task` to
+  `test_stx_is_never_a_generic_strobe` (same assertions); `test_ui_subghz.c`: the `file_view` pin
+  changed after inspection (a Replay row under Decode). No scenario changed.
+* **Host evidence (AC 1–4).** `test_subghz_txpolicy` (20 tests: every limit at its exact boundary,
+  the refusal order, the boot lock, the window edge to the millisecond, off-time for seven
+  durations, failed attempts, a wrapping and a backward clock, a full ledger, the transport
+  limits); `test_subghz_tx` (30 tests over the real service and the fake: the file sent once and
+  recorded exactly, every refusal with nothing on GDO0, the transmit-path checks, a failure at
+  every one of the 92 transfers of a send and a bus dead from every transfer on, a stuck chip, a hot or
+  corrupted `PATABLE` and a retuned chip read back before `STX`, pending requests dropped, the
+  window across a lost module and a clock wrap, and a greedy sender asking every 250 ms for two
+  hours whose accepted transmissions an independent checker holds to 360 s in any hour and nine
+  times each transmission between two); `test_cc1101_drv` (+4); `test_ui_subghz` (+6, nine new
+  pins inspected). Pure cores at 100 % lines; ASan and UBSan clean.
+* **Emulator.** `storage/v06-replay` (31 s of virtual time): a capture saved and opened; the first
+  Replay, 16 s after boot, is refused for the boot lock (`subghz: tx refused: offtime`, an alert);
+  after the lock the dialog opens, BACK logs `tx cancelled` and nothing reaches GDO0; OK logs
+  exactly one `subghz: tx rf_0001.rf 433920000 Hz 192 sym 202 ms` and `sent`; an immediate second
+  Replay is refused for the off-time; with `emu_sg_own_rx = 1` a Capture then receives 192 symbols
+  with the file's own fingerprint `0x78a82ac5`, so the transmission was the file exactly (every
+  symbol to the µs). `forbid_between` and `forbid_after` rules assert nothing was sent before the
+  confirmation and that the transmission line appears once.
+* **Budget.** Flash +5 504 B in the image (spec ≤ 4 kB): `stark_subghz` +2 062 B (the policy,
+  the transmit path and `cc1101_tx_start`), `app_subghz` +1 081 B, the transport and the rest
+  +2.3 kB, mostly strings; static RAM `stark_subghz` +1 616 B (the 1 536-byte ledger). Production
+  boot heap 240 732 B (gate ≥ 200 kB), test image 237 812 B, binary 483 216 B. docs/measurements.md
+  has every figure.
+* **Not here.** The V0.6 exit, soak and the V1 checklist (STARK-0606). Physical HIL: our own
+  receiver triggered by a replay; power and on-air time on a spectrum analyser (V1).
+
 ---
 
 ## STARK-0606 — V0.6 exit: soak, measurements, V1 Sub-GHz checklist

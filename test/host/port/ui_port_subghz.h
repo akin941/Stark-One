@@ -37,3 +37,17 @@ uint32_t ui_port_subghz_meter_hz(void); /* the frequency of the last meter start
 unsigned ui_port_subghz_meter_starts(void);
 unsigned ui_port_subghz_scan_starts(void);
 unsigned ui_port_subghz_stops(void);
+
+/*
+ * Replay (STARK-0605): the port answers stark_subghz_tx_check()/start() the way the service
+ * does, with the real fingerprint, so what the app sends is what it confirmed. The test sets
+ * what the policy says next and ends a transmission when it wants (as the radio would).
+ */
+void ui_port_subghz_tx_policy(subghz_tx_verdict_t verdict, uint32_t budget_left_ms,
+                              uint32_t wait_ms);
+unsigned ui_port_subghz_tx_checks(void);
+unsigned ui_port_subghz_tx_starts(void);  /* transmissions the app queued */
+uint32_t ui_port_subghz_tx_hash(void);    /* of the symbols of the last start */
+const char *ui_port_subghz_tx_name(void); /* the file name of the last start */
+/* The queued transmission ends (publishes TX_DONE, TX_FAILED or TX_REFUSED as `evt` says). */
+void ui_port_subghz_tx_finish(int evt);
