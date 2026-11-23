@@ -4585,6 +4585,84 @@ histogram means within one 1 µs tick of the scene's.
 **Budget.** Capture buffer 2048 × 4 B static (the only large one); flash ≤ 4 kB.
 **Physical HIL (V1).** A capture of our own remote against its documented timing.
 
+**As built.** Differences from the plan, each the smallest sound choice:
+
+* **A streaming format core and no whole-file buffer.** `subghz_raw.c` writes a file through a
+  cursor-driven formatter (`subghz_raw_format()`: whole lines into any chunk of at least 200
+  bytes, refusing a capture that would not read back identically) and reads it through a byte-fed
+  strict parser (`subghz_raw_parser_init/feed/finish`, one 160-byte line buffer, any split of the
+  input), so neither side holds the up to 19 kB of text (the plan's `subghz_raw.c` "format,
+  parse, histogram" assumed a buffer; IR keeps 1.8 kB, a 2048-symbol file is ten times that).
+  `subghz_raw_parse()` is the one-shot wrapper tests use. The same file also owns the capture
+  rules (`subghz_cap_feed()`), the FNV-1a fingerprint, the file names and the histogram.
+* **The parser also refuses a frequency outside 433.05–434.79 MHz** (docs/subghz-format.md) and
+  files over 24 576 bytes; blank lines and comments are allowed anywhere. STARK-0605's policy
+  still checks the band itself. ADR-0022's addendum records this and the next two readings.
+* **"2 s" is the span of the kept signal**, not wall-clock time: a capture waits for a remote for
+  as long as the user likes and ends at 2048 symbols or when the kept symbols add up to 2 s (the
+  last one is cut to fit). A symbol is cut to 1 s, which is why a merged symbol can saturate.
+* **The histogram is order-independent.** The shortest duration not yet grouped, `lo`, starts a
+  bin of every duration up to 1.5 × `lo` (±20 % about 1.25 × `lo`), at most eight, ascending;
+  longer ones are counted as `other` ("Longer" in the app). Mean is rounded to the nearest µs.
+  Highs and lows share the histogram.
+* **Service: a `CAPTURE` mode over three new transport calls.** `subghz_svc_io_t` gained
+  `rx_start`, `rx_take` and `rx_stop` (so `test_subghz_service.c` and `test_subghz_measure.c`
+  initialisers follow). `stark_subghz_capture_start(mod, hz, buf, cap)` configures the OOK or
+  2-FSK preset at 4800 Bd, tunes, starts the receiver, and each round takes at most 128 symbols
+  (waiting at most 20 ms) into `subghz_cap_feed()`. `STARK_SUBGHZ_EVT_CAPTURE` (progress, at
+  most ten a second) and `_CAPTURE_DONE` (4 and 5) are published; the capture ends on
+  `stark_subghz_capture_finish()`, 2048 symbols or 2 s, with the receiver stopped and the radio in
+  IDLE first (a 2-FSK capture also writes the OOK profile back, which the meter and scan expect).
+  Any failure is bounded and fails closed exactly like the meter's: tried again once, the second
+  in a row drops the module (receiver stopped, radio idled, capability withdrawn). The status
+  gained `capture_done`, `symbols` and `span_us`.
+* **The capture buffer is the app's and lives on the heap.** The plan's "2048 × 4 B static"
+  would be 8 kB of RAM for the life of the firmware; instead `apps/app_subghz/subghz_files.c`
+  `malloc`s it when a capture starts or a file is opened and frees it when the app stops (after the
+  worker is joined and the service stopped), and the service borrows it only between a start and
+  the end of the capture or a stop. ADR-0022's addendum records it. Production boot heap is
+  unaffected (nothing is held at boot).
+* **Transport: the gap is a symbol.** A frame ends at the RMT idle threshold, whose low time the
+  hardware does not report; `stark_subghz_transport_rx_take()` appends it as a 20 ms low when a
+  frame ends high, or the next frame's first high would merge into the last of this one. The
+  hardware path (RMT frame size 64 symbols, idle 20 ms, ping-pong re-arm) is still exercised only
+  on hardware: V1 measures what a real remote's repeats look like.
+* **The fake CC1101 shrank.** `fake_cc1101_scene()` keeps the caller's pointer instead of copying
+  into a 8.4 kB array (the scene catalogue lives in flash), `fake_cc1101_gdo2_take()` hands a scene
+  out in pieces of at most `max` (a 2400-symbol scene reaches a 128-symbol service in 19 takes;
+  `test_fake_cc1101.c` follows: it used to deliver once), and the 8.4 kB recording buffer is
+  allocated at the first STX. Test image boot heap: see measurements.
+* **Scenes and the generator.** `scripts/gen_subghz_vectors.py` (with
+  `scripts/test_gen_subghz_vectors.py` and a CI lint step) writes `test/fake/fake_subghz_scenes.h`:
+  five spec-derived scenes (1 `pwm24`, 2 `ppm24` with 8 ms of leading silence, 3
+  `manchester32`, 4 `dense` — 2400 symbols, 5 `slow` — 10 symbols of 300 ms) and, for each,
+  what a capture must keep (symbols, µs, FNV-1a fingerprint, histogram) computed independently of
+  the firmware. `emu_sg_scene` (0 none, 1…5) joins the test image's pokes (`test_emu.py`
+  `POKE_VARS`); `check_emu_image.py` still allows exactly four substitutions.
+* **App.** Home list: RSSI meter, Band scan, Capture, Saved. Capture opens a setup (Frequency —
+  shared with the meter — and Modulation, LEFT/RIGHT, then Start; nothing is received before
+  Start), then progress (symbols, time, Stop), then the result: symbols, duration, the histogram
+  as rows (mean µs, count; up to 8 and "Longer"), Save and Capture again. Save writes the next
+  `captures/rf_NNNN.rf` atomically on the app worker (`subghzapp: saved rf_0001.rf (192 sym) hash
+  0x…`); Saved lists the newest sixteen (name and size, no per-file parse), OK reads one back
+  through the strict parser (`subghzapp: opened …`, `subghzapp: hist …`) into a read-only file
+  view, and a file that does not load is logged and never half-opens. BACK goes one level up
+  (file → list, otherwise home, stopping the radio); a lost module returns to the home list; a
+  card that goes forgets the list. Logs carry the FNV-1a fingerprint of the symbols so a
+  scenario can prove the saved and re-read capture is exactly the scene.
+* **Pre-existing tests touched.** `test_fake_cc1101.c` (scene pieces, above);
+  `test_subghz_service.c` / `test_subghz_measure.c` (initialiser); `test_ui_subghz.c`: the
+  home list has two more rows, so its four home pins (`home`, `home_after_meter`,
+  `refused_retune`, `home_refused`, `home_again`) changed after inspection, and `tearDown` now
+  pops the app so one failed test does not cascade. No pre-existing scenario changed.
+* **Budget.** The 8 kB symbol buffer is on the heap (above). Flash: `subghz_raw.c` is 2.8 kB,
+  inside the "≤ 4 kB", but with the service's capture mode and the three views the whole task
+  is +7.7 kB (`stark_subghz` 4 677 → 8 356 B, `app_subghz` 1 663 → 5 670 B); static RAM
+  `stark_subghz` +568 B, `app_subghz` 1 665 B (≤ 2 kB). Production boot heap 243 164 B
+  (gate ≥ 200 kB), binary 474 272 B. docs/measurements.md has every figure and the evidence.
+* **Not here.** Decoders (STARK-0604), the analysis view, and any transmit path: `STX` is still
+  refused, `tx()` still `STARK_ERR_NOT_SUPPORTED`, `PATABLE` unchanged.
+
 ---
 
 ## STARK-0604 — Generic OOK decoders and the analysis view

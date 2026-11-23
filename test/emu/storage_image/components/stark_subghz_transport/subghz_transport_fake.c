@@ -10,12 +10,16 @@
  *   emu_sg_chip         0 no chip answers, 1 a CC1101 (VERSION 0x14), 2 another chip
  *   emu_sg_carrier_khz  the air: one carrier in kHz (0: silence) ...
  *   emu_sg_level        ... and its level in dBm
+ *   emu_sg_scene        a scene of test/fake/fake_subghz_scenes.h (1-based; 0 none) GDO2 plays once
+ *                       each time the chip enters RX: 1 pwm24, 2 ppm24, 3 manchester32, 4 dense,
+ *                       5 slow (spec-derived, never a recording: scripts/gen_subghz_vectors.py)
  *   emu_sg_own_rx       1: what GDO0 carries is heard on GDO2
  *   emu_sg_fault        a fake_cc1101_fault_t, applied until it changes again (0 clears it)
  * Each is applied before the next transfer after it changes. Integration
  * evidence only: nothing here shows a signal on an antenna.
  */
 #include "fake_cc1101.h"
+#include "fake_subghz_scenes.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "stark_subghz_transport.h"
@@ -23,6 +27,7 @@
 volatile uint8_t emu_sg_chip;
 volatile uint32_t emu_sg_carrier_khz;
 volatile int8_t emu_sg_level = -110;
+volatile uint8_t emu_sg_scene;
 volatile uint8_t emu_sg_own_rx;
 volatile uint8_t emu_sg_fault;
 
@@ -33,6 +38,7 @@ static bool s_inited;
 static uint8_t s_chip_applied = 0xFF;
 static uint32_t s_carrier_applied = 0xFFFFFFFFu;
 static int8_t s_level_applied = 127;
+static uint8_t s_scene_applied;
 static uint8_t s_own_rx_applied = 0xFF;
 static uint8_t s_fault_applied;
 
@@ -51,6 +57,15 @@ static void follow_pokes(void)
         fake_cc1101_air(khz * 1000u, level);
         s_carrier_applied = khz;
         s_level_applied = level;
+    }
+    uint8_t scene = emu_sg_scene;
+    if (scene != s_scene_applied) {
+        if (scene >= 1 && scene <= FAKE_SUBGHZ_SCENE_COUNT) {
+            fake_cc1101_scene(k_fake_scenes[scene - 1].sym, k_fake_scenes[scene - 1].n);
+        } else {
+            fake_cc1101_scene(NULL, 0);
+        }
+        s_scene_applied = scene;
     }
     uint8_t own = emu_sg_own_rx;
     if (own != s_own_rx_applied) {
@@ -86,6 +101,8 @@ stark_err_t stark_subghz_transport_open(const stark_module_lease_t *lease)
         s_carrier_applied = 0xFFFFFFFFu;
         s_level_applied = 127;
         s_own_rx_applied = 0xFF;
+        s_scene_applied = 0;
+        fake_cc1101_scene(NULL, 0);
         s_fault_applied = 0;
     }
     s_lease = *lease;

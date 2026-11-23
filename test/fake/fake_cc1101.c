@@ -7,6 +7,7 @@
  * only on the bytes.
  */
 #include "fake_cc1101.h"
+#include <stdlib.h>
 #include <string.h>
 
 #define REG_COUNT  0x2F
@@ -38,10 +39,11 @@ static struct {
     uint32_t air_hz;
     int air_dbm;
     uint8_t rssi;
-    subghz_sym_t scene[FAKE_CC1101_SCENE_MAX];
+    const subghz_sym_t *scene; /* the caller's (or rec): never copied */
     size_t scene_n;
+    size_t scene_pos;
     bool scene_armed;
-    subghz_sym_t rec[FAKE_CC1101_SCENE_MAX];
+    subghz_sym_t *rec; /* allocated at the first transmission: most runs never need it */
     size_t rec_n;
     bool own_rx;
     uint32_t freq_log[FAKE_CC1101_FREQ_LOG];
@@ -61,6 +63,7 @@ static void defaults(void)
 
 void fake_cc1101_reset(void)
 {
+    free(s.rec);
     memset(&s, 0, sizeof s);
     s.present = true;
     s.partnum = 0x00;
@@ -156,9 +159,13 @@ static void goto_state(uint8_t marc, bool stuck)
     s.marc = marc;
     if (marc == MARC_RX && s.scene_n > 0) {
         s.scene_armed = true;
+        s.scene_pos = 0;
     }
     if (marc == MARC_TX) {
         s.rec_n = 0;
+        if (s.rec == NULL) {
+            s.rec = malloc(FAKE_CC1101_SCENE_MAX * sizeof s.rec[0]);
+        }
     }
 }
 
@@ -274,10 +281,9 @@ stark_err_t fake_cc1101_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
 
 void fake_cc1101_scene(const subghz_sym_t *sy, size_t n)
 {
-    s.scene_n = n < FAKE_CC1101_SCENE_MAX ? n : FAKE_CC1101_SCENE_MAX;
-    if (s.scene_n > 0) {
-        memcpy(s.scene, sy, s.scene_n * sizeof sy[0]);
-    }
+    s.scene = sy;
+    s.scene_n = sy == NULL ? 0 : (n < FAKE_CC1101_SCENE_MAX ? n : FAKE_CC1101_SCENE_MAX);
+    s.scene_pos = 0;
     s.scene_armed = s.scene_n > 0;
 }
 
@@ -286,22 +292,25 @@ size_t fake_cc1101_gdo2_take(subghz_sym_t *out, size_t max)
     if (s.marc != MARC_RX || !s.scene_armed) {
         return 0;
     }
-    size_t n = s.scene_n < max ? s.scene_n : max;
-    memcpy(out, s.scene, n * sizeof out[0]);
-    s.scene_armed = false;
+    size_t left = s.scene_n - s.scene_pos;
+    size_t n = left < max ? left : max;
+    memcpy(out, s.scene + s.scene_pos, n * sizeof out[0]);
+    s.scene_pos += n;
+    s.scene_armed = s.scene_pos < s.scene_n;
     return n;
 }
 
 bool fake_cc1101_gdo0_put(const subghz_sym_t *sy, size_t n)
 {
-    if (s.marc != MARC_TX || s.rec_n + n > FAKE_CC1101_SCENE_MAX) {
+    if (s.marc != MARC_TX || s.rec == NULL || s.rec_n + n > FAKE_CC1101_SCENE_MAX) {
         return false;
     }
     memcpy(s.rec + s.rec_n, sy, n * sizeof sy[0]);
     s.rec_n += n;
     if (s.own_rx) {
-        memcpy(s.scene, s.rec, s.rec_n * sizeof s.rec[0]);
+        s.scene = s.rec;
         s.scene_n = s.rec_n;
+        s.scene_pos = 0;
         s.scene_armed = true;
     }
     return true;

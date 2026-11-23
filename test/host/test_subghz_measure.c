@@ -169,9 +169,10 @@ static void io_notify(void *ctx, int evt)
     }
 }
 
-static const subghz_svc_io_t k_io = {io_list,    io_claim,  io_release, io_lease_valid, io_open,
-                                     io_close,   io_xfer,   io_now,     io_delay,       io_log,
-                                     io_changed, io_notify, NULL};
+/* No receiver: this file measures RSSI only (test_subghz_capture.c captures). */
+static const subghz_svc_io_t k_io = {
+    io_list, io_claim, io_release, io_lease_valid, io_open, io_close,   io_xfer,   NULL,
+    NULL,    NULL,     io_now,     io_delay,       io_log,  io_changed, io_notify, NULL};
 
 void setUp(void)
 {

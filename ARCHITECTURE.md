@@ -309,7 +309,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 4 | `STARK_SYS_IR` | `stark_ir` (STARK-0303) | `STARK_IR_EVT_RX` / `_TX_DONE` / `_TX_FAILED` |
 | 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
 | 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
-| 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602); `_CAPTURE_DONE` / `_TX_DONE` / `_TX_FAILED` / `_TX_REFUSED` arrive with STARK-0603…0605 |
+| 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602), `_CAPTURE` / `_CAPTURE_DONE` (STARK-0603); `_TX_DONE` / `_TX_FAILED` / `_TX_REFUSED` arrive with STARK-0605 |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -974,6 +974,32 @@ LEFT/RIGHT step the meter 25 kHz inside the band; with no module it shows
 `No Sub-GHz module`, and a module lost while open returns it to the home list showing
 `Sub-GHz module lost`.
 
+**Raw capture (STARK-0603).** `subghz_raw.c` (public header, pure, no allocation) holds the
+capture rules, the `rf` v1 file (docs/subghz-format.md) and the timing histogram.
+`subghz_cap_feed()` keeps the symbols GDO2 produced (`subghz_sym_t`, int32 µs, sign = level):
+leading silence dropped, same-level neighbours merged, a symbol cut to 1 s, the capture full at
+2048 symbols or when the kept symbols span 2 s. The file is written by a cursor-driven
+streaming formatter (`subghz_raw_format()`, whole lines into any chunk of at least 200 bytes,
+and only for a capture that would read back identically) and read by a byte-fed strict parser
+(`subghz_raw_parser_*`, one 160-byte line buffer, any split of the input): no whole-file buffer
+exists on either side. The service gained a `CAPTURE` mode over three transport calls
+(`rx_start`, `rx_take`, `rx_stop`): `stark_subghz_capture_start(mod, hz, buf, cap)` writes the
+OOK or 2-FSK receive profile at 4800 Bd, tunes, starts the receiver, and each round takes at
+most 128 symbols (waiting at most 20 ms) into the caller's buffer; `STARK_SUBGHZ_EVT_CAPTURE`
+reports progress at most ten times a second and `STARK_SUBGHZ_EVT_CAPTURE_DONE` the end — the
+caller's `stark_subghz_capture_finish()`, 2048 symbols or 2 s — after the receiver is stopped
+and the radio is back in IDLE (a 2-FSK capture also restores the OOK profile the meter and the
+scan expect). The service writes into the buffer only between a start and the end or a stop; the
+buffer is the app's (`apps/app_subghz/subghz_files.c` allocates its 8 kB when a capture starts
+or a file is opened and frees it when the app stops, so nothing is held while the app is
+closed), and the receiver is stopped by any other request, a lost module or a failure (two in a
+row drop the module, as for the meter). Save and Saved run on the app worker through a 256-byte
+chunk (`captures/rf_NNNN.rf`, atomic), and the capture view shows setup (frequency,
+modulation), progress and the histogram (up to eight bins, count and mean µs). Logs:
+`subghz: capture start 433.920 MHz ook`, `subghz: capture 192 sym hash 0x78a82ac5`,
+`subghzapp: capture <n> sym <µs> us`, `subghzapp: hist 400x92 1200x96 12400x4`,
+`subghzapp: saved rf_0001.rf (192 sym) hash 0x…`, `subghzapp: opened rf_0001.rf …`.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -983,7 +1009,7 @@ LEFT/RIGHT step the meter 25 kHz inside the band; with no module it shows
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
-| `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); capture, decoders and gated replay planned (ADR-0022, TASKS STARK-0603…0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
+| `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); decoders and gated replay planned (ADR-0022, TASKS STARK-0604/0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 

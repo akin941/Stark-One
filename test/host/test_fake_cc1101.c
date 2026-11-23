@@ -268,7 +268,10 @@ static void test_scenes_on_gdo2_and_recording_on_gdo0(void)
     fake_cc1101_scene(scene, 4);
     TEST_ASSERT_EQUAL(0, fake_cc1101_gdo2_take(out, 8)); /* not in RX */
     strobe(0x34);                                        /* entering RX arms it */
-    TEST_ASSERT_EQUAL(2, fake_cc1101_gdo2_take(out, 2)); /* the caller's room limits it */
+    TEST_ASSERT_EQUAL(2, fake_cc1101_gdo2_take(out, 2)); /* the caller's room limits a piece */
+    TEST_ASSERT_EQUAL(500, out[0]);
+    TEST_ASSERT_EQUAL(2, fake_cc1101_gdo2_take(out, 8)); /* the rest follows */
+    TEST_ASSERT_EQUAL(1000, out[0]);
     TEST_ASSERT_EQUAL(0, fake_cc1101_gdo2_take(out, 8)); /* once */
     fake_cc1101_scene(scene, 4);
     TEST_ASSERT_EQUAL(4, fake_cc1101_gdo2_take(out, 8));

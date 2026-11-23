@@ -71,6 +71,24 @@ static stark_err_t io_xfer(void *ctx, const uint8_t *tx, uint8_t *rx, size_t len
     return stark_subghz_transport_xfer(tx, rx, len);
 }
 
+static stark_err_t io_rx_start(void *ctx)
+{
+    (void)ctx;
+    return stark_subghz_transport_rx_start();
+}
+
+static size_t io_rx_take(void *ctx, subghz_sym_t *out, size_t max, uint32_t timeout_ms)
+{
+    (void)ctx;
+    return stark_subghz_transport_rx_take(out, max, timeout_ms);
+}
+
+static void io_rx_stop(void *ctx)
+{
+    (void)ctx;
+    stark_subghz_transport_rx_stop();
+}
+
 static uint32_t io_now(void *ctx)
 {
     (void)ctx;
@@ -118,6 +136,13 @@ static void io_log(void *ctx, subghz_log_t what, unsigned a, unsigned b)
         case SUBGHZ_LOG_IDLE:
             STARK_LOGI("subghz", "idle");
             break;
+        case SUBGHZ_LOG_CAPTURE_START:
+            subghz_mhz_text(mhz, sizeof mhz, a);
+            STARK_LOGI("subghz", "capture start %s MHz %s", mhz, subghz_mod_name((subghz_mod_t)b));
+            break;
+        case SUBGHZ_LOG_CAPTURE_DONE:
+            STARK_LOGI("subghz", "capture %u sym hash 0x%08x", a, b);
+            break;
         case SUBGHZ_LOG_ERROR:
         default:
             STARK_LOGW("subghz", "module not usable: %s", stark_err_str((stark_err_t)a));
@@ -144,9 +169,9 @@ static void io_notify(void *ctx, int evt)
     (void)stark_event_publish(&e);
 }
 
-static const subghz_svc_io_t k_io = {io_list,    io_claim,  io_release, io_lease_valid, io_open,
-                                     io_close,   io_xfer,   io_now,     io_delay,       io_log,
-                                     io_changed, io_notify, NULL};
+static const subghz_svc_io_t k_io = {
+    io_list,    io_claim,   io_release, io_lease_valid, io_open, io_close,   io_xfer,   io_rx_start,
+    io_rx_take, io_rx_stop, io_now,     io_delay,       io_log,  io_changed, io_notify, NULL};
 
 static void subghz_task(void *arg)
 {
@@ -193,6 +218,21 @@ stark_err_t stark_subghz_scan_start(void)
     stark_err_t err = subghz_svc_scan(&s_svc);
     xSemaphoreGive(s_lock);
     return err;
+}
+
+stark_err_t stark_subghz_capture_start(subghz_mod_t mod, uint32_t hz, subghz_sym_t *buf, size_t cap)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    stark_err_t err = subghz_svc_capture(&s_svc, mod, hz, buf, cap);
+    xSemaphoreGive(s_lock);
+    return err;
+}
+
+void stark_subghz_capture_finish(void)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    subghz_svc_capture_finish(&s_svc);
+    xSemaphoreGive(s_lock);
 }
 
 void stark_subghz_stop(void)

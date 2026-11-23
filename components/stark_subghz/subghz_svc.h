@@ -18,17 +18,21 @@
 #include "cc1101_drv.h"
 #include "stark_module.h"
 #include "stark_subghz.h"
+#include "subghz_raw.h"
 #include "subghz_rssi.h"
 
-#define SUBGHZ_WIRING        (STARK_CAP_SUBGHZ | STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ)
-#define SUBGHZ_DEFAULT_HZ    433920000u
-#define SUBGHZ_DEFAULT_BAUD  4800u
-#define SUBGHZ_RETRY_MS      2000u /* before a rejected module is identified again */
-#define SUBGHZ_RETRY_MAX_MS  8000u /* ... doubling while the same rejection repeats, up to this */
-#define SUBGHZ_MISS_LIMIT    2u    /* failed checks in a row that drop a ready module */
-#define SUBGHZ_OP_MISS_LIMIT 2u    /* failed measurements in a row that drop a ready module */
-#define SUBGHZ_IDLE_MS       250u  /* the longest wait the step asks for */
-#define SUBGHZ_LOG_DELTA_X2  6     /* the meter logs a level when it moved this much (3 dB) */
+#define SUBGHZ_WIRING          (STARK_CAP_SUBGHZ | STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ)
+#define SUBGHZ_DEFAULT_HZ      433920000u
+#define SUBGHZ_DEFAULT_BAUD    SUBGHZ_RAW_RATE_DEFAULT
+#define SUBGHZ_RETRY_MS        2000u /* before a rejected module is identified again */
+#define SUBGHZ_RETRY_MAX_MS    8000u /* ... doubling while the same rejection repeats, up to this */
+#define SUBGHZ_MISS_LIMIT      2u    /* failed checks in a row that drop a ready module */
+#define SUBGHZ_OP_MISS_LIMIT   2u    /* failed measurements in a row that drop a ready module */
+#define SUBGHZ_IDLE_MS         250u  /* the longest wait the step asks for */
+#define SUBGHZ_LOG_DELTA_X2    6     /* the meter logs a level when it moved this much (3 dB) */
+#define SUBGHZ_TAKE_MAX        128u  /* symbols taken from the transport per round */
+#define SUBGHZ_CAPTURE_POLL_MS 20u   /* the longest a round waits for symbols */
+#define SUBGHZ_CAPTURE_NOTE_MS 100u  /* progress events are at least this far apart */
 
 typedef enum {
     SUBGHZ_LOG_NO_MODULE,  /* nothing declares a radio */
@@ -39,7 +43,9 @@ typedef enum {
     SUBGHZ_LOG_METER,      /* a = Hz: the meter tuned */
     SUBGHZ_LOG_RSSI,       /* a = twice the dBm (as unsigned) */
     SUBGHZ_LOG_PEAK, /* a = Hz, b = twice the dBm (as unsigned): a sweep's strongest channel */
-    SUBGHZ_LOG_IDLE  /* the radio was returned to IDLE on request */
+    SUBGHZ_LOG_IDLE, /* the radio was returned to IDLE on request */
+    SUBGHZ_LOG_CAPTURE_START, /* a = Hz, b = subghz_mod_t */
+    SUBGHZ_LOG_CAPTURE_DONE   /* a = symbols kept, b = subghz_raw_hash() of them */
 } subghz_log_t;
 
 typedef struct {
@@ -50,6 +56,9 @@ typedef struct {
     stark_err_t (*open)(void *ctx, const stark_module_lease_t *lease);
     void (*close)(void *ctx);
     stark_err_t (*xfer)(void *ctx, const uint8_t *tx, uint8_t *rx, size_t len);
+    stark_err_t (*rx_start)(void *ctx);
+    size_t (*rx_take)(void *ctx, subghz_sym_t *out, size_t max, uint32_t timeout_ms);
+    void (*rx_stop)(void *ctx);
     uint32_t (*now_ms)(void *ctx);
     void (*delay_ms)(void *ctx, uint32_t ms);
     void (*log)(void *ctx, subghz_log_t what, unsigned a, unsigned b);
@@ -85,6 +94,17 @@ typedef struct {
     uint32_t next_ms;  /* when the meter samples next */
     uint8_t op_misses; /* failed measurements in a row */
     subghz_scan_t scan;
+    /* ---- capture (STARK-0603) ---- */
+    subghz_cap_t cap;
+    subghz_mod_t cap_mod;
+    uint32_t cap_hz;
+    bool cap_setup;  /* the profile has still to be written and the receiver started */
+    bool cap_active; /* symbols are being taken */
+    bool cap_finish; /* the user asked it to end */
+    bool cap_rx;     /* the transport's receiver is running */
+    uint16_t cap_noted;
+    uint32_t cap_note_ms;
+    subghz_sym_t take[SUBGHZ_TAKE_MAX];
 } subghz_svc_t;
 
 void subghz_svc_init(subghz_svc_t *s, const subghz_svc_io_t *io);
@@ -105,5 +125,9 @@ bool subghz_svc_ready(const subghz_svc_t *s);
  */
 stark_err_t subghz_svc_meter(subghz_svc_t *s, uint32_t hz);
 stark_err_t subghz_svc_scan(subghz_svc_t *s);
+/* buf must hold cap symbols and stay valid until the capture ends or is stopped. */
+stark_err_t subghz_svc_capture(subghz_svc_t *s, subghz_mod_t mod, uint32_t hz, subghz_sym_t *buf,
+                               size_t cap);
+void subghz_svc_capture_finish(subghz_svc_t *s);
 void subghz_svc_stop(subghz_svc_t *s);
 void subghz_svc_status(const subghz_svc_t *s, stark_subghz_status_t *out);

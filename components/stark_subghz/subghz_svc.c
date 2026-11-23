@@ -87,10 +87,17 @@ static void reset_measure(subghz_svc_t *s)
     s->scan_active = false;
     s->have_logged = false;
     s->op_misses = 0;
+    s->cap_setup = false;
+    s->cap_active = false;
+    s->cap_finish = false;
+    s->cap_rx = false;
 }
 
 static void leave_ready(subghz_svc_t *s, subghz_log_t what, unsigned a, unsigned b, bool wait)
 {
+    if (s->cap_rx) {
+        s->io.rx_stop(s->io.ctx);
+    }
     if (s->rx_on) {
         (void)cc1101_idle(&s->drv); /* best effort: the chip may well be gone */
     }
@@ -205,6 +212,14 @@ static void start_probe(subghz_svc_t *s)
     subghz_scan_start(&s->scan, &probe);
 }
 
+/* No capture is running or pending (the receiver itself is stopped by the next round). */
+static void end_capture(subghz_svc_t *s)
+{
+    s->cap_setup = false;
+    s->cap_active = false;
+    s->cap_finish = false;
+}
+
 stark_err_t subghz_svc_meter(subghz_svc_t *s, uint32_t hz)
 {
     uint8_t words[3];
@@ -221,6 +236,7 @@ stark_err_t subghz_svc_meter(subghz_svc_t *s, uint32_t hz)
     s->meter_hz = hz;
     s->retune = true;
     s->scan_active = false;
+    end_capture(s);
     s->rx_on = true; /* from here the chip may be receiving, until it is told otherwise */
     s->idle_log = false;
     s->have_logged = false;
@@ -237,11 +253,48 @@ stark_err_t subghz_svc_scan(subghz_svc_t *s)
     s->st.mode = STARK_SUBGHZ_SCAN;
     s->retune = false;
     s->scan_active = true;
+    end_capture(s);
     s->rx_on = true;
     s->idle_log = false;
     s->op_misses = 0;
     start_probe(s);
     return STARK_OK;
+}
+
+stark_err_t subghz_svc_capture(subghz_svc_t *s, subghz_mod_t mod, uint32_t hz, subghz_sym_t *buf,
+                               size_t cap)
+{
+    uint8_t words[3];
+    if (!s->ready) {
+        return STARK_ERR_STATE;
+    }
+    if ((unsigned)mod >= (unsigned)SUBGHZ_MOD_COUNT || buf == NULL || cap == 0 ||
+        cc1101_freq_regs(hz, words) != STARK_OK) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    memset(&s->st, 0, sizeof s->st);
+    s->st.mode = STARK_SUBGHZ_CAPTURE;
+    s->st.hz = hz;
+    s->retune = false;
+    s->scan_active = false;
+    s->cap_mod = mod;
+    s->cap_hz = hz;
+    s->cap_setup = true;
+    s->cap_active = false;
+    s->cap_finish = false;
+    s->cap_noted = 0;
+    subghz_cap_init(&s->cap, buf, cap);
+    s->rx_on = true; /* from here the chip may be receiving, until it is told otherwise */
+    s->idle_log = false;
+    s->op_misses = 0;
+    return STARK_OK;
+}
+
+void subghz_svc_capture_finish(subghz_svc_t *s)
+{
+    if (s->st.mode == STARK_SUBGHZ_CAPTURE && !s->st.capture_done) {
+        s->cap_finish = true;
+    }
 }
 
 void subghz_svc_stop(subghz_svc_t *s)
@@ -252,6 +305,7 @@ void subghz_svc_stop(subghz_svc_t *s)
     memset(&s->st, 0, sizeof s->st);
     s->retune = false;
     s->scan_active = false;
+    end_capture(s);
 }
 
 void subghz_svc_status(const subghz_svc_t *s, stark_subghz_status_t *out)
@@ -363,9 +417,95 @@ static void run_scan(subghz_svc_t *s)
     }
 }
 
+/* The profile of the chosen modulation, the receiver on GDO2, and the first round of symbols. */
+static void start_capture(subghz_svc_t *s)
+{
+    if (s->cap_rx) {
+        s->io.rx_stop(s->io.ctx); /* a capture started again while the last one ran */
+        s->cap_rx = false;
+    }
+    cc1101_preset_t preset =
+        s->cap_mod == SUBGHZ_MOD_2FSK ? CC1101_PRESET_FSK2_RX : CC1101_PRESET_OOK_RX;
+    stark_err_t err = cc1101_configure(&s->drv, preset, s->cap_hz, SUBGHZ_DEFAULT_BAUD);
+    if (err == STARK_OK) {
+        err = cc1101_tune_rx(&s->drv, s->cap_hz);
+    }
+    if (err == STARK_OK) {
+        err = s->io.rx_start(s->io.ctx);
+    }
+    if (err != STARK_OK) {
+        op_failed(s, err);
+        return;
+    }
+    s->cap_rx = true;
+    s->cap_setup = false;
+    s->cap_active = true;
+    s->cap_note_ms = s->io.now_ms(s->io.ctx);
+    s->op_misses = 0;
+    log_what(s, SUBGHZ_LOG_CAPTURE_START, s->cap_hz, (unsigned)s->cap_mod);
+}
+
+/* The capture ended: the receiver stops, the radio goes to IDLE with the usual profile. */
+static void finish_capture(subghz_svc_t *s)
+{
+    if (s->cap_rx) {
+        s->io.rx_stop(s->io.ctx);
+        s->cap_rx = false;
+    }
+    stark_err_t err = cc1101_idle(&s->drv);
+    if (err == STARK_OK && s->cap_mod != SUBGHZ_MOD_OOK) {
+        err = cc1101_configure(&s->drv, CC1101_PRESET_OOK_RX, SUBGHZ_DEFAULT_HZ,
+                               SUBGHZ_DEFAULT_BAUD); /* the meter and the scan expect it */
+    }
+    if (err != STARK_OK) {
+        op_failed(s, err); /* tried again next round; two misses in a row drop the module */
+        return;
+    }
+    s->rx_on = false;
+    s->cap_active = false;
+    s->op_misses = 0;
+    s->st.capture_done = true;
+    log_what(s, SUBGHZ_LOG_CAPTURE_DONE, s->cap.n, subghz_raw_hash(s->cap.sym, s->cap.n));
+    s->io.notify(s->io.ctx, STARK_SUBGHZ_EVT_CAPTURE_DONE);
+}
+
+static uint32_t run_capture(subghz_svc_t *s)
+{
+    if (s->cap_setup) {
+        start_capture(s);
+        return 1;
+    }
+    if (!s->cap_active) {
+        return SUBGHZ_IDLE_MS; /* ended: the symbols are the caller's */
+    }
+    if (!s->cap_finish && !s->cap.full) {
+        size_t n = s->io.rx_take(s->io.ctx, s->take, SUBGHZ_TAKE_MAX, SUBGHZ_CAPTURE_POLL_MS);
+        subghz_cap_feed(&s->cap, s->take, n > SUBGHZ_TAKE_MAX ? SUBGHZ_TAKE_MAX : n);
+        s->st.symbols = s->cap.n;
+        s->st.span_us = s->cap.total_us;
+    }
+    uint32_t now = s->io.now_ms(s->io.ctx);
+    if (s->st.symbols != s->cap_noted && now - s->cap_note_ms >= SUBGHZ_CAPTURE_NOTE_MS) {
+        s->cap_noted = s->st.symbols;
+        s->cap_note_ms = now;
+        s->io.notify(s->io.ctx, STARK_SUBGHZ_EVT_CAPTURE);
+    }
+    if (s->cap_finish || s->cap.full) {
+        finish_capture(s);
+    }
+    return 1; /* a round that took symbols already waited for them */
+}
+
 static uint32_t run_mode(subghz_svc_t *s)
 {
+    if (s->cap_rx && s->st.mode != STARK_SUBGHZ_CAPTURE) {
+        s->io.rx_stop(
+            s->io.ctx); /* another measurement, a stop or a lost module follows a capture */
+        s->cap_rx = false;
+    }
     switch (s->st.mode) {
+        case STARK_SUBGHZ_CAPTURE:
+            return run_capture(s);
         case STARK_SUBGHZ_METER:
             return run_meter(s);
         case STARK_SUBGHZ_SCAN:

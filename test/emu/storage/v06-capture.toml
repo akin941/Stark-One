@@ -1,0 +1,66 @@
+# STARK-0603 on the test image, whose stark_subghz_transport is the test-only fake CC1101
+# (ADR-0022 §3). The CC1101 module (catalogue entry 32) is in slot 0 and answers, and
+# `emu_sg_scene = 1` makes GDO2 play the spec-derived pulse-width scene "pwm24" (24 bits,
+# 400/1200 us, four repeats: scripts/gen_subghz_vectors.py) each time the chip enters RX.
+# The production service, app and UI run unchanged: Sub-GHz -> Capture -> Start captures the
+# scene (192 symbols, 201 600 us, fingerprint 0x78a82ac5 as the generator computes it, so
+# every symbol is exactly the scene's); Stop ends it with the radio idle again and the
+# timing histogram (400 us x92, 1200 us x96, 12400 us x4); Save writes captures/rf_0001.rf.
+# A second capture of the 2400-symbol scene 4 ends by itself at the 2048-symbol limit.
+# Saved -> rf_0001.rf reads the file back through the strict parser: the same symbol count,
+# the same fingerprint and the same histogram. Receive only: nothing is transmitted.
+# Integration evidence, not RF: no signal exists behind any of it (ROADMAP V1 exit 12).
+name = "emu-v06-capture"
+image = "storage"
+end_ms = 22000
+heap_min = 200000
+pokes = [
+    { at_ms = 500, var = "emu_mod_slot0", value = 32 },
+    { at_ms = 500, var = "emu_sg_chip", value = 1 },
+    { at_ms = 500, var = "emu_sg_scene", value = 1 },
+    { at_ms = 13000, var = "emu_sg_scene", value = 4 },   # the 2400-symbol scene
+]
+presses = [
+    { key = "UP", at_ms = 5300, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 5500, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 5700, hold_ms = 60 },     # Modules
+    { key = "UP", at_ms = 5900, hold_ms = 60 },     # Sub-GHz
+    { key = "OK", at_ms = 6300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 7000, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 7300, hold_ms = 60 },   # Capture
+    { key = "OK", at_ms = 7600, hold_ms = 60 },     # the setup: Frequency, Modulation, Start
+    { key = "DOWN", at_ms = 8300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 8600, hold_ms = 60 },   # Start
+    { key = "OK", at_ms = 8900, hold_ms = 60 },     # captures the scene
+    { key = "OK", at_ms = 11000, hold_ms = 60 },    # Stop
+    { key = "OK", at_ms = 12500, hold_ms = 60 },    # Save
+    { key = "DOWN", at_ms = 13500, hold_ms = 60 },  # Capture again
+    { key = "OK", at_ms = 13800, hold_ms = 60 },    # the 2400-symbol scene: full at 2048
+    { key = "BACK", at_ms = 15500, hold_ms = 60 },  # capture -> home (the radio idles)
+    { key = "DOWN", at_ms = 16000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 16300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 16600, hold_ms = 60 },  # Saved
+    { key = "OK", at_ms = 17000, hold_ms = 60 },    # the list: rf_0001.rf
+    { key = "OK", at_ms = 18000, hold_ms = 60 },    # reads it back
+    { key = "BACK", at_ms = 19500, hold_ms = 60 },  # file -> list
+    { key = "BACK", at_ms = 20000, hold_ms = 60 },  # list -> home
+    { key = "BACK", at_ms = 20500, hold_ms = 60 },  # home -> launcher
+]
+expect = [
+    "subghz: cc1101 version 0x14",
+    'menu: sel=13 "Sub-GHz"',
+    "app: start subghz",
+    "subghz: capture start 433.920 MHz ook",
+    "subghz: capture 192 sym hash 0x78a82ac5",
+    "subghzapp: capture 192 sym 201600 us",
+    "subghzapp: hist 400x92 1200x96 12400x4",
+    "subghzapp: saved rf_0001.rf (192 sym) hash 0x78a82ac5",
+    "subghz: capture start 433.920 MHz ook",
+    "subghz: capture 2048 sym hash 0x27a9fdc5",
+    "subghz: idle",
+    "subghzapp: opened rf_0001.rf (192 sym) hash 0x78a82ac5",
+    "subghzapp: hist 400x92 1200x96 12400x4",
+    "app: stop subghz",
+]
+forbid = ["module not usable", "subghz init failed", "save failed", "save refused", "open failed",
+          "capture refused", "panic", "app: fault"]
