@@ -164,10 +164,12 @@ static void test_rssi_follows_the_air_at_the_tuned_frequency(void)
     TEST_ASSERT_EQUAL_HEX8(28, status_reg(0x34)); /* (-60 + 74) * 2 */
     fake_cc1101_air(433920000u, -100);
     TEST_ASSERT_EQUAL_HEX8(0xCC, status_reg(0x34)); /* (-26 * 2) + 256 */
-    fake_cc1101_air(433920000u + 49000u, -80);      /* within 50 kHz */
+    fake_cc1101_air(433920000u + 12000u, -80);      /* within half a scan channel */
     TEST_ASSERT_EQUAL_HEX8(0xF4, status_reg(0x34)); /* (-6 * 2) + 256 */
-    fake_cc1101_air(433920000u + 60000u, -40);      /* outside it */
-    TEST_ASSERT_EQUAL_HEX8(184, status_reg(0x34));  /* the -110 dBm floor */
+    fake_cc1101_air(433920000u - 12000u, -80);
+    TEST_ASSERT_EQUAL_HEX8(0xF4, status_reg(0x34));
+    fake_cc1101_air(433920000u + 13000u, -40);     /* outside it (STARK-0602: was 50 kHz) */
+    TEST_ASSERT_EQUAL_HEX8(184, status_reg(0x34)); /* the -110 dBm floor */
     fake_cc1101_air(0, 0);
     TEST_ASSERT_EQUAL_HEX8(184, status_reg(0x34));
     fake_cc1101_air(433920000u, 10); /* beyond the chip's range: clamps */

@@ -4480,6 +4480,68 @@ follows `emu_sg_level` -40 → -70 → -55 (logged); leaving → `subghz: idle`.
 **Security.** Receive only. **Budget.** `app_subghz` static ≤ 2 kB, flash ≤ 4 kB.
 **Physical HIL (V1).** Our own transmitter at its frequency; level against distance.
 
+**As built.** Differences from the plan, each the smallest sound choice:
+
+* **The service hosts the measurements; no separate "modes" file.** `subghz_rssi.c` is the
+  conversion, the text helpers and the scan state machine over an injected probe; the
+  meter, the stop and the scan's driving live in `subghz_svc.c` next to the module checks
+  they share a lock and a failure policy with. `subghz_rssi.h` is public (`include/`) because
+  the app formats levels with it and because the band's edges are defined once there
+  (`SUBGHZ_BAND_MIN_HZ` / `_MAX_HZ`; `cc1101_regs.h` takes `CC1101_HZ_MIN` / `_MAX` from them).
+* **Public API.** `stark_subghz_meter_start(hz)`, `stark_subghz_scan_start()`,
+  `stark_subghz_stop()` and `stark_subghz_status()`; `STARK_SUBGHZ_EVT_RSSI` (2) and
+  `_SCAN_DONE` (3). The requests only change state under one mutex and return at once; the
+  service task carries them out. `subghz_svc_step()` now returns the ms to wait (1 ms between
+  scan channels, the time to the next sample while metering, 250 ms otherwise), so the task
+  samples every 50 ms without polling the module table at that rate; `subghz_svc_io_t`
+  gained `notify` (the event), and `test_subghz_service.c`'s initialiser follows.
+* **Two driver calls, `cc1101_tune_rx()` and `cc1101_idle()`.** The scan retunes 69 times, so
+  it cannot rewrite the profile each time: SIDLE, the three frequency registers in one burst,
+  SRX, and a bounded wait for `MARCSTATE` RX. The band lock is still in `cc1101_freq_regs()`.
+* **A scan is one sweep, and the radio is back in IDLE when it ends.** Spec: "the radio is in
+  RX only while a view is open". A finished sweep has nothing more to listen to, so the service
+  idles the chip first and then publishes `_SCAN_DONE`; the scan view shows the peak and a
+  `Scan again` row. If the chip cannot be put in IDLE the sweep is not announced.
+* **Failure policy: fail closed.** A tune, read or idle that fails is tried once more on the
+  next round; two in a row drop the module exactly like a failed check (transport closed,
+  capability withdrawn, `subghz: module not usable: <error>`), and it is identified again, with
+  a reset, after 2 s. So a chip that never reaches IDLE or RX is never left listening and never
+  trusted without a reset.
+* **Events and logs are bounded.** The meter publishes `_RSSI` only when the level (half-dB
+  steps) changed, and logs `subghz: rssi <dBm> dBm` only when it moved by 3 dB or more since the
+  last logged level (and for the first sample after a retune), so a noisy real channel cannot
+  stream log lines. `subghz: idle` is logged once the chip reports IDLE after a stop, and not
+  at all when nothing was running.
+* **The fake's carrier is half a scan channel wide (12.5 kHz), not 50 kHz** (STARK-0601's
+  figure). With 50 kHz, a carrier at 433.920 MHz put the same level on five neighbouring
+  channels and a tie went to the lowest; the spec's `peak 433.925 MHz` needs a carrier to occupy
+  its own channel. `test_fake_cc1101.c` follows. Nothing about a real chip's filter (203 kHz) is
+  claimed (V1).
+* **The sweep's settle wait is a floor.** `io_delay()` in the target port waits one tick more
+  than asked (FreeRTOS tick 1 ms), so "1 ms after each retune" is never shorter. The injected
+  clock bounds the sweep: 69 channels take 2 ms each in the host test (≤ 500 ms), about 140 ms
+  of waiting plus the SPI transfers on the device; V1 measures it.
+* **App.** `apps/app_subghz` (Lab, `caps_required = STARK_CAP_SUBGHZ`): a home list (RSSI meter,
+  Band scan), the meter (Frequency row, LEFT/RIGHT step 25 kHz and retune, clamped to the band;
+  RSSI in dBm with half steps; a 12-cell bar from -110 to -30 dBm), the scan (progress notice,
+  then Peak, Level and Scan again). The frequency chosen is kept until the app stops. BACK from
+  a view stops the radio and returns to the home list; leaving the app stops it too. With no
+  module the app says `No Sub-GHz module`; a module lost while a view is open returns it to the
+  home list showing `Sub-GHz module lost` (nothing resumes by itself when the module returns).
+  A scan's progress is not shown while it runs (the service publishes no progress events; a
+  sweep is a fraction of a second).
+* **Launcher rows and registry.** Sub-GHz sorts after NFC by title: Lab 10, IR 11, NFC 12, Sub-GHz 13, Device
+  14, Modules 15, Settings 16, Storage 17. The only edits to pre-existing scenarios are the
+  `menu: sel=` expectations (Modules 14 → 15, Settings 15 → 16, Storage 16 → 17) in
+  `v04-nfc-absent`, `v02-settings-persist`, `storage/v02-eject`, `storage/v02-log-file` and
+  `storage/v05-hotplug`; the row is dimmed on every pre-existing scenario's module state, so no
+  walk gained a press. The other expected consequence of one more app is the boot log's
+  registry line (`app: registry n=13 …,ir,subghz,modules,…`) in `v0-boot` and `v01-hello`. Each
+  changed line is a row index or that registry line, and nothing else.
+* **Not here.** `emu_sg_scene` still waits for STARK-0603's scene catalogue; capture, the raw
+  format, decoders and any transmit path are untouched (`STX` is still refused, `tx()` still
+  `STARK_ERR_NOT_SUPPORTED`, `PATABLE` unchanged).
+
 ---
 
 ## STARK-0603 — Capture: GDO2 symbols, raw format, save, timing view

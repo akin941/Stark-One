@@ -21,8 +21,9 @@
 #include "stark_err.h"
 #include "stark_subghz_transport.h" /* subghz_sym_t */
 
-#define FAKE_CC1101_SCENE_MAX 2100 /* symbols: a transmission is at most 2048 */
-#define FAKE_CC1101_FREQ_LOG  64
+#define FAKE_CC1101_SCENE_MAX         2100 /* symbols: a transmission is at most 2048 */
+#define FAKE_CC1101_FREQ_LOG          64
+#define FAKE_CC1101_AIR_HALF_WIDTH_HZ 12500u /* STARK-0602; it was 50 kHz in STARK-0601 */
 
 typedef enum {
     FAKE_CC1101_NONE = 0,
@@ -44,7 +45,8 @@ void fake_cc1101_fault(fake_cc1101_fault_t kind, int count);
 
 /*
  * The air: one carrier and its level in dBm. The RSSI reads that level while the
- * tuned frequency is within 50 kHz of carrier_hz, and -110 dBm elsewhere.
+ * tuned frequency is within FAKE_CC1101_AIR_HALF_WIDTH_HZ of carrier_hz (half a scan
+ * channel: a carrier occupies exactly one 25 kHz channel), and -110 dBm elsewhere.
  * carrier_hz 0: silence.
  */
 void fake_cc1101_air(uint32_t carrier_hz, int level_dbm);

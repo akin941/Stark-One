@@ -120,7 +120,7 @@ static uint8_t rssi_now(void)
     int dbm = -110;
     if (s.air_hz != 0) {
         uint32_t d = hz > s.air_hz ? hz - s.air_hz : s.air_hz - hz;
-        if (d <= 50000u) {
+        if (d <= FAKE_CC1101_AIR_HALF_WIDTH_HZ) {
             dbm = s.air_dbm;
         }
     }

@@ -2,12 +2,15 @@
  * stark_subghz.c — the Sub-GHz service's target port (stark_subghz.h): binds
  * the pure service (subghz_svc.c) to stark_module's claims, the transport and
  * FreeRTOS time, and runs the service task. Every transport call after init is
- * made by that task. Target-only.
+ * made by that task. The requests (meter, scan, stop, status) and the task's own
+ * steps are serialised by one mutex; a step holds it for at most one channel or one
+ * identification, so a caller waits milliseconds. Target-only.
  */
 #include "stark_subghz.h"
 #include <stdatomic.h>
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
 #include "stark_event.h"
@@ -22,6 +25,8 @@ static subghz_svc_t s_svc;
 static atomic_bool s_ready;
 static StackType_t s_stack[CONFIG_STARK_SUBGHZ_TASK_STACK / sizeof(StackType_t)];
 static StaticTask_t s_tcb;
+static StaticSemaphore_t s_lock_buf;
+static SemaphoreHandle_t s_lock;
 
 static size_t io_list(void *ctx, stark_module_entry_t *out, size_t max)
 {
@@ -75,13 +80,15 @@ static uint32_t io_now(void *ctx)
 static void io_delay(void *ctx, uint32_t ms)
 {
     (void)ctx;
-    TickType_t ticks = pdMS_TO_TICKS(ms);
-    vTaskDelay(ticks > 0 ? ticks : 1);
+    /* NOTE: one tick more, so a wait is never shorter than asked (the 1 ms scan settle) */
+    vTaskDelay(pdMS_TO_TICKS(ms) + 1);
 }
 
 static void io_log(void *ctx, subghz_log_t what, unsigned a, unsigned b)
 {
     (void)ctx;
+    char mhz[12];
+    char dbm[12];
     switch (what) {
         case SUBGHZ_LOG_NO_MODULE:
             STARK_LOGI("subghz", "no module");
@@ -94,6 +101,22 @@ static void io_log(void *ctx, subghz_log_t what, unsigned a, unsigned b)
             break;
         case SUBGHZ_LOG_LOST:
             STARK_LOGW("subghz", "module lost");
+            break;
+        case SUBGHZ_LOG_METER:
+            subghz_mhz_text(mhz, sizeof mhz, a);
+            STARK_LOGI("subghz", "meter %s MHz", mhz);
+            break;
+        case SUBGHZ_LOG_RSSI:
+            subghz_dbm_text(dbm, sizeof dbm, (int16_t)(int)a);
+            STARK_LOGI("subghz", "rssi %s dBm", dbm);
+            break;
+        case SUBGHZ_LOG_PEAK:
+            subghz_mhz_text(mhz, sizeof mhz, a);
+            subghz_dbm_text(dbm, sizeof dbm, (int16_t)(int)b);
+            STARK_LOGI("subghz", "peak %s MHz %s dBm", mhz, dbm);
+            break;
+        case SUBGHZ_LOG_IDLE:
+            STARK_LOGI("subghz", "idle");
             break;
         case SUBGHZ_LOG_ERROR:
         default:
@@ -112,22 +135,37 @@ static void io_changed(void *ctx, bool ready)
     (void)stark_event_publish(&e);
 }
 
-static const subghz_svc_io_t k_io = {io_list,  io_claim, io_release, io_lease_valid,
-                                     io_open,  io_close, io_xfer,    io_now,
-                                     io_delay, io_log,   io_changed, NULL};
+static void io_notify(void *ctx, int evt)
+{
+    (void)ctx;
+    stark_event_t e = {.type = STARK_EVT_SYSTEM};
+    e.system.id = STARK_SYS_SUBGHZ;
+    e.system.arg = evt;
+    (void)stark_event_publish(&e);
+}
+
+static const subghz_svc_io_t k_io = {io_list,    io_claim,  io_release, io_lease_valid, io_open,
+                                     io_close,   io_xfer,   io_now,     io_delay,       io_log,
+                                     io_changed, io_notify, NULL};
 
 static void subghz_task(void *arg)
 {
     (void)arg;
     for (;;) {
-        subghz_svc_step(&s_svc);
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_STARK_SUBGHZ_POLL_MS));
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        uint32_t wait_ms = subghz_svc_step(&s_svc);
+        xSemaphoreGive(s_lock);
+        if (wait_ms > CONFIG_STARK_SUBGHZ_POLL_MS) {
+            wait_ms = CONFIG_STARK_SUBGHZ_POLL_MS;
+        }
+        vTaskDelay(pdMS_TO_TICKS(wait_ms));
     }
 }
 
 stark_err_t stark_subghz_init(void)
 {
     subghz_svc_init(&s_svc, &k_io);
+    s_lock = xSemaphoreCreateMutexStatic(&s_lock_buf);
     if (xTaskCreateStaticPinnedToCore(
             subghz_task, "stark_subghz", (uint32_t)(sizeof s_stack / sizeof s_stack[0]), NULL,
             CONFIG_STARK_SUBGHZ_TASK_PRIO, s_stack, &s_tcb, SUBGHZ_CORE) == NULL) {
@@ -139,4 +177,34 @@ stark_err_t stark_subghz_init(void)
 bool stark_subghz_ready(void)
 {
     return atomic_load(&s_ready);
+}
+
+stark_err_t stark_subghz_meter_start(uint32_t hz)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    stark_err_t err = subghz_svc_meter(&s_svc, hz);
+    xSemaphoreGive(s_lock);
+    return err;
+}
+
+stark_err_t stark_subghz_scan_start(void)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    stark_err_t err = subghz_svc_scan(&s_svc);
+    xSemaphoreGive(s_lock);
+    return err;
+}
+
+void stark_subghz_stop(void)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    subghz_svc_stop(&s_svc);
+    xSemaphoreGive(s_lock);
+}
+
+void stark_subghz_status(stark_subghz_status_t *out)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    subghz_svc_status(&s_svc, out);
+    xSemaphoreGive(s_lock);
 }

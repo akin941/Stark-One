@@ -77,8 +77,24 @@ static void reject(subghz_svc_t *s, subghz_log_t what, unsigned a, unsigned b)
     note_failure(s, what, a, b);
 }
 
+/* Nothing is being measured and nothing is pending. */
+static void reset_measure(subghz_svc_t *s)
+{
+    memset(&s->st, 0, sizeof s->st);
+    s->rx_on = false;
+    s->idle_log = false;
+    s->retune = false;
+    s->scan_active = false;
+    s->have_logged = false;
+    s->op_misses = 0;
+}
+
 static void leave_ready(subghz_svc_t *s, subghz_log_t what, unsigned a, unsigned b, bool wait)
 {
+    if (s->rx_on) {
+        (void)cc1101_idle(&s->drv); /* best effort: the chip may well be gone */
+    }
+    reset_measure(s);
     give_back(s);
     s->ready = false;
     s->misses = 0;
@@ -156,11 +172,220 @@ static void identify(subghz_svc_t *s, uint8_t slot)
     s->io.changed(s->io.ctx, true);
 }
 
-void subghz_svc_step(subghz_svc_t *s)
+/*
+ * A failed measurement is tried again next round; the second in a row drops the module
+ * (fail closed: it is identified from scratch, with a reset, when it answers again).
+ */
+static void op_failed(subghz_svc_t *s, stark_err_t err)
+{
+    if (++s->op_misses >= SUBGHZ_OP_MISS_LIMIT) {
+        leave_ready(s, SUBGHZ_LOG_ERROR, (unsigned)err, 0, true);
+    }
+}
+
+static stark_err_t probe_tune(void *ctx, uint32_t hz)
+{
+    return cc1101_tune_rx(&((subghz_svc_t *)ctx)->drv, hz);
+}
+
+static stark_err_t probe_read(void *ctx, uint8_t *raw)
+{
+    return cc1101_rssi_raw(&((subghz_svc_t *)ctx)->drv, raw);
+}
+
+static void probe_delay(void *ctx, uint32_t ms)
+{
+    subghz_svc_t *s = ctx;
+    s->io.delay_ms(s->io.ctx, ms);
+}
+
+static void start_probe(subghz_svc_t *s)
+{
+    const subghz_probe_t probe = {probe_tune, probe_read, probe_delay, s};
+    subghz_scan_start(&s->scan, &probe);
+}
+
+stark_err_t subghz_svc_meter(subghz_svc_t *s, uint32_t hz)
+{
+    uint8_t words[3];
+    if (!s->ready) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = cc1101_freq_regs(hz, words);
+    if (err != STARK_OK) {
+        return err;
+    }
+    memset(&s->st, 0, sizeof s->st);
+    s->st.mode = STARK_SUBGHZ_METER;
+    s->st.hz = hz;
+    s->meter_hz = hz;
+    s->retune = true;
+    s->scan_active = false;
+    s->rx_on = true; /* from here the chip may be receiving, until it is told otherwise */
+    s->idle_log = false;
+    s->have_logged = false;
+    s->op_misses = 0;
+    return STARK_OK;
+}
+
+stark_err_t subghz_svc_scan(subghz_svc_t *s)
+{
+    if (!s->ready) {
+        return STARK_ERR_STATE;
+    }
+    memset(&s->st, 0, sizeof s->st);
+    s->st.mode = STARK_SUBGHZ_SCAN;
+    s->retune = false;
+    s->scan_active = true;
+    s->rx_on = true;
+    s->idle_log = false;
+    s->op_misses = 0;
+    start_probe(s);
+    return STARK_OK;
+}
+
+void subghz_svc_stop(subghz_svc_t *s)
+{
+    if (s->st.mode != STARK_SUBGHZ_IDLE) {
+        s->idle_log = true;
+    }
+    memset(&s->st, 0, sizeof s->st);
+    s->retune = false;
+    s->scan_active = false;
+}
+
+void subghz_svc_status(const subghz_svc_t *s, stark_subghz_status_t *out)
+{
+    *out = s->st;
+}
+
+static void run_idle(subghz_svc_t *s)
+{
+    if (s->rx_on) {
+        stark_err_t err = cc1101_idle(&s->drv);
+        if (err != STARK_OK) {
+            op_failed(s, err);
+            return;
+        }
+        s->rx_on = false;
+        s->op_misses = 0;
+    }
+    if (s->idle_log) {
+        s->idle_log = false;
+        log_what(s, SUBGHZ_LOG_IDLE, 0, 0);
+    }
+}
+
+static uint32_t run_meter(subghz_svc_t *s)
+{
+    uint32_t now = s->io.now_ms(s->io.ctx);
+    if (s->retune) {
+        stark_err_t err = cc1101_tune_rx(&s->drv, s->meter_hz);
+        if (err != STARK_OK) {
+            op_failed(s, err);
+            return 1;
+        }
+        s->retune = false;
+        s->op_misses = 0;
+        s->next_ms = now + SUBGHZ_SCAN_SETTLE_MS;
+        log_what(s, SUBGHZ_LOG_METER, s->meter_hz, 0);
+        return 1;
+    }
+    if ((int32_t)(now - s->next_ms) < 0) {
+        return s->next_ms - now; /* woken early: 1..SUBGHZ_METER_PERIOD_MS left */
+    }
+    uint8_t raw;
+    stark_err_t err = cc1101_rssi_raw(&s->drv, &raw);
+    if (err != STARK_OK) {
+        op_failed(s, err);
+        return 1;
+    }
+    s->op_misses = 0;
+    s->next_ms = now + SUBGHZ_METER_PERIOD_MS;
+    int16_t level = subghz_rssi_dbm_x2(raw);
+    bool changed = !s->st.valid || level != s->st.dbm_x2;
+    s->st.valid = true;
+    s->st.dbm_x2 = level;
+    if (!s->have_logged || level - s->logged_x2 >= SUBGHZ_LOG_DELTA_X2 ||
+        s->logged_x2 - level >= SUBGHZ_LOG_DELTA_X2) {
+        s->have_logged = true;
+        s->logged_x2 = level;
+        log_what(s, SUBGHZ_LOG_RSSI, (unsigned)(int)level, 0);
+    }
+    if (changed) {
+        s->io.notify(s->io.ctx, STARK_SUBGHZ_EVT_RSSI);
+    }
+    return SUBGHZ_METER_PERIOD_MS;
+}
+
+/* The sweep is complete: the radio goes back to IDLE, then the peak is announced. */
+static void finish_scan(subghz_svc_t *s)
+{
+    stark_err_t err = cc1101_idle(&s->drv);
+    if (err != STARK_OK) {
+        op_failed(s, err);
+        return;
+    }
+    s->rx_on = false;
+    s->scan_active = false;
+    s->op_misses = 0;
+    s->st.scan_done = true;
+    s->st.valid = true;
+    s->st.percent = 100;
+    s->st.hz = s->scan.peak_hz;
+    s->st.dbm_x2 = s->scan.peak_dbm_x2;
+    log_what(s, SUBGHZ_LOG_PEAK, s->scan.peak_hz, (unsigned)(int)s->scan.peak_dbm_x2);
+    s->io.notify(s->io.ctx, STARK_SUBGHZ_EVT_SCAN_DONE);
+}
+
+static void run_scan(subghz_svc_t *s)
+{
+    if (s->scan.state == SUBGHZ_SCAN_RUNNING) {
+        (void)subghz_scan_step(&s->scan);
+    }
+    switch (s->scan.state) {
+        case SUBGHZ_SCAN_RUNNING:
+            s->op_misses = 0;
+            s->st.percent = subghz_scan_percent(&s->scan);
+            break;
+        case SUBGHZ_SCAN_FAILED:
+            op_failed(s, s->scan.err);
+            if (s->ready) {
+                start_probe(s); /* the sweep starts again from the first channel */
+                s->st.percent = 0;
+            }
+            break;
+        case SUBGHZ_SCAN_DONE:
+        case SUBGHZ_SCAN_IDLE:
+        default:
+            finish_scan(s);
+            break;
+    }
+}
+
+static uint32_t run_mode(subghz_svc_t *s)
+{
+    switch (s->st.mode) {
+        case STARK_SUBGHZ_METER:
+            return run_meter(s);
+        case STARK_SUBGHZ_SCAN:
+            if (s->scan_active) {
+                run_scan(s);
+                return 1;
+            }
+            return SUBGHZ_IDLE_MS;
+        case STARK_SUBGHZ_IDLE:
+        default:
+            run_idle(s);
+            return SUBGHZ_IDLE_MS;
+    }
+}
+
+uint32_t subghz_svc_step(subghz_svc_t *s)
 {
     if (s->ready) {
         check_ready(s);
-        return;
+        return s->ready ? run_mode(s) : SUBGHZ_IDLE_MS;
     }
     int slot = find_slot(s);
     if (slot < 0) {
@@ -169,11 +394,12 @@ void subghz_svc_step(subghz_svc_t *s)
             s->none_logged = true;
             log_what(s, SUBGHZ_LOG_NO_MODULE, 0, 0);
         }
-        return;
+        return SUBGHZ_IDLE_MS;
     }
     if (s->have_retry && (int32_t)(s->io.now_ms(s->io.ctx) - s->retry_at) < 0) {
-        return;
+        return SUBGHZ_IDLE_MS;
     }
     s->have_retry = false;
     identify(s, (uint8_t)slot);
+    return SUBGHZ_IDLE_MS;
 }

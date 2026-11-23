@@ -361,6 +361,72 @@ static void test_rssi_and_marcstate(void)
     TEST_ASSERT_EQUAL_HEX8(0xFF, st);
 }
 
+static void test_tune_rx_retunes_and_leaves_the_chip_receiving(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_configure(&s_d, CC1101_PRESET_OOK_RX, 433920000u, 4800));
+    uint32_t writes = fake_cc1101_stats()->freq_writes;
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tune_rx(&s_d, 434775000u));
+    const fake_cc1101_stats_t *st = fake_cc1101_stats();
+    TEST_ASSERT_EQUAL_HEX8(0x0D, st->marcstate);
+    TEST_ASSERT_EQUAL(writes + 1, st->freq_writes); /* one burst for the three registers */
+    TEST_ASSERT_UINT32_WITHIN(500, 434775000u, st->tuned_hz);
+    fake_cc1101_air(434775000u, -55);
+    uint8_t raw = 0;
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_rssi_raw(&s_d, &raw));
+    TEST_ASSERT_EQUAL_HEX8(38, raw); /* (-55 + 74) * 2 */
+    /* from RX to another channel: still receiving there */
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tune_rx(&s_d, 433075000u));
+    st = fake_cc1101_stats();
+    TEST_ASSERT_EQUAL_HEX8(0x0D, st->marcstate);
+    TEST_ASSERT_UINT32_WITHIN(500, 433075000u, st->tuned_hz);
+    TEST_ASSERT_EQUAL(0, st->out_of_band);
+}
+
+static void test_tune_rx_refuses_before_any_transfer(void)
+{
+    unsigned before = s_xfers;
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, cc1101_tune_rx(&s_d, 433049999u));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, cc1101_tune_rx(&s_d, 434790001u));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, cc1101_tune_rx(&s_d, 433920000u)); /* not configured */
+    TEST_ASSERT_EQUAL(before, s_xfers);
+    TEST_ASSERT_EQUAL(0, fake_cc1101_stats()->freq_writes);
+}
+
+static void test_tune_rx_under_faults_is_bounded(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_configure(&s_d, CC1101_PRESET_OOK_RX, 433920000u, 4800));
+    /* the chip never changes state: SIDLE from IDLE is fine, SRX never arrives */
+    fake_cc1101_fault(FAKE_CC1101_STUCK, -1);
+    s_now = 5000;
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, cc1101_tune_rx(&s_d, 434000000u));
+    TEST_ASSERT_TRUE(s_now - 5000u <= 10u);
+    fake_cc1101_fault(FAKE_CC1101_NONE, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tune_rx(&s_d, 434000000u));
+    /* from RX the SIDLE never arrives */
+    fake_cc1101_fault(FAKE_CC1101_STUCK, -1);
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, cc1101_tune_rx(&s_d, 433500000u));
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, cc1101_idle(&s_d));
+    fake_cc1101_fault(FAKE_CC1101_NONE, 0);
+    /* a transfer fails at each of the steps */
+    for (unsigned n = 1; n <= 5; n++) {
+        s_xfers = 0;
+        s_fail_from = n;
+        TEST_ASSERT_EQUAL(STARK_ERR_IO, cc1101_tune_rx(&s_d, 433500000u));
+        s_fail_from = 0;
+    }
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tune_rx(&s_d, 433500000u));
+}
+
+static void test_idle(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_configure(&s_d, CC1101_PRESET_OOK_RX, 433920000u, 4800));
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tune_rx(&s_d, 433920000u));
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_idle(&s_d));
+    TEST_ASSERT_EQUAL_HEX8(0x01, fake_cc1101_stats()->marcstate);
+    s_fail_from = 1;
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, cc1101_idle(&s_d));
+}
+
 static void test_every_call_is_bounded_under_every_fault(void)
 {
     for (int f = FAKE_CC1101_NO_ANSWER; f < FAKE_CC1101_FAULT_COUNT; f++) {
@@ -377,6 +443,8 @@ static void test_every_call_is_bounded_under_every_fault(void)
         (void)cc1101_strobe(&s_d, CC1101_SIDLE);
         (void)cc1101_rssi_raw(&s_d, &a);
         (void)cc1101_marcstate(&s_d, &a);
+        (void)cc1101_tune_rx(&s_d, 433500000u);
+        (void)cc1101_idle(&s_d);
         TEST_ASSERT_TRUE_MESSAGE(s_xfers < 200, "a bounded number of transfers");
         TEST_ASSERT_TRUE_MESSAGE(s_now - 5000u < 40u, "a bounded wait");
     }
@@ -399,6 +467,10 @@ int main(void)
     RUN_TEST(test_strobes);
     RUN_TEST(test_transmit_is_not_available_in_this_task);
     RUN_TEST(test_rssi_and_marcstate);
+    RUN_TEST(test_tune_rx_retunes_and_leaves_the_chip_receiving);
+    RUN_TEST(test_tune_rx_refuses_before_any_transfer);
+    RUN_TEST(test_tune_rx_under_faults_is_bounded);
+    RUN_TEST(test_idle);
     RUN_TEST(test_every_call_is_bounded_under_every_fault);
     return UNITY_END();
 }

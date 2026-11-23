@@ -63,5 +63,17 @@ stark_err_t cc1101_configure(cc1101_t *d, cc1101_preset_t preset, uint32_t hz, u
  */
 stark_err_t cc1101_strobe(cc1101_t *d, uint8_t strobe);
 
+/*
+ * Retunes a configured chip and leaves it receiving (STARK-0602): SIDLE, MARCSTATE
+ * IDLE, FREQ2..0 in one burst, SRX, MARCSTATE RX, each wait bounded.
+ * STARK_ERR_INVALID_ARG, before any transfer, for a frequency outside
+ * 433.05–434.79 MHz; STARK_ERR_STATE before a configuration; STARK_ERR_TIMEOUT
+ * when the chip does not reach IDLE or RX.
+ */
+stark_err_t cc1101_tune_rx(cc1101_t *d, uint32_t hz);
+
+/* SIDLE, then MARCSTATE IDLE within 5 ms: the radio is not receiving (STARK-0602). */
+stark_err_t cc1101_idle(cc1101_t *d);
+
 stark_err_t cc1101_rssi_raw(cc1101_t *d, uint8_t *raw);
 stark_err_t cc1101_marcstate(cc1101_t *d, uint8_t *state);

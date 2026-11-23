@@ -686,12 +686,13 @@ endforeach()
 set(SUBGHZ_CORE_SOURCES
     ${STARK_COMPONENTS}/stark_subghz/cc1101_regs.c
     ${STARK_COMPONENTS}/stark_subghz/cc1101_drv.c
+    ${STARK_COMPONENTS}/stark_subghz/subghz_rssi.c
     ${STARK_COMPONENTS}/stark_subghz/subghz_svc.c
 )
 set(FAKE_CC1101 ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_cc1101.c)
 set(SUBGHZ_INCLUDES ${STARK_COMPONENTS}/stark_subghz ${STARK_COMPONENTS}/stark_subghz/include
     ${STARK_COMPONENTS}/stark_subghz_transport/include ${MODULE_INCLUDES})
-foreach(sg_test cc1101_regs cc1101_drv fake_cc1101 subghz_service)
+foreach(sg_test cc1101_regs cc1101_drv fake_cc1101 subghz_service subghz_rssi subghz_measure)
     add_executable(run_${sg_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${sg_test}.c
         ${SUBGHZ_CORE_SOURCES} ${FAKE_CC1101}
         ${STARK_COMPONENTS}/stark_module/module_desc.c
@@ -722,6 +723,25 @@ target_include_directories(run_ui_nfc_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
 target_compile_options(run_ui_nfc_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_nfc_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_nfc_tests PRIVATE unity)
+
+# The real Sub-GHz app on the UI port (STARK-0602) with a fake stark_subghz. The pure
+# RSSI text helpers are linked without coverage (test_subghz_rssi owns that figure).
+add_library(subghz_rssi_nocov OBJECT ${STARK_COMPONENTS}/stark_subghz/subghz_rssi.c)
+target_include_directories(subghz_rssi_nocov PRIVATE ${STARK_COMPONENTS}/stark_subghz/include)
+target_compile_options(subghz_rssi_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
+add_executable(run_ui_subghz_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_subghz.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_subghz/app_subghz.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_subghz/subghz_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_subghz.c
+    $<TARGET_OBJECTS:subghz_rssi_nocov>
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_subghz_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
+    ${STARK_COMPONENTS}/stark_subghz/include ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_subghz)
+target_compile_options(run_ui_subghz_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_subghz_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_subghz_tests PRIVATE unity)
 
 # The real IR app on the UI port (STARK-0305/0306) with fake stark_ir / stark_storage.
 add_executable(run_ui_ir_tests
@@ -790,6 +810,7 @@ add_test(NAME stark_ui_storage_tests COMMAND run_ui_storage_tests)
 add_test(NAME stark_ui_settings_tests COMMAND run_ui_settings_tests)
 add_test(NAME stark_ui_ir_tests COMMAND run_ui_ir_tests)
 add_test(NAME stark_ui_nfc_tests COMMAND run_ui_nfc_tests)
+add_test(NAME stark_ui_subghz_tests COMMAND run_ui_subghz_tests)
 add_test(NAME stark_ui_app_caps_tests COMMAND run_ui_app_caps_tests)
 add_test(NAME stark_ui_modules_tests COMMAND run_ui_modules_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)

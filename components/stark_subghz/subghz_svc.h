@@ -17,20 +17,29 @@
 #include <stdint.h>
 #include "cc1101_drv.h"
 #include "stark_module.h"
+#include "stark_subghz.h"
+#include "subghz_rssi.h"
 
-#define SUBGHZ_WIRING       (STARK_CAP_SUBGHZ | STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ)
-#define SUBGHZ_DEFAULT_HZ   433920000u
-#define SUBGHZ_DEFAULT_BAUD 4800u
-#define SUBGHZ_RETRY_MS     2000u /* before a rejected module is identified again */
-#define SUBGHZ_RETRY_MAX_MS 8000u /* ... doubling while the same rejection repeats, up to this */
-#define SUBGHZ_MISS_LIMIT   2u    /* failed checks in a row that drop a ready module */
+#define SUBGHZ_WIRING        (STARK_CAP_SUBGHZ | STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ)
+#define SUBGHZ_DEFAULT_HZ    433920000u
+#define SUBGHZ_DEFAULT_BAUD  4800u
+#define SUBGHZ_RETRY_MS      2000u /* before a rejected module is identified again */
+#define SUBGHZ_RETRY_MAX_MS  8000u /* ... doubling while the same rejection repeats, up to this */
+#define SUBGHZ_MISS_LIMIT    2u    /* failed checks in a row that drop a ready module */
+#define SUBGHZ_OP_MISS_LIMIT 2u    /* failed measurements in a row that drop a ready module */
+#define SUBGHZ_IDLE_MS       250u  /* the longest wait the step asks for */
+#define SUBGHZ_LOG_DELTA_X2  6     /* the meter logs a level when it moved this much (3 dB) */
 
 typedef enum {
     SUBGHZ_LOG_NO_MODULE,  /* nothing declares a radio */
     SUBGHZ_LOG_VERSION,    /* a = VERSION */
     SUBGHZ_LOG_NOT_CC1101, /* a = PARTNUM, b = VERSION */
     SUBGHZ_LOG_LOST,       /* a ready module went away */
-    SUBGHZ_LOG_ERROR       /* a = stark_err_t of the step that failed */
+    SUBGHZ_LOG_ERROR,      /* a = stark_err_t of the step that failed */
+    SUBGHZ_LOG_METER,      /* a = Hz: the meter tuned */
+    SUBGHZ_LOG_RSSI,       /* a = twice the dBm (as unsigned) */
+    SUBGHZ_LOG_PEAK, /* a = Hz, b = twice the dBm (as unsigned): a sweep's strongest channel */
+    SUBGHZ_LOG_IDLE  /* the radio was returned to IDLE on request */
 } subghz_log_t;
 
 typedef struct {
@@ -45,6 +54,7 @@ typedef struct {
     void (*delay_ms)(void *ctx, uint32_t ms);
     void (*log)(void *ctx, subghz_log_t what, unsigned a, unsigned b);
     void (*changed)(void *ctx, bool ready); /* after every change of readiness */
+    void (*notify)(void *ctx, int evt);     /* a STARK_SUBGHZ_EVT_RSSI or _SCAN_DONE */
     void *ctx;
 } subghz_svc_io_t;
 
@@ -63,11 +73,37 @@ typedef struct {
     unsigned fail_a;
     unsigned fail_b;
     uint8_t misses;
+    /* ---- measurements (STARK-0602) ---- */
+    stark_subghz_status_t st;
+    bool rx_on;        /* the chip may be receiving because of a measurement */
+    bool idle_log;     /* `idle` is said once the radio is back in IDLE */
+    bool retune;       /* the meter has to (re)tune before sampling */
+    bool scan_active;  /* a sweep is running */
+    bool have_logged;  /* logged_x2 is set */
+    int16_t logged_x2; /* the level last logged, so the log is not a stream */
+    uint32_t meter_hz;
+    uint32_t next_ms;  /* when the meter samples next */
+    uint8_t op_misses; /* failed measurements in a row */
+    subghz_scan_t scan;
 } subghz_svc_t;
 
 void subghz_svc_init(subghz_svc_t *s, const subghz_svc_io_t *io);
 
-/* One round, bounded: at most one claim, one identification and one configuration. */
-void subghz_svc_step(subghz_svc_t *s);
+/*
+ * One round, bounded: at most one claim, one identification and one configuration,
+ * or one meter sample or one scan channel. Returns the ms to wait before the next
+ * round (1..SUBGHZ_IDLE_MS).
+ */
+uint32_t subghz_svc_step(subghz_svc_t *s);
 
 bool subghz_svc_ready(const subghz_svc_t *s);
+
+/*
+ * The measurement requests (stark_subghz.h says what they mean). They change state
+ * only; the next step does the radio's work. STARK_ERR_STATE unless ready,
+ * STARK_ERR_INVALID_ARG for a frequency outside the band.
+ */
+stark_err_t subghz_svc_meter(subghz_svc_t *s, uint32_t hz);
+stark_err_t subghz_svc_scan(subghz_svc_t *s);
+void subghz_svc_stop(subghz_svc_t *s);
+void subghz_svc_status(const subghz_svc_t *s, stark_subghz_status_t *out);

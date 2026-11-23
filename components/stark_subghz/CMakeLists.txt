@@ -5,6 +5,7 @@ idf_component_register(
     SRCS
         "cc1101_regs.c"
         "cc1101_drv.c"
+        "subghz_rssi.c"
         "subghz_svc.c"
         "stark_subghz.c"
     INCLUDE_DIRS
