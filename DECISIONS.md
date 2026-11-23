@@ -961,5 +961,24 @@ read by a byte-fed parser with a 160-byte line buffer, so neither side holds a 1
 starts or a file is opened and frees it when the app stops (the service borrows it while a
 capture runs), instead of 8 kB of static RAM for the life of the firmware.
 
+**Addendum (STARK-0604).** The decoder spec left these open; each is the conservative reading,
+recorded so it is not taken silently (rules in docs/subghz-decode.md). (1) The **shortest
+cluster** that sets the burst-splitting gap is the first histogram group with at least two
+members, so one glitch shorter than everything else does not turn every low into a gap; "longer
+than 4×" is strict. (2) A burst **drops the low after its last high** (the gap, or a low cut by
+the end of the capture): pulse-distance needs a closing pulse and loses a last bit without one,
+pulse-width does not check its last low. (3) **Unknown beats a guess**: two accepting kinds,
+fewer than 8 or more than 128 bits (never truncated), a single cluster (all bits equal, a plain
+clock) and clusters closer than 1.5× all decode to "unknown". (4) Manchester reads a burst that
+starts on the second half of its first cell (a 0 whose low half merged into the silence) and one
+that ends on a high whose low half is the gap; with a 2T symbol only one alignment can read. (5)
+The conventions are the generic ones and the app shows the timing's reading, not a device's
+meaning: long high = 1 (PWM), long low = 1 (PPM), high-low = 1 (Manchester); an inverted
+convention reads as the complement. (6) The result is a fixed 232-byte struct of eight distinct
+decodes with repeat counts and counters; the view lists four, the log all. (7) The vectors are
+host-only (`test/fake/fake_subghz_decode_vectors.h`, separate from the scene catalogue the test
+image carries), so the image's flash and heap do not change for them. The decoders add no
+transmit path of any kind: nothing in the analysis can reach `tx()`.
+
 **Revisit trigger:** a radio model in esp-emu, the V1 board's antenna and matching, a
 regulatory change for 433 MHz SRD, or a need for another band.

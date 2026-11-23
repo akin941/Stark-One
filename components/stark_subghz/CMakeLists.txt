@@ -7,6 +7,7 @@ idf_component_register(
         "cc1101_drv.c"
         "subghz_rssi.c"
         "subghz_raw.c"
+        "subghz_decode.c"
         "subghz_svc.c"
         "stark_subghz.c"
     INCLUDE_DIRS

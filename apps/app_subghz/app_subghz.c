@@ -2,8 +2,9 @@
  * app_subghz.c — Sub-GHz (TASKS.md STARK-0602/0603, ADR-0022): a receive-only RSSI
  * meter at one frequency (LEFT/RIGHT step it by 25 kHz), a one-shot scan of the
  * 433.05–434.79 MHz band that finds the strongest channel, a raw capture of the data
- * line as timed symbols with its timing histogram and Save to captures/rf_NNNN.rf, and
- * the saved captures read back. The radio listens only while a view is open: BACK from
+ * line as timed symbols with its timing histogram and Save to captures/rf_NNNN.rf, the
+ * saved captures read back, and a read-only analysis of either by the generic PWM, PPM and
+ * Manchester decoders (STARK-0604). The radio listens only while a view is open: BACK from
  * a view, or leaving the app, returns it to IDLE. One menu shows the home list or a view;
  * BACK from a view returns to the home list. The app never transmits (that is
  * STARK-0605, behind a confirmation).
@@ -112,6 +113,32 @@ static void log_capture(void)
     STARK_LOGI("subghzapp", "hist %s", text);
 }
 
+/*
+ * The analysis (STARK-0604): the generic decoders over the capture just made or the open file.
+ * Read-only: the rows show what was read, and no key on that view sends anything. Every
+ * distinct burst goes to the log, though the view lists three.
+ */
+static void open_decode(bool from_file)
+{
+    stark_err_t err = sgview_decode(from_file);
+    if (err != STARK_OK) {
+        STARK_LOGW("subghzapp", "decode failed: %s", stark_err_str(err));
+    } else {
+        const subghz_dec_result_t *r = sgview_decoded();
+        char text[112];
+        STARK_LOGI("subghzapp", "decode %u bursts, %u decoded, %u unknown",
+                   (unsigned)(r->decoded + r->unknown), (unsigned)r->decoded, (unsigned)r->unknown);
+        for (unsigned i = 0; i < r->n; i++) {
+            sgview_decode_text(&r->burst[i], text, sizeof text);
+            STARK_LOGI("subghzapp", "%s", text);
+        }
+        if (r->omitted > 0) {
+            STARK_LOGI("subghzapp", "decode: %u more bursts not listed", (unsigned)r->omitted);
+        }
+    }
+    show(SGAPP_DECODE);
+}
+
 static void activate(size_t index, void *ctx)
 {
     (void)ctx;
@@ -141,9 +168,13 @@ static void activate(size_t index, void *ctx)
             stark_subghz_capture_finish(); /* STARK_SUBGHZ_EVT_CAPTURE_DONE follows */
         } else if (sgview_is_save_row(index)) {
             capture_save();
+        } else if (sgview_is_decode_row(index)) {
+            open_decode(false);
         }
     } else if (s_mode == SGAPP_SAVED) {
         sgfile_open(index); /* SGFILE_NOTE_OPENED shows it */
+    } else if (s_mode == SGAPP_FILE && sgview_is_decode_row(index)) {
+        open_decode(true);
     }
 }
 
@@ -249,6 +280,10 @@ static bool subghz_event(stark_screen_t *self, const stark_event_t *e)
         e->key.action == STARK_KEY_SHORT) {
         if (s_mode == SGAPP_FILE) {
             show(SGAPP_SAVED); /* a saved capture goes back to the list */
+            return true;
+        }
+        if (s_mode == SGAPP_DECODE) {
+            show(sgview_decode_back()); /* the analysis returns to what it analysed */
             return true;
         }
         stark_subghz_stop();

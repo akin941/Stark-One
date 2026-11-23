@@ -4699,6 +4699,64 @@ ppm short=… long=… bits=24 hex=…` matching the scene.
 **Security.** Analysis of open, generic modulations only. **Budget.** Flash ≤ 4 kB,
 no static buffers beyond 256 B. **Physical HIL (V1).** Decoding our own remote.
 
+**As built.** Differences from the plan, each the smallest sound choice (rules in
+docs/subghz-decode.md, readings recorded in ADR-0022's STARK-0604 addendum):
+
+* **The rules were underspecified in six places; each is the conservative reading.** The shortest
+  cluster that sets the 4× gap is the first histogram group with at least two members (a lone
+  glitch does not turn every low into a gap; "longer than 4×" is strict). A burst drops the low
+  after its last high (the gap, or a low cut by the capture's end), so pulse-distance needs its
+  closing pulse and pulse-width does not check its last low. "Two clusters" means two-means
+  with the long mean at least 1.5× the short; a single cluster (all bits equal, a clock) does not
+  decode. Manchester reads a burst that starts on the second half of its first cell and one that
+  ends on a high whose low half is the gap, and needs a 2T symbol, so at most one alignment
+  reads. A burst that two kinds both accept, or that has fewer than 8 or more than 128 bits, is
+  "unknown" (a burst is never truncated to 128). The conventions are the generic ones (long = 1,
+  high-low = 1); the app shows what the timing says, not what a device means.
+* **Output is per distinct decode, not per burst.** `subghz_decode()` fills a fixed 232-byte
+  `subghz_dec_result_t`: up to eight distinct (kind, bits, data) decodes in the order first seen,
+  each with its repeat count and the measured short/long (or T) µs, and counters for bursts that
+  decoded, did not, or did not fit. A signal's repeats (the scenes have three or four) are one
+  row, not four. `subghz_decode()` refuses (`STARK_ERR_INVALID_ARG`, nothing decoded) any input
+  that is not a capture: a zero, a magnitude over 1 000 000, `INT32_MIN`, broken alternation, a
+  low first, more than 2048 symbols.
+* **Vectors and the independent reference.** `scripts/gen_subghz_vectors.py` gained `ref_decode()`
+  (lists and integer arithmetic where the firmware streams; written from the rules, not the C)
+  and the decoder vectors in `test/fake/fake_subghz_decode_vectors.h`, host tests only so the
+  test image carries none of it (185 kB of text): 24 jittered (±10 %) captures per kind from 8 to
+  128 bits, three exact ones, 28 tolerance edges, the 7/8 and 128/129-bit limits of every kind,
+  Manchester starts and ends of both parities, 16 noise captures and the other negatives, two
+  kinds in one capture, ten distinct bursts (more than a result keeps), an ambiguous burst and 48
+  mutated captures. Every vector's expectation is built from the bits it was made of and
+  generation fails unless the reference agrees; the firmware's result, including the measured
+  clusters to the µs, is then compared with the reference's. "Just inside and outside 25 %" is 15
+  permille either side of where the reference first refuses the burst: an outlier moves its own
+  cluster's mean (12 to 25 members), so the edge is at 1.26–1.29×, not exactly 1.25×.
+* **App.** The Decode row is the last row of a finished capture (after Capture again, so the
+  selection still starts on Save) and the first row of a saved file's view. It opens
+  `SGAPP_DECODE`: bursts decoded/total, Unknown, then for each of the first four distinct decodes
+  its kind, bits and repeats, its hex (16 digits a row) with `short/long µs` beside it, and
+  "Not shown +n"; the log lists every distinct decode (`subghzapp: ppm short=400 long=1200
+  bits=24 hex=5a3cc3 x4`, Manchester `t=500`). Every row is selectable though none acts, because a
+  menu scrolls only to rows it can select. BACK returns to the capture or the file. Nothing in it
+  can transmit: the app has no transmit call to make (`STX` is still refused). `app_subghz`
+  gained 241 B of static RAM (the 232-byte result) and no other buffer.
+* **Pre-existing tests touched.** `test_ui_subghz.c`: five pins changed after inspection because
+  a row was added (`cap_done`, `cap_done_empty`, `cap_saved`, `cap_save_failed`, `file_view`),
+  and the step "OK on the file view activates nothing" became "OK opens its one selectable row,
+  Decode" (then BACK twice; the list's own pin is unchanged). No scenario changed.
+* **Emulator.** `storage/v06-decode.toml` captures the pulse-distance scene, opens Decode, saves,
+  reopens the file from Saved and decodes it again: both readings are the scene's. The pulse-width
+  and Manchester scenes are decoded on the host only (`test_subghz_decode`, `test_ui_subghz`):
+  the emulator costs 11–16 s of wall time per emulated second. 25 s of emulated time, a little over the 20 s
+  guideline, like `v06-capture`.
+* **Budget.** Flash: `stark_subghz` +1 938 B (≤ 4 kB), `app_subghz` +1 047 B. Static RAM: none in
+  the decoder; the app's 232-byte result is the only new static buffer (≤ 256 B). Stack: about
+  340 B for `subghz_decode()` and its callee on the UI task. Production boot heap 242 924 B (gate
+  ≥ 200 kB), test image 239 476 B, binary 477 712 B. docs/measurements.md has every figure.
+* **Not here.** Replay and any transmit path (STARK-0605). Physical HIL: decoding our own
+  remote (V1).
+
 ---
 
 ## STARK-0605 — Gated replay of our own captures

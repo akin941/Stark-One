@@ -62,7 +62,7 @@ jobs:
         run: python3 scripts/gen_nfc_vectors.py --check
       - name: Module vectors are current
         run: python3 scripts/gen_module_vectors.py --check
-      - name: Sub-GHz scenes are current (STARK-0603)
+      - name: Sub-GHz scenes and decoder vectors are current (STARK-0603, STARK-0604)
         run: python3 scripts/gen_subghz_vectors.py --check
 
       - name: Script unit tests (emulator harness, Wokwi gate)
