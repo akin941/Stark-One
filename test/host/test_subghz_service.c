@@ -146,9 +146,10 @@ static void io_changed(void *ctx, bool ready)
     module_core_confirm(&s_mc, STARK_CAP_SUBGHZ, ready); /* main/module_bridge.c's job */
 }
 
-static const subghz_svc_io_t k_io = {io_list,  io_claim, io_release, io_lease_valid,
-                                     io_open,  io_close, io_xfer,    io_now,
-                                     io_delay, io_log,   io_changed, NULL};
+static const subghz_svc_io_t k_io = {io_list,    io_claim, io_release, io_lease_valid, io_open,
+                                     io_close,   io_xfer,  io_now,     io_delay,       io_log,
+                                     io_changed, NULL,     NULL}; /* no notify: this file never
+                                                                     measures */
 
 void setUp(void)
 {

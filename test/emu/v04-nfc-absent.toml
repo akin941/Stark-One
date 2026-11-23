@@ -17,8 +17,8 @@ presses = [
 expect = [
     "nfc: no module (Not found)",
     "module: caps 0x00000003",
-    'menu: sel=14 "Modules"',
+    'menu: sel=15 "Modules"',
     'menu: sel=11 "IR"',
-    'menu: sel=14 "Modules"',
+    'menu: sel=15 "Modules"',
 ]
 forbid = ['menu: sel=12 "NFC"', "app: start nfc", "nfc: field on", "nfc: tag", "nfcapp: confirm"]

@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "stark_err.h"
+#include "subghz_rssi.h" /* the band's edges */
 
 /* ---- SPI header byte ------------------------------------------------------ */
 #define CC1101_HDR_READ      0x80u
@@ -87,8 +88,8 @@
 
 /* ---- limits (ADR-0022 §5–6): constants, never Kconfig --------------------- */
 #define CC1101_XTAL_HZ       26000000u
-#define CC1101_HZ_MIN        433050000u
-#define CC1101_HZ_MAX        434790000u
+#define CC1101_HZ_MIN        SUBGHZ_BAND_MIN_HZ
+#define CC1101_HZ_MAX        SUBGHZ_BAND_MAX_HZ
 #define CC1101_BAUD_MIN      600u
 #define CC1101_BAUD_MAX      50000u
 #define CC1101_PA_CAP        0x60u /* about 0 dBm conducted at 433 MHz */

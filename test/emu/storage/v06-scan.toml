@@ -1,0 +1,55 @@
+# STARK-0602 on the test image, whose stark_subghz_transport is the test-only fake
+# CC1101 (ADR-0022 §3). The CC1101 module (catalogue entry 32) is in slot 0 and
+# answers; the air holds one carrier at 433.920 MHz, -40 dBm. The production
+# service, app and UI run unchanged: Sub-GHz is opened from the launcher (row 13,
+# after NFC), the RSSI meter follows the level the scenario moves (-40, -70, -55;
+# logged because each moved by more than 3 dB), BACK returns the radio to idle
+# (`subghz: idle`, said only once the chip reports MARCSTATE IDLE), the band scan
+# finds the carrier's channel (`peak 433.925 MHz -40 dBm`) and leaves the radio idle
+# again, and leaving the app stops everything. Receive only: nothing is transmitted.
+# Integration evidence, not RF: no signal exists behind any of it (ROADMAP V1 exit 12).
+name = "emu-v06-scan"
+image = "storage"
+end_ms = 17000
+heap_min = 200000
+pokes = [
+    { at_ms = 500, var = "emu_mod_slot0", value = 32 },
+    { at_ms = 500, var = "emu_sg_chip", value = 1 },
+    { at_ms = 500, var = "emu_sg_carrier_khz", value = 433920 },
+    { at_ms = 500, var = "emu_sg_level", value = -40 },
+    { at_ms = 9500, var = "emu_sg_level", value = -70 },
+    { at_ms = 11000, var = "emu_sg_level", value = -55 },
+    { at_ms = 12900, var = "emu_sg_level", value = -40 },   # back to -40 for the sweep
+]
+presses = [
+    { key = "UP", at_ms = 5300, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 5500, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 5700, hold_ms = 60 },     # Modules
+    { key = "UP", at_ms = 5900, hold_ms = 60 },     # Sub-GHz (Lab: IR 11, NFC 12 dimmed here, Sub-GHz 13)
+    { key = "OK", at_ms = 6300, hold_ms = 60 },
+    { key = "OK", at_ms = 7000, hold_ms = 60 },     # RSSI meter
+    { key = "BACK", at_ms = 12500, hold_ms = 60 },  # meter -> home
+    { key = "DOWN", at_ms = 13300, hold_ms = 60 },  # Band scan
+    { key = "OK", at_ms = 13600, hold_ms = 60 },
+    { key = "BACK", at_ms = 15000, hold_ms = 60 },  # scan -> home
+    { key = "BACK", at_ms = 15700, hold_ms = 60 },  # home -> launcher
+]
+expect = [
+    "subghz: cc1101 version 0x14",
+    "module: caps 0x00000027",
+    'menu: sel=13 "Sub-GHz"',
+    "app: start subghz",
+    "subghz: meter 433.920 MHz",
+    "subghz: rssi -40 dBm",
+    "subghz: rssi -70 dBm",
+    "subghz: rssi -55 dBm",
+    "subghz: idle",
+    "subghz: peak 433.925 MHz -40 dBm",
+    "subghz: idle",
+    "app: stop subghz",
+]
+forbid = ["module not usable", "subghz init failed", "panic", "app: fault"]
+# once the meter is left it never measures again, and the sweep alone never logs a level
+forbid_between = [
+    { after = "subghz: rssi -55 dBm", before = "subghz: peak", text = "subghz: rssi" },
+]

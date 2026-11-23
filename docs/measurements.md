@@ -205,6 +205,16 @@ claimed** here.
 | 2026-11-23 | STARK-0601 | Host suite | 62 test programs; the four new ones (`cc1101_regs`, `cc1101_drv`, `fake_cc1101`, `subghz_service`) run 9, 15, 13 and 20 tests under ASan and UBSan | `test_host.sh` |
 | 2026-11-23 | STARK-0601 | Module catalogue (`gen_module_vectors.py`) | 33 entries: entry 32 the CC1101 module, entry 33 an unknown-bit-6 vector; entry 10 `unknown_bits` is now an unsupported combination | host suite |
 
+| 2026-11-23 | STARK-0602 | Production boot heap (STARK-0601 245 976 B) — **gate ≥ 200 kB** | 245 500 B (−476 B) | `v0-boot`, `v06-subghz-absent` |
+| 2026-11-23 | STARK-0602 | Test image boot heap (STARK-0601 225 392 B) | 224 916 B (−476 B: the service's lock and measurement state; the fake's air and scan code are small) | `storage/v06-scan` |
+| 2026-11-23 | STARK-0602 | Firmware binary (STARK-0601 461 152 B) | 465 088 B (+3 936 B) | `build/stark-one.bin` |
+| 2026-11-23 | STARK-0602 | Static RAM: `stark_subghz` (task stack 4 096 B), STARK-0601 4 313 B | 4 481 B (+168 B: the mutex, the status and the scan state) | `idf.py size-components` |
+| 2026-11-23 | STARK-0602 | Flash: `stark_subghz` (code + rodata), STARK-0601 2 751 B | 4 677 B (+1 926 B: RSSI conversion and text, the scan, the meter and the driver's retune) | `idf.py size-components` |
+| 2026-11-23 | STARK-0602 | `app_subghz` static RAM — **budget ≤ 2 kB** / flash — **budget ≤ 4 kB** | 265 B / 1 663 B | `idf.py size-components` |
+| 2026-11-23 | STARK-0602 | Host line coverage: `subghz_rssi.c`, `cc1101_drv.c`, `subghz_svc.c` (with `cc1101_regs.c`, `module_core.c`, `module_desc.c`) | 100 % each | `test_host.sh --coverage` |
+| 2026-11-23 | STARK-0602 | Host suite | 65 test programs; the new ones run `test_subghz_rssi` 14, `test_subghz_measure` 27, `test_ui_subghz` 7 tests under ASan and UBSan; `test_cc1101_drv` 19 | `test_host.sh` |
+| 2026-11-23 | STARK-0602 | Scan sweep on the host (injected clock, 69 channels × (1 ms settle + 1 ms step wait)) — **budget ≤ 500 ms** | ≤ 140 ms | `test_a_sweep_takes_at_most_500_ms` |
+
 Software evidence only: no CC1101, antenna or SPI signal exists before the V1 prototype
 (ROADMAP V1 exit 12, `docs/bringup/v1-subghz.md` from STARK-0606). The production RMT receive
 path for GDO2 is built but not exercised by any test.

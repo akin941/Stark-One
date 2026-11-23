@@ -99,6 +99,32 @@ stark_err_t cc1101_reset(cc1101_t *d)
     return err != STARK_OK ? err : wait_state(d, CC1101_MARC_IDLE, CC1101_RESET_TIMEOUT_MS);
 }
 
+stark_err_t cc1101_idle(cc1101_t *d)
+{
+    stark_err_t err = strobe_raw(d, CC1101_SIDLE);
+    return err != STARK_OK ? err : wait_state(d, CC1101_MARC_IDLE, CC1101_IDLE_TIMEOUT_MS);
+}
+
+stark_err_t cc1101_tune_rx(cc1101_t *d, uint32_t hz)
+{
+    uint8_t freq[3];
+    stark_err_t err = cc1101_freq_regs(hz, freq);
+    if (err != STARK_OK) {
+        return err; /* nothing has been sent */
+    }
+    if (!d->configured) {
+        return STARK_ERR_STATE;
+    }
+    err = cc1101_idle(d); /* the frequency is only ever written in IDLE */
+    if (err == STARK_OK) {
+        err = write_burst(d, CC1101_FREQ2, freq, sizeof freq);
+    }
+    if (err == STARK_OK) {
+        err = strobe_raw(d, CC1101_SRX);
+    }
+    return err != STARK_OK ? err : wait_state(d, CC1101_MARC_RX, CC1101_IDLE_TIMEOUT_MS);
+}
+
 stark_err_t cc1101_detect(cc1101_t *d, uint8_t *partnum, uint8_t *version)
 {
     *partnum = 0xFF;
@@ -133,10 +159,7 @@ stark_err_t cc1101_configure(cc1101_t *d, cc1101_preset_t preset, uint32_t hz, u
         return STARK_ERR_INVALID_ARG; /* nothing has been sent */
     }
     d->configured = false;
-    err = strobe_raw(d, CC1101_SIDLE);
-    if (err == STARK_OK) {
-        err = wait_state(d, CC1101_MARC_IDLE, CC1101_IDLE_TIMEOUT_MS);
-    }
+    err = cc1101_idle(d);
     for (size_t i = 0; err == STARK_OK && i < n; i++) {
         uint8_t v = regs[i].value;
         switch (regs[i].addr) {
