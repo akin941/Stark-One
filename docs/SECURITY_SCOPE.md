@@ -71,7 +71,7 @@ tasks:
 3. **Rate and duty limiting.** Sub-GHz transmission respects a firmware duty-cycle cap
    and a power cap, consistent with the SRD band rules in
    [HARDWARE.md §7](../HARDWARE.md). The limiter is not user-adjustable past the legal
-   envelope.
+   envelope. V0.6's values are fixed constants (ADR-0022 §6), not settings.
 4. **No unattended transmission loops.** No "repeat forever", no sweep-transmit, no
    scheduled emission.
 5. **Transmission is logged.** What was sent, when, at what frequency — visible to the

@@ -268,15 +268,20 @@ verified**. Physical module-bus behaviour is verified at the **V1 prototype**.
 **Explicitly excluded by policy:** rolling-code attacks, jamming, de-authentication,
 capture-replay against access control, brute-force transmission.
 
-**Verification:** hardware only + host-tested codecs; optional custom Wokwi chip stub
-for register-sequence sanity.
+**Completion levels (ADR-0022).** *V0.6 complete* = **software / RF-protocol verified**
+against a test-only fake CC1101 at the `stark_subghz_transport` seam, host-tested codecs
+and the transmit policy. RF behaviour is verified at the **V1 prototype** (V1 exit 12).
+The fixed limits (433.05–434.79 MHz only, `PATABLE` 0x60, 10 % per rolling hour plus a
+9× off-time, 2 s per transmission) are in ADR-0022 §5–6.
 
 **Exit criteria**
 
-1. RSSI/scan view shows our own transmitter and tracks distance sensibly.
-2. Raw capture of an own device's transmission reproduces its documented timing.
-3. Replay of our own capture triggers our own receiver.
-4. TX is impossible without an explicit confirmation and respects the duty-cycle cap.
+| # | Criterion (unchanged) | V0.6 software evidence (required) | V1 physical HIL evidence (deferred) |
+| --- | --- | --- | --- |
+| 1 | RSSI/scan view shows our own transmitter and tracks distance sensibly | RSSI conversion and the scan over the band on the host; the app finds an injected carrier at its frequency and follows its level as the fake's air changes (test image) | Our own transmitter shown at its frequency; the level falls with distance |
+| 2 | Raw capture of an own device's transmission reproduces its documented timing | Spec-derived scenes captured through the production pipeline, saved as `rf_NNNN.rf`, parsed back and measured within tolerance (host and test image) | A capture of our own remote matches its datasheet timing |
+| 3 | Replay of our own capture triggers our own receiver | The replay leaves GDO0 symbol for symbol and the fake's own receiver captures it back within tolerance (host and test image) | Our own receiver reacts to the replay |
+| 4 | TX is impossible without an explicit confirmation and respects the duty-cycle cap | Every refusal on the host (no confirmation, cancel, budget, off-time, length, band, bad file) and on the test image; `PATABLE` never written with any value other than 0x60 | Power and on-air time measured on a spectrum analyser |
 
 ---
 
@@ -354,6 +359,12 @@ simulated milestones (ADR-0011):
     **two modules sharing SPI without corrupting the display** (ROADMAP V0.5 exit 3);
     chip-select isolation; bus contention and timing; module power-up behaviour; IR and
     NFC operating as the final topology has them; `MOD_EN` and second-slot pins allocated.
+12. **Deferred V0.6 Sub-GHz gates** (ADR-0022): CC1101 SPI communication and the
+    `CHIP_RDYn` wait; GDO0/GDO2 through RMT on the real pins; RSSI of our own transmitter
+    against distance; a capture of our own remote against its documented timing; a replay
+    triggering our own receiver; conducted and radiated power at `PATABLE` 0x60; on-air
+    time and duty cycle on a spectrum analyser; antenna and matching; the module sharing
+    SPI with the display and SD.
 
 ---
 
