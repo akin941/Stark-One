@@ -77,7 +77,13 @@ check "no-wokwi-mention" \
 # and used inside this bash -c script, not by the outer shell.
 check "gpio-centralized" bash -c '
     violations=$(grep -rlE "driver/(gpio|spi_master|ledc|i2c)\.h" main/ components/ apps/ 2>/dev/null \
-        | grep -v "^components/stark_board/" | grep -v "^components/stark_hal/")
+        | grep -v "^components/stark_board/" | grep -v "^components/stark_hal/" \
+        | grep -vx "components/stark_module/stark_module_spi.c")
+    # NOTE: stark_module_spi.c is the third sanctioned SPI2 user (STARK-0503 AC 3, ARCHITECTURE
+    # section 8) and may include spi_master.h, and only that driver header.
+    if grep -qE "driver/(gpio|ledc|i2c)\.h" components/stark_module/stark_module_spi.c 2>/dev/null; then
+        violations="$violations components/stark_module/stark_module_spi.c"
+    fi
     hal_violations=$(grep -rlE "driver/(spi_master|i2c)\.h" components/stark_hal/ 2>/dev/null || true)
     if [[ -n "$violations" || -n "$hal_violations" ]]; then
         if [[ -n "$violations" ]]; then
