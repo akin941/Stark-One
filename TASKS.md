@@ -4963,16 +4963,894 @@ addendum records the readings):
 
 # V0.7 — diagnostics & lab tools
 
-| ID | Goal |
+**Scope source:** [ROADMAP.md](ROADMAP.md) "V0.7", [docs/SECURITY_SCOPE.md](docs/SECURITY_SCOPE.md) §2 and §4.6,
+and ADR-0023. Nothing from V0.8+ or V1 is pulled forward: no USB bridge, no lab header,
+no second UART, no other module type, no scripting.
+
+**Completion levels (ADR-0023, 2026-11-23).** *V0.7 complete* means **software /
+lab-protocol verified**. It never means a pad was driven, a wire was measured or a real
+peripheral answered. Every task lists its **physical HIL evidence (deferred to V1)**,
+collected in ROADMAP V1 exit 13 and `docs/bringup/v1-labtools.md`.
+
+**Hardware (HARDWARE §2.4, ADR-0023 §3).** Offered pins: `LAB` 38 and 39 always; `SLOT`
+40, 41, 42 only while slot 0 reads `ABSENT`; every other GPIO is `RESERVED` and is never
+offered. Shared I²C on 1 and 2, shared SPI2 only through `stark_module_spi` on a leased
+slot. 3.3 V logic only.
+
+**Fixed limits (ADR-0023 §3–7, constants, never Kconfig):**
+
+| Area | Limit |
 | --- | --- |
-| STARK-0701 | Safe-pin allowlist + GPIO app (read/write/toggle/pulse/PWM) |
-| STARK-0702 | Frequency/duty measurement |
-| STARK-0703 | I²C scanner app + register read/write + `sim/diagram.i2c.json` |
-| STARK-0704 | UART tools: bridge, monitor, auto-baud, SD logging |
-| STARK-0705 | SPI probe app |
-| STARK-0706 | Self-test app (RAM/flash/SD/display/buttons/buzzer/modules) |
-| STARK-0707 | V0.7 scenarios (I²C scan, UART loopback) |
-| STARK-0708 | **LVGL re-evaluation** per ADR-0005 revisit trigger — decide and record |
+| Pins | weakest drive strength; output, PWM and pulse need an arm after a confirmation; read-back after every drive, hi-Z on a mismatch; hi-Z and no pull on exit, withdrawal and failure |
+| PWM | LEDC channel 2, 100 Hz to 40 kHz, duty 0 to 100 % in 1 % steps; one output at a time |
+| Pulse | 10 µs, 100 µs, 1 ms, 10 ms, 100 ms, 1 s; one pulse per key press |
+| Measurement | 1 Hz to 50 kHz; 1024-edge ring; window 10 ms to 4 s; frequency ±0.5 % to 10 kHz and ±2 % to 50 kHz, duty ±2 points to 10 kHz and ±5 to 50 kHz (the host proves arithmetic and bounds; real accuracy is V1) |
+| I²C | scan 0x08 to 0x77 address-only, 5 ms per probe; 100 or 400 kHz; read 1 to 16 bytes; dump 256 bytes after a confirm; write 1 to 8 bytes, each confirmed; module EEPROM addresses and the PN532 (while NFC is confirmed) never written; at most 48 hints |
+| SPI | only a leased slot declaring `MOD_SPI` and no function bit; 1 to 32 bytes; 100 kHz to 4 MHz; mode 0 to 3; one transaction per confirmation |
+| UART | UART1, 38/39; 1 200 to 921 600 Bd from a list; 8N1 8E1 8O1 8N2 7E1; 4 kB ring; send 1 to 32 bytes, one per key press; log ≤ 1 MiB per file |
+| Self-test | RAM block ≤ 32 kB and free heap never below 128 kB; flash read-only; report ≤ 16 kB |
+
+**Validation layers.**
+
+* **Host (Tier 1).** Pure cores: the pin offer and arm, the measurement, the I²C rules and
+  hints, the UART ring, auto-baud, loop check and formatting, the SPI rules, the self-test
+  core and the report. Spec-derived vectors from `scripts/gen_lab_vectors.py`, an independent
+  Python implementation (`test/fake/fake_lab_vectors.h`).
+* **Host, fake lab.** The production services over `test/fake/fake_lab.c`: pads with an
+  external source and wires, an I²C bus of five known devices, SPI devices, a UART peer, and
+  faults. The host `stark_hal` fake gains the pad calls.
+* **Host UI port (Tier 4B).** Each app, inspected goldens.
+* **Emulator, production image.** The real transport and drivers on esp-emu 0.44.0: the I²C
+  app finds exactly 0x50 and reads zeros, a write to it is refused, the GPIO app offers
+  exactly 38 and 39 and a pull-up read of an unconnected pin is high, boot and heap unaffected;
+  UART through `--uart1-tcp` only if the STARK-0705 probe passes.
+* **Emulator, test image.** `stark_lab_transport` substituted (the fifth and last allowed
+  substitution). Integration evidence only.
+
+**Test-image pokes** (`scripts/test_emu.py` `POKE_VARS`, added by the task that needs them):
+`emu_lab_ext_pin`, `emu_lab_ext_mode` (0 none, 1 high, 2 low, 3 square wave),
+`emu_lab_ext_hz`, `emu_lab_ext_duty` (an external source on one pad); `emu_lab_wire`
+(`a * 64 + b`, 0 none: pad a's output or PWM appears on pad b); `emu_lab_i2c_devs` (a bitmask
+over the five catalogue devices), `emu_lab_i2c_fault`; `emu_lab_uart` (0 silent, 1 TX looped
+to RX, 2 echo peer, 3 a stream scene), `emu_lab_uart_baud` (the peer's baud: a mismatch of
+more than 3 % delivers framing errors), `emu_lab_uart_fmt`; `emu_lab_spi` (0 none, 1 JEDEC
+flash, 2 echo); `emu_lab_fault` (a `fake_lab_fault_t`). The module poke `emu_mod_slot0 = 34`
+puts the SPI breakout in slot 0 (catalogue entry 34, appended so existing indices keep
+their meaning).
+
+**Exit-criteria map** (each row's V1 half is ROADMAP V1 exit 13):
+
+| Exit criterion | V0.7 software evidence | Proven by |
+| --- | --- | --- |
+| 1. I²C scan finds devices at the expected addresses | five fake devices found exactly; production image finds 0x50 only | STARK-0704 |
+| 2. UART bridge round-trips at 115200 | the 64-byte loop pattern, every baud and format, mismatch reported; auto-baud | STARK-0705 |
+| 3. Reserved pins cannot be configured | every GPIO -1 to 64 against every call; arm; hot-plug withdrawal; EEPROM write and radio-slot refusals | STARK-0701, 0702, 0704, 0706 |
+| 4. Frequency and duty measurement | synthetic edge sets within tolerance; PWM wired to a pad reads back | STARK-0703 |
+| 5. Self-test and export | every check passes and fails on injection; attested never `pass`; the report | STARK-0707 |
+
+**System event ids** (ARCHITECTURE §6.3): 8 `STARK_SYS_LAB` (`arg` = `STARK_LAB_EVT_PINS` /
+`_MEASURE_DONE` / `_SCAN_DONE` / `_UART_DATA` / `_UART_ERROR` / `_SPI_DONE`); 9
+`STARK_SYS_SELFTEST` (`arg` = `STARK_SELFTEST_EVT_STEP` / `_DONE`). No capability bit is
+added (ADR-0023 §2, §6).
+
+**Launcher.** Today: Lab header 10, IR 11, NFC 12, Sub-GHz 13, Device header 14, Modules
+15, Settings 16, Storage 17. None of the new rows is capability gated, so none is dimmed and
+every pre-existing walk that passes a new row gains one press (unlike V0.6). Rows are
+re-derived and listed by each task; the end state after STARK-0707 is: System header 0,
+About 1, Diagnostics 2, Self-Test 3, Tests header 4, App Test 5, Buzzer Test 6, Display Test
+7, Input Test 8, Examples header 9, Hello 10, Lab header 11, GPIO 12, I2C 13, IR 14, NFC 15,
+SPI 16, Sub-GHz 17, UART 18, Device header 19, Modules 20, Settings 21, Storage 22. The row
+order comes from `app_catalog_sort()` (categories by the registry, titles by `strcmp`).
+
+**Budget summary (ADR-0023 §10).** Production boot heap now 240 732 B; the total V0.7
+cost is at most 16 kB (closing figure ≥ 224 kB, gate ≥ 200 kB); binary now 483 216 B,
+ceiling +52 kB; test image boot heap now 237 812 B. Per-task limits are below. No new
+FreeRTOS task is added by any V0.7 task.
+
+---
+
+## STARK-0701 — Pin safety, the lab transport seam, the fifth substitution
+
+**Goal.** One place decides which pins a lab tool may touch, every pin call is checked
+against it, and the test image has a fake pad model. No app yet: the first user is
+STARK-0702. The behaviours the emulator is said to model are probed and recorded.
+
+**Layers.** L0 `components/stark_board` (pin classes, `lab_uart_*`, validation); L1
+`components/stark_hal` (pad calls, host fake); L3 `components/stark_lab_transport`
+(production wrapper over `stark_hal`; pads group only in this task); L2 + L3
+`components/stark_lab` (`lab_pins.c` pure, `stark_lab.c` service); root
+`main/stark_main.c` (boot log).
+
+**Files.** `components/stark_board/{include/stark_board.h,board_devkitc1.c,stark_board.c}`,
+`components/stark_hal/{include/stark_hal.h,stark_hal_esp.c}`,
+`test/host/support/stark_hal_host.c` (+ control header),
+`components/stark_lab/{CMakeLists.txt,Kconfig.stark,lab_pins.c,lab_pins.h,stark_lab.c,include/stark_lab.h}`,
+`components/stark_lab_transport/{CMakeLists.txt,include/stark_lab_transport.h,lab_transport_hal.c}`,
+`test/fake/{fake_lab.c,fake_lab.h}`,
+`test/emu/storage_image/{CMakeLists.txt,components/stark_lab_transport/*}`,
+`scripts/{check_emu_image.py,test_check_emu_image.py,check_layers.py,test_emu.py}`,
+`test/host/{test_board_pins.c,test_lab_pins.c,test_fake_lab.c,test_lab_service.c,CMakeLists.txt}`,
+`test/emu/v07-lab-boot.toml`, `test/emu/storage/v07-pins.toml`, `docs/VALIDATION.md` §2
+(probe rows), ARCHITECTURE §6.1, §6.2, §6.9h (new), §10, HARDWARE §2.4 (as planned).
+
+**Board API** (`stark_board.h`):
+
+```c
+typedef enum { STARK_PIN_RESERVED, STARK_PIN_LAB, STARK_PIN_SLOT } stark_pin_class_t;
+/* RESERVED for every number the table does not offer, including < 0 and > 48.
+   For SLOT, *slot is the module slot (0..1); otherwise -1. */
+stark_pin_class_t stark_board_pin_class(int gpio, int *slot);
+/* The offer table, in the order lab_uart_tx, lab_uart_rx, then each slot's cs, irq0, irq1
+   (-1 lines omitted): at most 8 entries; `name` is "LAB_UART_TX", "SUBGHZ_CS", … */
+size_t stark_board_lab_pins(const stark_board_lab_pin_t **out);
+```
+
+`stark_board_pins_t` gains `lab_uart_tx` (38) and `lab_uart_rx` (39). The class table is
+derived from the struct (`lab_uart_*` and `module[i].cs/irq0/irq1`), so no number is
+written twice. `stark_board_validate()` counts the two new pins for collisions and range.
+
+**HAL API** (`stark_hal.h`, host-includable, no ESP-IDF headers):
+
+```c
+typedef enum { STARK_HAL_PULL_NONE, STARK_HAL_PULL_UP, STARK_HAL_PULL_DOWN } stark_hal_pull_t;
+/* Input, optional pull, input buffer on. */
+stark_err_t stark_hal_gpio_config_in(int pin, stark_hal_pull_t pull);
+/* Output with the weakest drive strength and the input buffer left on, so the level can be read back. */
+stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial);
+/* Input, no pull, interrupts off: the pad is released. */
+stark_err_t stark_hal_gpio_hiz(int pin);
+```
+
+**Lab service API** (`stark_lab.h`, L3):
+
+```c
+typedef struct { int pin; const char *name; stark_pin_class_t cls; bool offered; bool held; } stark_lab_pin_t;
+size_t      stark_lab_pins(stark_lab_pin_t *out, size_t max);  /* the whole table, offered flag as of now */
+stark_err_t stark_lab_acquire(int pin, const char *owner);     /* NOT_SUPPORTED: not offered; BUSY: held */
+void        stark_lab_release(int pin);                        /* hi-Z, arm cleared; any task */
+void        stark_lab_release_all(void);
+stark_err_t stark_lab_arm(int pin);                            /* after the app's confirm; STATE if not held */
+stark_err_t stark_lab_input(int pin, stark_lab_pull_t pull);
+stark_err_t stark_lab_read(int pin, bool *level);
+stark_err_t stark_lab_state(int pin, stark_lab_pinstate_t *st); /* FLOATING / HIGH / LOW: each pull for 2 ms */
+stark_err_t stark_lab_write(int pin, bool level);              /* STATE unless armed; contention → hi-Z, STARK_ERR_IO */
+void        stark_lab_refresh(void);                           /* recompute the offer; withdraw and hi-Z lost pins */
+```
+
+**Rules.** The offer is: `LAB` always; `SLOT` when `stark_module_list()` shows that slot
+`ABSENT` and no lease holds it; everything else never. Every call checks the offer first
+and then the lease (`stark_lab_acquire`); a pin that is not offered returns
+`STARK_ERR_NOT_SUPPORTED` before any hardware is touched, from the service and again from
+the transport. `stark_lab_refresh()` runs from the apps on `STARK_SYS_MODULE`: it withdraws
+every held pin that is no longer offered (hi-Z first, then a `lab: pin <n> withdrawn
+(slot <s>)` log line and `STARK_LAB_EVT_PINS`). One mutex guards the table; no task, no
+allocation after init. The contention check: after `stark_lab_write()` the service waits 1 ms
+and reads the pad back; a mismatch puts the pin in hi-Z, logs `lab: contention pin <n>` and
+returns `STARK_ERR_IO`.
+
+**Transport API** (`stark_lab_transport.h`, pads group; later tasks append):
+
+```c
+stark_err_t stark_lab_transport_open(void);
+void        stark_lab_transport_close(void);
+stark_err_t stark_lab_transport_pad_in(int pin, uint8_t pull);          /* 0 none, 1 up, 2 down */
+stark_err_t stark_lab_transport_pad_out(int pin, bool level);           /* weak drive, read-back enabled */
+stark_err_t stark_lab_transport_pad_read(int pin, bool *level);
+stark_err_t stark_lab_transport_pad_hiz(int pin);
+```
+
+Production calls `stark_hal_gpio_*` and re-checks the class with `stark_board_pin_class()`.
+The fake (`fake_lab.c`) models each pad as hi-Z, input with a pull, or output with a level,
+and an **external source** (none, high, low, square wave) set by the harness: an input reads
+the external level when one is driving and else the pull (floating without a pull reads
+low); an output reads back the external level when one is driving against it (contention),
+else its own. `fake_lab_wire(a, b)` makes pad a's output the external source of pad b.
+Faults (`fake_lab_fault_t`): `PAD_STUCK_LOW`, `PAD_STUCK_HIGH`, `CONFIG_ERROR`, each with a
+count.
+
+**Boot.** `stark_lab_init()` logs `lab: pins <list of offered pins>` after the module
+table is first read (production image: `lab: pins 38 39`).
+
+**Probes (recorded, not asserted).** A throwaway build on the production image records in
+docs/VALIDATION.md §2 whether esp-emu 0.44.0: reads an output pad back as an input
+(`GPIO_MODE_INPUT_OUTPUT`), reads a pull-down as low, delivers a GPIO interrupt when
+software toggles another pad, and routes LEDC to a pad that is then read. Each outcome is a
+row; none is an acceptance criterion, and a "no" means that behaviour stays host- and
+test-image-only.
+
+**Host tests.** `test_board_pins.c`: the class of every number from -1 to 64 (only 38, 39,
+40, 41, 42 are not `RESERVED`; slot 1 gives none; the table has five entries); the table is
+derived from the struct (changing a pin in a test struct moves the class); `validate` with
+the new fields. `test_lab_pins.c`: for every GPIO number from -1 to 64 and every service
+call, anything not offered returns `STARK_ERR_NOT_SUPPORTED` and touches nothing (the fake
+counts calls); the offer with slot 0 in each of `ABSENT`, `GENERIC`, `KNOWN`, `CONFLICT` and
+leased; acquire, busy, release; `write` before `arm` is `STARK_ERR_STATE`; the arm is cleared
+by release, withdrawal and `release_all`; the state probe on floating, pulled and driven pads;
+contention detected, pin in hi-Z, error; a fault mid-sequence leaves the pin hi-Z; a hot-plug
+withdrawal while an output is high. `test_fake_lab.c`: the pad model, wires and faults.
+ASan/UBSan clean.
+
+**Emulator.** Production `v07-lab-boot.toml`: `lab: pins 38 39`, heap ≥ 200 kB, no panic.
+Test image `storage/v07-pins.toml`: slot 0 empty → `lab: pins 38 39 40 41 42`;
+`emu_mod_slot0 = 32` → `lab: pin 40 withdrawn (slot 0)` (and 41, 42), offer `38 39`;
+`emu_mod_slot0 = 0` → offered again. `check_emu_image.py` allows exactly five substitutions
+(`stark_storage_medium`, `stark_nfc_transport`, `stark_module_transport`,
+`stark_subghz_transport`, `stark_lab_transport`) with a negative test; `check_layers.py`
+and ARCHITECTURE §10 classify `stark_lab_transport` (L3, a port, edge `→ stark_module` later)
+and `stark_lab` (L3, cores L2) with the edges `stark_lab → stark_event`, `stark_lab →
+stark_module`, `stark_lab → stark_lab_transport`.
+
+**AC.**
+1. No GPIO number other than the offered ones is accepted by any call, from the service or the transport, in any mode (host sweep, ASan/UBSan clean).
+2. A `SLOT` pin is offered only while its slot is `ABSENT` and unleased; a hot-plug withdraws it, drives it to hi-Z and logs it (host and test image).
+3. An output is refused until armed; the arm never survives release, withdrawal or `release_all`; contention ends in hi-Z with an error.
+4. `stark_board` owns every number: the service, transport and apps name pins only through `stark_board_pin_class()` and `stark_board_lab_pins()` (no GPIO literal in code under `components/stark_lab*`, `apps/` or `main/`; test numbers live in `test/`); the class table is derived from the pin map.
+5. Pure cores at 100 % lines; the probe rows are in VALIDATION §2; production has no fake or simulator reference; five substitutions exactly; `gpio-centralized` in `scripts/check.sh` unchanged and green.
+6. Pre-existing scenarios and goldens pass unchanged; production boot heap ≥ 200 kB.
+
+**Security.** No tool can reach a pin another owner has (SECURITY_SCOPE §4.6). **Budget.**
+`stark_lab` + transport static ≤ 1.5 kB, boot heap cost ≤ 1.5 kB, flash ≤ 3 kB.
+**Physical HIL (V1).** The offered pins are the only reachable ones; drive strength and
+hi-Z on the board.
+
+---
+
+## STARK-0702 — The GPIO app: read, write, toggle, pulse, pull, PWM out
+
+**Goal.** A Lab app that reads, drives, pulses and PWMs the offered pins safely, and leaves
+every pin in hi-Z when it stops.
+
+**Layers.** L2 `components/stark_lab/lab_pwm.c` (range and step rules, pure); L3 service
+(`stark_lab_pwm_start/stop`, `stark_lab_pulse`); L1 `stark_hal` (`stark_hal_pwm_stop()`);
+L3 transport (PWM and pulse calls); L5 `apps/app_gpio`; registry.
+
+**Files.** `components/stark_lab/{lab_pwm.c,lab_pwm.h,stark_lab.c,include/stark_lab.h}`,
+`components/stark_hal/{include/stark_hal.h,stark_hal_esp.c}`,
+`test/host/support/stark_hal_host.c`, `components/stark_lab_transport/*` (+ the fake),
+`apps/app_gpio/{CMakeLists.txt,app_gpio.c,gpio_views.c}`, `main/{app_registry.c,app_registry.h,CMakeLists.txt}`,
+`test/host/{test_lab_pwm.c,test_lab_service.c,test_ui_gpio.c,port/ui_port_gpio.c}`,
+`test/emu/v07-gpio-prod.toml`, `test/emu/storage/v07-gpio.toml`, updated walks in
+pre-existing scenarios, `scripts/test_emu.py` (`emu_lab_ext_*`, `emu_lab_wire`, `emu_lab_fault`).
+
+**Transport additions.**
+
+```c
+stark_err_t stark_lab_transport_pwm_start(int pin, uint32_t hz, uint8_t duty_pct); /* LEDC channel 2 */
+stark_err_t stark_lab_transport_pwm_stop(int pin);                                /* pad back to hi-Z */
+stark_err_t stark_lab_transport_pulse(int pin, bool level, uint32_t us);          /* 10 us .. 1 s */
+```
+
+`stark_hal_pwm_stop(channel)` stops LEDC with the idle level low, and the pad is then
+released by `stark_hal_gpio_hiz()`; the existing buzzer and backlight channels are not
+touched (a host test pins this). A pulse shorter than 1 ms is a busy wait in the worker
+(bounded 1 ms); longer ones wait with the task delay and are ±1 tick; the pad ends at the
+opposite level and then in the mode it had.
+
+**Service additions.** `stark_lab_pwm_start(pin, hz, duty)` (`hz` 100 to 40 000, `duty` 0
+to 100, else `STARK_ERR_INVALID_ARG`; `STARK_ERR_STATE` unless armed; one pin at a time,
+`STARK_ERR_BUSY` for a second), `stark_lab_pwm_stop()`, `stark_lab_pulse(pin, level, us)`
+(`us` from the fixed list, armed, then one pulse), `stark_lab_toggle(pin)` (armed).
+`stark_lab_release()` stops PWM on that pin.
+
+**App.** Lab category, title "GPIO". Home: a list of the offered pins with name and live
+state (`IN H`, `IN L`, `OUT H`, `OUT L`, `PWM`, `Hi-Z`), refreshed on every
+`STARK_SYS_MODULE`. OK opens a pin: Mode (Hi-Z, Input, Output, PWM, Pulse), Pull
+(None, Up, Down; inputs), Level (outputs), Freq and Duty (PWM, LEFT/RIGHT, one decade
+steps up/down on UP/DOWN), Width (pulse), then an action row. Before the **first drive of a
+pin in a session** a modal confirm shows: the pin and its name, "reads: floating | high |
+low" from `stark_lab_state()`, "Own hardware only. Connected hardware may be damaged.",
+OK to continue; OK arms the pin, BACK cancels and nothing is touched. BACK from a pin
+releases it (hi-Z); BACK at home and leaving the app release everything. With no pin
+offered the app says `No pins offered`. A contention error shows an alert and the pin reads
+`Hi-Z`.
+
+**Launcher.** GPIO sorts first in Lab: Lab header 10, GPIO 11, IR 12, NFC 13, Sub-GHz 14,
+Device header 15, Modules 16, Settings 17, Storage 18; the registry log line becomes
+`n=14`. Pre-existing scenarios that walk past it gain one press and their `menu: sel=` expectations
+move by one (`v04-nfc-absent`, `v02-settings-persist`, `storage/v02-eject`,
+`storage/v02-log-file`, `storage/v05-hotplug`, `v0-boot`, `v01-hello`, and any other the
+build shows); each changed line is a row index or that registry line and nothing else.
+
+**Host tests.** PWM limits at every edge (99 and 100 Hz, 40 000 and 40 001 Hz, duty 0, 100,
+101); one PWM at a time; stop frees the channel and leaves buzzer and backlight alone;
+pulse widths; every drive refused before the arm; the app on the UI port: home with the
+offered pins, a pin view per mode, the confirm dialog (BACK touches nothing, OK arms), hi-Z
+on every exit path (BACK, leaving, hot-plug withdrawal with an output high, a contention
+alert); goldens inspected.
+
+**Emulator.** Production `v07-gpio-prod.toml`: open GPIO → exactly pins 38 and 39 listed;
+38 as input with a pull-up reads `IN H` (the released-pad behaviour the emulator is verified
+to have); leaving logs `lab: released all`. Test image `storage/v07-gpio.toml`: slot 0
+empty, five pins; output on pin 38 after the confirm → `OUT H`, toggle → `OUT L`;
+`emu_lab_ext_mode = 2` (a short to ground) → `lab: contention pin 38` and `Hi-Z`; pulse and
+PWM logged; `emu_lab_wire = 38*64+39` and PWM 1 kHz at 25 % on 38 → pad 39 reads the
+waveform (the fake's own check, logged as `lab: wire 38 -> 39`); `emu_mod_slot0 = 32` while
+pin 40 is an output → withdrawn, hi-Z, row gone.
+
+**AC.**
+1. No output, PWM or pulse happens without a confirm and its arm; BACK on the confirm changes nothing (host, test image).
+2. Every exit path leaves every pin hi-Z with no pull (host assertions on the fake, test image logs).
+3. A contention is detected and ends in hi-Z with an error; a hot-plug withdraws a driven slot pin.
+4. PWM is limited to 100 Hz to 40 kHz and 0 to 100 %, one pin at a time; the buzzer and backlight channels are untouched.
+5. The production image offers exactly 38 and 39 and reads a pull-up as high.
+6. Pre-existing scenario changes are row indices and the registry line only, each explained; app core pure files at 100 % lines.
+
+**Security.** Output drive is the guarded action (SECURITY_SCOPE §4.6); no loops, no repeat,
+no sweep. **Budget.** `app_gpio` static ≤ 2 kB, boot heap cost ≤ 1 kB, flash ≤ 7 kB.
+**Physical HIL (V1).** PWM on a logic analyser; levels, pulses, pulls; drive strength and
+the read-back on the board.
+
+---
+
+## STARK-0703 — Frequency and duty measurement
+
+**Goal.** The GPIO app measures the frequency and duty of a signal on an offered pin
+without PCNT or MCPWM, within the stated range, and says so when it cannot.
+
+**Layers.** L2 `components/stark_lab/lab_meas.c` (pure); L1 `stark_hal` (edge capture); L3
+transport (`pad_edges`); L3 service (`stark_lab_measure`); L5 `app_gpio` (a Measure view).
+
+**Files.** `components/stark_lab/{lab_meas.c,lab_meas.h,stark_lab.c,include/stark_lab.h}`,
+`components/stark_hal/{include/stark_hal.h,stark_hal_esp.c}` (+ host fake),
+`components/stark_lab_transport/*` (+ fake), `apps/app_gpio/*`,
+`scripts/{gen_lab_vectors.py,test_gen_lab_vectors.py}`, `test/fake/fake_lab_vectors.h`,
+`.github/workflows/ci.yml` (lint: `gen_lab_vectors.py --check`),
+`test/host/{test_lab_meas.c,test_lab_service.c,test_ui_gpio.c}`,
+`test/emu/storage/v07-measure.toml`, `test/emu/v07-measure-prod.toml` (only if the probe row
+allows).
+
+**Method (ADR-0023 §4).**
+
+```c
+/* ts: CPU cycle counts of every edge, in order; first_level: the level before the first edge. */
+typedef struct {
+    uint32_t hz_x100;      /* frequency, 0.01 Hz units; 0 when not measurable */
+    uint16_t duty_x10;     /* duty, 0.1 % units */
+    uint32_t period_ticks;
+    lab_meas_status_t status; /* OK, TOO_FAST, TOO_SLOW, NO_SIGNAL (steady high/low), OVERFLOW, GLITCH */
+} lab_meas_t;
+lab_meas_t lab_meas_compute(const uint32_t *ts, size_t n, bool first_level, uint32_t tick_hz,
+                            bool overflowed);
+```
+
+The service runs: a 20 ms pre-gate that only counts edges (an interrupt counter, no
+storage) to estimate the rate; a capture window sized so the expected edges fit the ring
+(10 ms to 4 s; 4 s when nothing arrives, then `NO_SIGNAL` with the steady level); then
+`lab_meas_compute`. The frequency is `(rising − 1) / span of the first to the last rising
+edge`; the duty is the sum of complete high intervals over the sum of the complete periods
+they sit in; at least two rising edges and one full period are needed. Pulses shorter than
+1 µs are a `GLITCH` (counted, shown); an estimate above 50 kHz is `TOO_FAST` and below 1 Hz
+`TOO_SLOW`. The ring is 1024 `uint32_t` on the heap (4 kB), allocated by the app when the
+Measure view opens and freed on exit; the hal interrupt is installed for the window only
+and removed after it. The CPU cycle counter wraps in 17.9 s, so a window never exceeds 4 s
+and deltas are taken modulo 2³².
+
+**Transport/HAL additions.** `stark_hal_gpio_edges(pin, window_us, ts, cap, *n, *first,
+*overflowed)` (any-edge interrupt in IRAM, ring fill, removal) and `stark_hal_tick_hz()`;
+`stark_lab_transport_pad_edges()` wraps them for an offered, input-configured pin and
+re-checks the class. The fake synthesises timestamps from the pad's external source or a
+wire (frequency, duty, optional bounded jitter, optional glitches) at 240 MHz.
+
+**Vectors.** `scripts/gen_lab_vectors.py` (independent Python): a catalogue of edge sets at
+1, 2, 10, 100 Hz, 1, 10, 25, 50 kHz, duty 1, 10, 25, 50, 75, 99 %, seeded jitter up to ±2 µs,
+glitches, a steady line, a ring overflow, a counter wrap, and the expected frequency and
+duty computed with exact rational arithmetic, to `test/fake/fake_lab_vectors.h`; it is
+checked in CI with `--check`.
+
+**App.** The GPIO app gains Measure on the pin view for an input pin: a live line "1.000 kHz
+duty 25.0 %" (or the status), re-measured when OK is pressed, with a note "50 kHz limit".
+
+**Host tests.** Every vector within the ADR-0023 §4 tolerances; every status (`TOO_FAST`,
+`TOO_SLOW`, `NO_SIGNAL` high and low, `OVERFLOW`, `GLITCH`, fewer than two edges, a
+non-monotonic input); a counter wrap; 10 000 seeded random edge sets never return a value
+outside its status; the service over the fake (window sizing, ring bounds, interrupt removed
+after the window, pin released); the view on the UI port; ASan/UBSan clean.
+
+**Emulator.** `storage/v07-measure.toml`: `emu_lab_wire` joins 38 to 39, PWM 1 kHz at 25 %
+on 38, Measure on 39 → `lab: measure 1000.0 Hz duty 25.0 %` (fake edges; the tolerance of
+the vector set applies); `emu_lab_ext_mode = 3` at 40 kHz, 50 % on 39 → `40000 Hz`; at
+80 kHz → `too fast`; a steady level → `no signal (high)`. The production-image scenario
+exists only if the §2 probe shows an emulated pad delivers interrupts, and then asserts only
+`no signal` on an unconnected pad.
+
+**AC.**
+1. Frequency within ±0.5 % to 10 kHz and ±2 % to 50 kHz and duty within ±2 and ±5 points on every vector, with the vector jitter (host).
+2. A signal outside 1 Hz to 50 kHz, a steady line, a glitch train and an overflow are reported as such, never as a number.
+3. The ring is bounded (1024 entries), the interrupt is removed after every window, and the pin is released (host assertions on the fake).
+4. The PWM wired to a measured pad reads back its own frequency and duty on the test image.
+5. `gen_lab_vectors.py --check` passes in lint; the measurement core at 100 % lines.
+6. No PCNT or MCPWM reference anywhere (`grep -rniE 'pcnt|mcpwm' components/ apps/ main/` is empty).
+
+**Security.** Input only. **Budget.** The 4 kB ring is heap, held only while the view is
+open; static ≤ 0.5 kB, boot heap cost ≤ 0.5 kB, flash ≤ 4 kB. **Physical HIL (V1).** ISR
+latency and accuracy from 1 Hz to 50 kHz against a signal generator, and `LAB_UART_TX` PWM
+into `LAB_UART_RX`.
+
+---
+
+## STARK-0704 — I²C scanner: scan, hints, register read and write
+
+**Goal.** An app scans the shared I²C bus, names likely devices from a small generic table,
+reads and dumps registers, and writes them only after a confirmation and never to a module
+ID EEPROM.
+
+**Layers.** L2 `components/stark_lab/{lab_i2c.c,lab_i2c_hints.c}` (pure: the sweep state
+machine over an injected probe, the write-refusal predicate, hex formatting, the hints
+table); L3 transport (I²C group); L3 service; L5 `apps/app_i2c`; registry.
+
+**Files.** `components/stark_lab/{lab_i2c.c,lab_i2c.h,lab_i2c_hints.c,stark_lab.c,include/stark_lab.h}`,
+`components/stark_lab_transport/{include/stark_lab_transport.h,lab_transport_hal.c}` (+ the
+fake), `test/fake/fake_lab.c` (the bus), `apps/app_i2c/*`, `main/{app_registry.c,app_registry.h}`,
+`test/host/{test_lab_i2c.c,test_lab_service.c,test_ui_i2c.c,port/ui_port_i2c.c}`,
+`test/emu/v07-i2c-prod.toml`, `test/emu/storage/v07-i2c.toml`, updated walks,
+`scripts/{gen_lab_vectors.py,test_emu.py}` (`emu_lab_i2c_*`), `docs/VALIDATION.md` §2.
+
+**Transport additions** (production: `i2c_master_probe()` and a temporary
+`i2c_master_bus_add_device()` per transaction on `stark_board_i2c_bus()`, removed after it;
+the bus's own lock keeps it from interleaving with the NFC and module tasks):
+
+```c
+stark_err_t stark_lab_transport_i2c_probe(uint8_t addr, uint32_t timeout_ms); /* OK ack, NOT_FOUND nack */
+stark_err_t stark_lab_transport_i2c_xfer(uint8_t addr, uint32_t hz, const uint8_t *w, size_t wn,
+                                         uint8_t *r, size_t rn, uint32_t timeout_ms);
+```
+
+**Service API.**
+
+```c
+typedef struct { uint8_t addr[112]; size_t n; stark_err_t status; } stark_lab_scan_t;
+stark_err_t stark_lab_i2c_scan(stark_lab_scan_t *out);   /* the whole sweep, ≤ 112 x 5 ms; any task */
+const char *stark_lab_i2c_hint(uint8_t addr);            /* "may be: …" or NULL */
+stark_err_t stark_lab_i2c_read(uint8_t addr, uint16_t reg, bool reg16, uint8_t *buf, size_t n, uint32_t hz);
+stark_err_t stark_lab_i2c_dump(uint8_t addr, uint8_t *buf256, uint32_t hz);       /* armed: STATE otherwise */
+stark_err_t stark_lab_i2c_write(uint8_t addr, uint16_t reg, bool reg16, const uint8_t *v, size_t n,
+                                uint32_t hz);                                    /* armed, one use */
+stark_err_t stark_lab_i2c_arm(uint32_t fingerprint);     /* the app's OK on the dialog it showed */
+```
+
+**Rules (ADR-0023 §5).** Addresses outside 0x08 to 0x77 are `STARK_ERR_INVALID_ARG`. The
+sweep is address-only (`probe`), one per address, a timeout or bus error counts as an error:
+three in a row end the sweep with `STARK_ERR_IO` and the partial list (never a hang). A
+write is refused with `STARK_ERR_NOT_SUPPORTED` when the address is a module ID EEPROM
+(`stark_board_pins()->module[i].eeprom_addr`) or the PN532's 0x24 while
+`stark_module_caps()` has `STARK_CAP_NFC`; this is checked in the service and not only by the
+app. A write and a dump need an arm tied to the fingerprint of what the dialog showed
+(address, register, bytes); the arm is consumed by the call, so one confirmation buys one
+write; a different payload is `STARK_ERR_STATE`. Reads of 1 to 16 bytes need no arm and the
+app says "a read can change a device's state". Writes are 1 to 8 bytes. Every write and dump
+is logged: `lab: i2c write 0x68 reg 0x6b 01 ok`. Speed 100 or 400 kHz, default 100.
+
+**Hints** (`lab_i2c_hints.c`, const data in flash, at most 48 entries, generic and public:
+address and a "may be" phrase such as `0x23 "light sensor (BH1750-class)"`, `0x3c "small OLED
+(SSD1306-class)"`, `0x48 "temperature / ADC (TMP102, ADS1115-class)"`, `0x50 "EEPROM (24Cxx)
+or a module ID"`, `0x68 "RTC or IMU (DS3231, MPU6050-class)"`, `0x76 "pressure (BMP280-class)"`,
+`0x24 "NFC reader (PN532)"`). The hint is a lookup by address only; nothing is probed to
+confirm it, and the app prefixes it with "may be". No vendor database, no register maps.
+
+**Fake bus** (`fake_lab.c`): five devices selected by `emu_lab_i2c_devs`: 0x23 (reads two
+bytes), 0x3C (acks, reads zero), 0x48 (four 16-bit registers with defaults), 0x68 (a 256
+register file: `WHO_AM_I` at 0x75 = 0x68, writable registers, a read-only register that
+ignores writes), 0x76 (a register file with 0xD0 = 0x60); plus the module fakes' EEPROMs at
+0x50 and 0x51 when a slot has a module (it asks the module fake, so one scan shows one
+consistent bus) and 0x24 when the NFC test image has a reader. Faults: `NACK_ALL`, `TIMEOUT`
+(one address, then all), `STUCK` (every call times out), `DROP_DEVICE` (a device vanishes
+mid-sweep).
+
+**App.** Lab category, title "I2C". Home: Scan, Speed (100 / 400 kHz). Scan shows the found
+addresses with their hints, or `No devices` or `Bus error`. OK on a device: Read (register
+editor, UP/DOWN change a nibble, LEFT/RIGHT move; length 1 to 16; 8- or 16-bit register),
+Dump (a confirm, then 16 rows of 16), Write (register and up to 8 bytes with the same editor;
+the confirm names address, register and bytes and says "Own hardware only"). Refusals show
+an alert with the reason (`module eeprom`, `nfc reader`) and are logged.
+
+**Launcher.** GPIO 11, I2C 12, IR 13, NFC 14, Sub-GHz 15, Device header 16, Modules 17,
+Settings 18, Storage 19; registry `n=15`; the walks gain a press as in STARK-0702.
+
+**Host tests.** The sweep over an injected probe: none, one, all 112, the edges 0x08 and
+0x77, a timeout, three errors in a row, a device that vanishes mid-sweep; address range; the
+refusal predicate for each module address and for 0x24 with and without `NFC`; arm and
+fingerprint (consumed, wrong payload, stale); read and write lengths at each edge; hex
+formatting; the hints table (sorted, unique, at most 48, every phrase "may be"-worded); the
+service over the fake with each device's registers (`WHO_AM_I`, a write that reads back, a
+write to a read-only register that does not); the app goldens (scan, empty, error, editor,
+confirm, refusal); ASan/UBSan clean.
+
+**Emulator.** Production `v07-i2c-prod.toml` (real driver; the facts of V0.5): scan → `lab:
+i2c scan found` lists 0x50 and none of 0x10, 0x24, 0x51, 0x52 (the whole list is logged and
+recorded in VALIDATION §2); Read of 0x50 register 0 length 8 → eight zero bytes; a write to
+0x50 → `lab: i2c write refused: module eeprom`, no bus traffic. Test image
+`storage/v07-i2c.toml`: all five devices → exactly `0x23 0x3c 0x48 0x68 0x76`; with
+`emu_mod_slot0` set to a catalogue module that has an EEPROM, `0x50` joins them; read
+`WHO_AM_I` → `0x68`; a confirmed write to 0x68 register 0x6b reads back; a write to 0x50
+refused; `emu_lab_i2c_fault` bus faults end the sweep with `Bus error` and a recovery scan
+works.
+
+**AC.**
+1. The scan finds exactly the fake devices at their addresses and nothing else; a bus fault ends it with an error and the partial list, never a hang (host, test image).
+2. The production image finds 0x50 and reads zeros there through the real driver; 0x10, 0x24, 0x51, 0x52 are not found; the full list is recorded.
+3. No write happens without a confirmation and its arm; one confirmation buys one write; a write to a module EEPROM address, or to the PN532 while NFC is confirmed, is refused by the service on the host, the test image and the production image.
+4. Hints are lookups by address, at most 48, generic, with no probing and no data beyond address and phrase.
+5. Pure files at 100 % lines; pre-existing scenario changes are row indices and the registry line only.
+
+**Security.** SECURITY_SCOPE §2 (I²C scanning, register access); ADR-0021 §2 holds: a
+descriptor is never written. **Budget.** `app_i2c` static ≤ 2 kB, `stark_lab` I²C ≤ 1 kB,
+boot heap cost ≤ 2 kB, flash ≤ 10 kB (the hints ≤ 2 kB). **Physical HIL (V1).** Real
+devices at their addresses, pull-ups, 100 and 400 kHz waveforms, the refusals on the
+board, bus recovery after a device is pulled.
+
+---
+
+## STARK-0705 — UART tools: monitor, send, loopback bridge, auto-baud, SD log
+
+**Goal.** An app watches a serial line in hex and ASCII, sends bounded data, proves a round
+trip with a loopback test, finds the baud of an incoming stream, and logs it to the card,
+with every buffer bounded and every loss counted.
+
+**Layers.** L2 `components/stark_lab/{lab_uart.c,lab_autobaud.c}` (pure: the ring, error
+counters, format list, the loop pattern and check, auto-baud, hex/ASCII formatting); L3
+transport (UART group); L3 service; L5 `apps/app_uart`; registry; `test_emu.py` harness.
+
+**Files.** `components/stark_lab/{lab_uart.c,lab_uart.h,lab_autobaud.c,lab_autobaud.h,stark_lab.c,include/stark_lab.h}`,
+`components/stark_lab_transport/*` (+ fake), `apps/app_uart/{CMakeLists.txt,app_uart.c,uart_views.c,uart_log.c}`,
+`main/{app_registry.c,app_registry.h}`, `scripts/{gen_lab_vectors.py,test_emu.py}`,
+`test/fake/{fake_lab.c,fake_lab_vectors.h}`,
+`test/host/{test_lab_uart.c,test_lab_autobaud.c,test_lab_service.c,test_ui_uart.c,port/ui_port_uart.c}`,
+`test/emu/storage/v07-uart.toml`, `test/emu/v07-uart-prod.toml` (if the probe passes),
+`docs/VALIDATION.md` §2.
+
+**Probe first.** Build a throwaway production image whose app opens UART1 and echoes, run
+esp-emu 0.44.0 with `--uart1-tcp` and a socket peer, and record in VALIDATION §2 whether
+bytes round-trip on the S3 model (upstream verified C3 and P4 only), with what latency, and
+whether anything is lost at 115200. If it passes, `v07-uart-prod.toml` is added, with a
+harness option `uart1_peer = "echo"` in `scripts/test_emu.py` (connect to the port the run
+opened, echo every byte, fail the scenario if the peer cannot connect); if not, the row says
+so and the test image carries the evidence alone. Either way the test image scenarios are
+mandatory.
+
+**Transport additions** (production: `uart_driver_install(UART_NUM_1, rx_buf, 0, 0, NULL,
+0)`, so no event queue and no driver task; pins from `stark_board_pins()->lab_uart_*`):
+
+```c
+typedef struct { uint32_t framing, parity, overrun; } stark_lab_uart_err_t;
+stark_err_t stark_lab_transport_uart_open(uint32_t baud, uint8_t fmt, size_t rx_buf);
+int         stark_lab_transport_uart_read(uint8_t *buf, size_t max, uint32_t timeout_ms,
+                                          stark_lab_uart_err_t *errs); /* bytes, 0 on timeout, <0 error */
+int         stark_lab_transport_uart_write(const uint8_t *buf, size_t n, uint32_t timeout_ms);
+stark_err_t stark_lab_transport_uart_set_baud(uint32_t baud);
+void        stark_lab_transport_uart_close(void);                       /* driver removed, pins hi-Z */
+```
+
+**Service API.** `stark_lab_uart_open(baud_index, fmt)` (acquires pins 38 and 39 through
+`stark_lab_acquire`, so the GPIO app and the UART tool exclude each other), `_poll(max)`
+(reads into the 4 kB ring, counts errors and overrun), `_ring_read`, `_send(buf, n)` (1 to
+32 bytes), `_loop_test(&result)` (sends the 64-byte pattern `00..3f` as two 32-byte writes,
+reads for up to 2× the wire time plus 20 ms, compares), `_autobaud(&result)`,
+`_close()`. A baud or format change reopens the driver and clears the ring.
+
+**Rules (ADR-0023 §7).** Baud list: 1 200, 2 400, 4 800, 9 600, 19 200, 38 400, 57 600,
+115 200, 230 400, 460 800, 921 600. Formats: 8N1, 8E1, 8O1, 8N2, 7E1. The ring holds 4 kB
+and when it is full the oldest bytes are overwritten and an overrun is **counted and shown**
+(`Lost 123`). Framing and parity errors are counted and shown. **Send** is 1 to 32 bytes
+from the app's nibble editor, a canned list (`\r\n`, `AT\r\n`, `?\r\n`, Ctrl-C 0x03, Ctrl-D
+0x04) or the file `uart/send.txt` (at most 1 kB, strict: hex or printable ASCII, else
+rejected whole); one send per key press, never repeated. **The loopback bridge** reports
+`bytes sent`, `bytes received`, `errors`, and the first mismatch offset; it needs the
+operator to have wired TX to RX or attached an echoing peer, and says "No data back" rather
+than failing silently when nothing arrives. **Auto-baud** captures edges on RX with
+`stark_lab_transport_pad_edges()` for up to 2 s, takes the shortest pulse (ignoring pulses
+under 1 µs), requires at least 16 edges, converts to a baud and snaps to the list within 3 %;
+else `unknown`. The pad is released before the driver opens. **SD logging** appends the
+received bytes to `logs/uart_NNNN.log` (the next free number) through a 2 kB buffer on the
+app worker, `fsync` every 4 kB and on stop; at 1 MiB it stops, says `Log full`, and the
+monitor continues; without a card it refuses with the reason. No log line carries received
+bytes except through the log file; the console log gets counts only.
+
+**Vectors.** `gen_lab_vectors.py` adds: byte streams at each baud and format with their
+edge timestamps (for auto-baud, with jitter up to ±1 µs and runs of identical bits),
+loop-test results for matches, one flipped bit, drops and an echo of a shifted stream, ring
+overwrite sequences and their expected loss counts, and hex/ASCII formatting of every byte
+value.
+
+**Fake UART peer** (`fake_lab.c`, `emu_lab_uart`): silent; TX looped to RX; an echo peer at
+`emu_lab_uart_baud` (a mismatch of more than 3 % with the app's baud, or a different format,
+delivers framing or parity errors and garbage bytes); a stream scene (a repeating text line
+and a binary scene). It also generates the matching edge timestamps for auto-baud from the
+bytes it plays.
+
+**App.** Lab category, title "UART". Home: Monitor, Send, Loopback test, Auto-baud, Log
+(Start/Stop), Settings (Baud, Format). The monitor shows `115200 8N1  rx 1234  err 0  lost 0`
+and the last bytes, hex (16 per row) or ASCII (48 per row), toggled with OK; UP/DOWN scroll the ring. BACK closes the
+driver and releases the pins.
+
+**Launcher.** GPIO 11, I2C 12, IR 13, NFC 14, Sub-GHz 15, UART 16, Device header 17,
+Modules 18, Settings 19, Storage 20; registry `n=16`; the walks gain a press as before.
+
+**Host tests.** Ring wrap and overwrite counts; every baud and format; the loop pattern with
+a match, a flipped bit, drops, truncation and nothing; auto-baud over every vector, the
+3 % snap boundary, too few edges, glitches, a constant line; file parse (valid, over 1 kB,
+mixed, binary); log numbering, the 1 MiB stop, a card that goes mid-log; the service over the
+fake including a mismatched peer, errors and the pins released on every exit; app goldens;
+ASan/UBSan clean.
+
+**Emulator.** Test image `storage/v07-uart.toml`: `emu_lab_uart = 1`, 115200 8N1 → `lab:
+uart loop 64/64 ok`; at every baud in the list; `emu_lab_uart = 2` with `emu_lab_uart_baud`
+9600 while the app is at 115200 → errors counted and shown, `lab: uart loop 64/64 mismatch
+first 0`; the peer at 38 400 → Auto-baud logs `lab: autobaud 38400`; a stream scene logged to
+`uart_0001.log` and the file's CRC-32 equals the scene's. Production `v07-uart-prod.toml`
+only if the probe passes: the loop test through the host peer → `lab: uart loop 64/64 ok`.
+
+**AC.**
+1. The 64-byte pattern round-trips with zero errors at 115200 8N1 and at every other baud and format on the host and the test image; a mismatch is reported as errors and never as success.
+2. Auto-baud names the baud of every vector within 3 % and says `unknown` otherwise.
+3. Every buffer is bounded (ring 4 kB, log buffer 2 kB, send 32 B, file 1 kB, log 1 MiB) and every loss is counted and shown.
+4. The pins are released and the driver removed on every exit path; the GPIO app and the UART tool never hold the pins together.
+5. The VALIDATION §2 row records the `--uart1-tcp` probe on the S3 model; the production scenario exists exactly when the probe passed.
+6. Pure files at 100 % lines; pre-existing scenario changes are row indices and the registry line only.
+
+**Security.** SECURITY_SCOPE §2 (UART monitoring, auto-baud); 3.3 V only; the received data
+is the user's own, written only to the user's card. **Budget.** `app_uart` static ≤ 2 kB,
+`stark_lab` UART ≤ 1.5 kB, boot heap cost ≤ 3 kB, flash ≤ 12 kB; the 4 kB ring, the driver's
+buffer and the 2 kB log buffer are heap, held only while the app is open. **Physical HIL
+(V1).** TX wired to RX, a USB-serial adapter, the baud limits, auto-baud on a real stream,
+level and series protection, a long log.
+
+---
+
+## STARK-0706 — SPI probe on a leased module slot
+
+**Goal.** A probe sends one bounded, confirmed SPI transaction to a device on a module slot
+that declares no function, shows what came back, and refuses every other slot, so it cannot
+be used to bypass a driver's policy.
+
+**Layers.** L2 `components/stark_lab/lab_spi.c` (pure: eligibility, request and fingerprint,
+formatting); L3 transport (SPI group); L3 service; L5 `apps/app_spi`; the module catalogue.
+
+**Files.** `components/stark_lab/{lab_spi.c,lab_spi.h,stark_lab.c,include/stark_lab.h}`,
+`components/stark_lab_transport/*` (+ fake), `test/fake/{fake_lab.c,fake_module_catalog.h}`,
+`scripts/gen_module_vectors.py` (entry 34), `docs/module-format.md` (the module id and its
+`MOD_SPI`-only descriptor, `0x00000008`), `apps/app_spi/*`, `main/{app_registry.c,app_registry.h}`,
+`test/host/{test_lab_spi.c,test_lab_service.c,test_module_desc.c,test_ui_spi.c,port/ui_port_spi.c}`,
+`test/emu/storage/v07-spi.toml`, `scripts/test_emu.py` (`emu_lab_spi`).
+
+**Transport addition** (production: `stark_module_spi_attach/xfer/detach` on the lease):
+
+```c
+stark_err_t stark_lab_transport_spi_xfer(const stark_module_lease_t *l, uint32_t hz, uint8_t mode,
+                                         const uint8_t *tx, uint8_t *rx, size_t n);
+```
+
+**Service API.**
+
+```c
+typedef struct { uint8_t slot; bool eligible; char why[24]; char name[MODULE_NAME_MAX + 1]; } stark_lab_spi_slot_t;
+size_t      stark_lab_spi_slots(stark_lab_spi_slot_t *out, size_t max);   /* both slots, with the reason */
+stark_err_t stark_lab_spi_request(uint8_t slot, uint32_t hz, uint8_t mode,
+                                  const uint8_t *tx, size_t n, stark_lab_spi_req_t *out);
+stark_err_t stark_lab_spi_send(const stark_lab_spi_req_t *req, uint8_t *rx); /* consumes the request */
+void        stark_lab_spi_cancel(void);
+```
+
+**Rules (ADR-0023 §6).** A slot is eligible only when `stark_module_list()` shows it `KNOWN`
+and its `declared` bits contain `MOD_SPI` and **nothing else** except `MOD_IRQ`; a slot
+declaring `SUBGHZ`, `NFC` or any unknown bit has `why = "owned by <name>"` and is refused;
+`GENERIC`, `ABSENT` and `CONFLICT` slots are refused with their reason; slot 1 has no
+`MOD_CS` and says so. The check is made again at `request` and at `send`. `send` claims the
+slot with `stark_module_claim(slot, MOD_SPI, "spiprobe", &lease)`, attaches, transfers,
+detaches and releases, so no lease outlives a transaction and a driver is never starved
+(`STARK_ERR_BUSY` is "slot busy"). 1 to 32 bytes; clock from 100 kHz, 250 kHz, 500 kHz, 1 MHz,
+2 MHz, 4 MHz; mode 0 to 3. The request holds a fingerprint of the slot, clock, mode and bytes
+that the dialog shows; `send` is refused with `STARK_ERR_STATE` for a request that is
+missing, already used, cancelled or whose lease generation changed; the request is consumed
+before the bus is touched. One transaction per confirmation, no repeat, no stream, no
+loop. Every transaction is logged: `lab: spi slot 0 1 MHz mode 0 tx 9f 00 00 00 rx ef 40 18
+ff`. Presets in the app: JEDEC ID (`9f` + 3 bytes), Read status (`05` + 1), Dummy read (4 x
+`00`).
+
+**Fake SPI devices** (`emu_lab_spi`): 1 a JEDEC flash (`9f` returns `ef 40 18`, `05` returns
+status 0, `03` + 3 address bytes streams a counting pattern); 2 an echo (MISO is the previous
+MOSI byte); faults `SPI_ERROR` (the transfer fails) and `NO_ANSWER` (MISO all `ff`).
+
+**App.** Lab category, title "SPI". Home: both slots with their reason (`SPI breakout`,
+`owned by Sub-GHz`, `no module`, …); OK on an eligible slot opens Setup (Clock, Mode, the
+byte editor of STARK-0704, the three presets), then Send, which shows the confirm and, on
+OK, the transaction and its MISO bytes in hex and ASCII.
+
+**Launcher.** GPIO 11, I2C 12, IR 13, NFC 14, SPI 15, Sub-GHz 16, UART 17, Device header
+18, Modules 19, Settings 20, Storage 21; registry `n=17`; the walks gain a press as before.
+
+**Host tests.** Eligibility for every combination of state and declared bits (`MOD_SPI`
+alone and with `MOD_IRQ` eligible; with `SUBGHZ`, `NFC`, an unknown bit, none of them,
+`GENERIC`, `ABSENT`, `CONFLICT` not); a slot that changes between request and send; request
+consumption, cancel, reuse and a changed lease; length and clock bounds; that **no path
+reaches a driver-owned slot** (a CC1101 module in slot 0 with the SPI probe sending
+`ff`-`ff` writes: the fake CC1101 sees no transfer, `PATABLE` and `MARCSTATE` unchanged);
+the claim released after success, failure and a stale lease; the module catalogue entry
+and its descriptor; the app goldens; ASan/UBSan clean.
+
+**Emulator.** `storage/v07-spi.toml`: `emu_mod_slot0 = 34` and `emu_lab_spi = 1`: slot 0
+`SPI breakout`, JEDEC preset, confirm → `lab: spi slot 0 1 MHz mode 0 tx 9f 00 00 00 rx 00 ef 40
+18`; cancel sends nothing; `emu_lab_spi = 2` echoes; `emu_mod_slot0 = 32` (the CC1101
+module) → slot 0 `owned by Sub-GHz`, no send possible, `subghz:` detection unaffected;
+`emu_mod_slot0 = 0` → `no module`.
+
+**AC.**
+1. A transaction happens only on an eligible slot, after a confirmation, once; the request is consumed before the bus is touched.
+2. A slot whose module declares a function (Sub-GHz, NFC or any unknown bit) is refused at the request and at the send; the radio's chip sees no raw transfer (host with the fake CC1101).
+3. No lease outlives a transaction; a failure releases it; `BUSY` is reported as a busy slot.
+4. Length 1 to 32, six clocks, four modes are enforced; every transaction is logged with MOSI and MISO.
+5. The catalogue entry and descriptor are documented and tested; pure files at 100 % lines; pre-existing scenario changes are row indices and the registry line only.
+
+**Security.** The probe never reaches a transmit path (SECURITY_SCOPE §4.3 stays true).
+**Budget.** `app_spi` static ≤ 1 kB, boot heap cost ≤ 1 kB, flash ≤ 6 kB. **Physical HIL
+(V1).** A SPI breakout slot at 100 kHz to 4 MHz with the panel and SD sharing the bus (no
+display corruption, logic-analyser capture), a real flash's JEDEC ID, the refusal on a
+Sub-GHz module.
+
+---
+
+## STARK-0707 — Self-test and report export
+
+**Goal.** The Self-Test app runs every automated check, guides the operator through the
+attested ones, labels each result for what it is, and writes a bounded report to the card.
+
+**Layers.** L2 `components/stark_diag/{selftest_core.c,selftest_report.c}` (pure: the check
+table runner, result table, report formatter over an injected clock and sink); L3
+`stark_diag` (events, app-facing API); root `main/{selftest_checks.c,selftest_export.c}`
+(the checks and the file write: the root may require anything, so `stark_diag` gains no
+edge); L5 `apps/app_selftest`; registry.
+
+**Files.** `components/stark_diag/{selftest_core.c,selftest_core.h,selftest_report.c,stark_diag.c,include/stark_diag.h}`,
+`main/{selftest_checks.c,selftest_export.c,stark_main.c,app_registry.c,app_registry.h,CMakeLists.txt}`,
+`apps/app_selftest/*`, `test/host/{test_selftest_core.c,test_selftest_report.c,test_selftest_checks.c,test_ui_selftest.c,port/ui_port_selftest.c}`,
+`test/emu/v07-selftest-prod.toml`, `test/emu/storage/v07-selftest.toml`, ARCHITECTURE §6.9a.
+
+**API** (`stark_diag.h`, additions):
+
+```c
+typedef enum { ST_NOT_RUN, ST_PASS, ST_FAIL, ST_SKIP, ST_ATTESTED } stark_selftest_result_t;
+typedef struct { const char *name; bool attested; stark_selftest_result_t (*run)(char *evidence, size_t cap); } stark_selftest_check_t;
+#define STARK_SYS_SELFTEST 9u   /* arg: STARK_SELFTEST_EVT_STEP, STARK_SELFTEST_EVT_DONE */
+stark_err_t stark_selftest_register(const stark_selftest_check_t *table, size_t n);
+stark_err_t stark_selftest_run(size_t index);         /* one check, on the caller (the app worker) */
+void        stark_selftest_report(size_t index, stark_selftest_result_t r, const char *evidence);
+size_t      stark_selftest_results(stark_selftest_row_t *out, size_t max);
+```
+
+**Checks** (`main/selftest_checks.c`, run in this order on the app worker, each with a
+deadline and a one-line evidence string of at most 48 characters):
+
+| # | Check | How | Kind | Result |
+| --- | --- | --- | --- | --- |
+| 1 | RAM | one block of min(32 kB, a quarter of the largest free block), never taking free heap below 128 kB; walking ones, 0x00, 0xFF, 0xAA, 0x55 and address-in-address; freed | automated | pass / fail |
+| 2 | Flash | `esp_flash_get_size()` equals the image header's size; two read-only SHA-256 passes over the running image agree; nothing is erased or written | automated | pass / fail |
+| 3 | Settings | `stark_settings` loads and a read-back of one value matches (no write) | automated | pass / fail |
+| 4 | Storage | no card: skip (with the state); a card: a 4 kB write, read-back and delete in a temp file | automated | pass / fail / skip |
+| 5 | Module bus | the module table agrees with address probes of 0x50 and 0x51 (a descriptor that says "present" must ACK) | automated | pass / fail |
+| 6 | Events and stacks | event drops 0 and every task's stack free ≥ 256 B in the `stark_diag` snapshot | automated | pass / fail |
+| 7 | Buttons | the app asks for each key in turn within 30 s; the input service's own key events are the observation | automated by events | pass / fail (names the missing keys) |
+| 8 | Display | colour bars and a grey ramp; OK is "looks right", BACK is "not right" | attested | attested / fail |
+| 9 | Buzzer | three tones; OK "heard", BACK "not heard" | attested | attested / fail |
+| 10 | Status LED | "does the LED blink once a second?" | attested | attested / fail |
+
+An attested result is never `pass`: the device cannot see or hear itself. The summary reads
+`7 pass  3 attested  0 fail  0 skip`. Fault injection for the host: every check has an
+injected-failure variant through the table, and the core's behaviour on a check that
+overruns its deadline (`ST_FAIL`, `timeout`) and on one that crashes the contained app
+(`app_fault`: the run ends, the table keeps what finished) is tested.
+
+**Report** (`selftest_export.c`): `logs/report_NNNN.txt`, at most 16 kB, text, streamed
+through a cursor formatter like STARK-0603's (no whole-file buffer): firmware version and
+build id, board name, uptime, the `stark_diag` snapshot and task table, the module table,
+the storage state, every self-test row with its result and evidence, and the tail of the log
+ring (at most 4 kB), with control characters other than newline replaced by `.` and nothing
+else collected (no settings values, no file contents). Without a card the report is shown and
+logged (`selftest: export skipped (no card)`). The report stays on the device (SECURITY_SCOPE
+§2); nothing is sent.
+
+**App.** System category, title "Self-Test" (after Diagnostics). Home: Run all, one row per
+check with its result, Export report. Run all executes the automated checks and then walks
+the operator through buttons, display, buzzer and LED; BACK abandons the walk (the rest read
+`not run`). The summary and each row are logged (`selftest: ram pass 32768 B`, `selftest:
+display attested`).
+
+**Launcher.** The System category gains a row at 3, so every later row shifts by one (end
+state in the header: Tests header 4, … Storage 22); the registry line becomes `n=18`; every
+pre-existing scenario that walks past the System rows gains a press or a changed index,
+each explained.
+
+**Host tests.** The core: ordering, deadlines, results, the summary arithmetic, a check
+returning an unknown value, registration limits, a check that overruns; each check against
+an injected failing and passing environment (a corrupted RAM word, a flash size mismatch, a
+digest mismatch, NVS unreadable, a card that fails at each step of the write, a module that
+declares and does not ACK, a drop count of 1, a stack of 128 B); the report: bounds (a log
+tail of exactly 4 kB, 16 kB total), control-character replacement, every row present, a
+sink that fails mid-way (no partial file kept), reading back what was written; the app
+goldens; ASan/UBSan clean.
+
+**Emulator.** Production `v07-selftest-prod.toml`: Run all → RAM, flash, settings, module
+bus, events and stacks `pass`; storage `skip` (no card is modelled); the attested checks
+walked with OK and the buttons check with injected keys → the summary `6 pass  3 attested
+0 fail  1 skip` as logged; heap back to baseline. The flash check passing in the emulator shows the check's
+logic, not the chip. Test image `storage/v07-selftest.toml`: storage `pass`; the report
+written as `report_0001.txt` and read back (bounded, every row present); `emu_medium_present
+= 0` mid-run → storage `fail`, no panic; `emu_mod_fault` → module bus `fail`; the other
+faults are host-only.
+
+**AC.**
+1. Every automated check passes in a healthy environment and fails when its fault is injected (host: all; test image: storage and the module bus).
+2. An operator-attested check is recorded `attested` and never `pass`; BACK on one records `fail`.
+3. The report is at most 16 kB, contains no control characters, lists every row, is written whole or not at all, and is never sent anywhere.
+4. The RAM check never takes free heap below 128 kB and frees its block; the flash check writes and erases nothing (host assertions on the injected flash).
+5. The root menu heap after leaving the app is within 1 kB of before; drops 0; pre-existing scenario changes are row indices and the registry line only; pure files at 100 % lines.
+
+**Security.** Local only (SECURITY_SCOPE §2); no credential or setting value is exported.
+**Budget.** `app_selftest` + core static ≤ 2.5 kB, boot heap cost ≤ 2.5 kB, flash ≤ 8 kB; the
+RAM-check block is transient. **Physical HIL (V1).** The whole self-test on the breadboard
+with each attested check really observed; flash and RAM on silicon; the report from a real
+card.
+
+---
+
+## STARK-0708 — V0.7 exit: soak, measurements, V1 lab-tools checklist, LVGL scoring
+
+**Goal.** The software halves are proven end to end and measured; the physical halves are
+written down as blank V1 checks; ADR-0005's V0.7 trigger is scored.
+
+**Files.** `test/emu/soak/v07-soak.toml` (test image, 60 s: pins and a hot-plug
+withdrawal, output, toggle, contention and pulse, PWM wired to a measured pad, an I²C scan,
+read, confirmed write and refusal, UART loop, auto-baud and a log, an SPI probe, the
+self-test with an export; drops 0, heap Δ ≤ 1 kB), `.github/workflows/ci.yml` (soak step),
+`docs/bringup/v1-labtools.md`, `docs/VALIDATION.md` §3.10, `docs/measurements.md`,
+`ROADMAP.md` (status), `README.md`, `TESTING.md` (the two V0.7 rows now say what is built:
+the I²C scan scenario finds 0x50 on the production image; the UART scenario depends on the
+STARK-0705 probe), `WOKWI.md` (the `sim/diagram.i2c.json` row is removed: it will not be
+created), `ARCHITECTURE.md` §6.9 (V0.7 rows), `DECISIONS.md` (ADR-0005 addendum with the
+scoring, ADR-0023 addendum with the readings the tasks recorded).
+
+**Soak.** Two passes of about 30 s in one scenario, like V0.4 to V0.6, each running the full
+sequence above through the production services and apps over the fake. The `expect` list is
+the whole sequence in order, twice; `forbid` pins every refusal and failure line that must
+not appear unprompted (`lab: contention` only after the injected short, `lab: i2c write
+refused` only for the EEPROM, `lab: spi` refusals only for the Sub-GHz module), and
+`forbid_after` pins that nothing drives a pin after its release. Gates are those of the
+earlier soaks: `drops=0` and first versus last root `stark_diag` heap within 1 kB.
+
+**Bring-up checklist** (`docs/bringup/v1-labtools.md`, blank, lab- and own-equipment-only):
+each check has how, a pass criterion, and an empty result and evidence column. Groups:
+pins (the offered set on the board; every reserved pin refused; 38 and 39; slot pins with
+and without a module; hot-plug withdrawal; weakest drive into a known load; pulls;
+hi-Z on exit; contention detection with a deliberate short through a resistor); PWM and
+pulse on a logic analyser (100 Hz, 1 kHz, 40 kHz, duty steps, pulse widths and jitter);
+measurement (1 Hz to 50 kHz against a generator, ISR latency, the wired loop, the
+50 kHz limit, a noisy edge); I²C (real devices at their addresses, 100 and 400 kHz
+waveforms and pull-ups, a pulled device mid-sweep, bus recovery, the refused EEPROM and
+PN532 writes, hints against real parts); SPI (a breakout slot at each clock with the panel
+and SD running, a real flash's ID, the refusal on a Sub-GHz module, display integrity);
+UART (loopback at 115200 and at the baud limits, a USB-serial adapter, each format, auto-baud
+on a real stream, 3.3 V level and series protection, a long SD log, a pulled card); self-test
+(each check on silicon, each attested check really observed, the report from a real card).
+About 32 checks, numbered like `docs/bringup/v1-subghz.md`.
+
+**LVGL scoring** (ADR-0005 addendum): each trigger scored against the built apps with the
+evidence (the UART monitor is scrollable text; whether any app needed animation, a chart or
+an on-screen keyboard); fewer than two true keeps the in-house UI and says what would change
+the answer; two or more raises a new ADR instead of deciding here.
+
+**Measurements** (`docs/measurements.md` "V0.7"): production boot heap (from 240 732 B;
+gate ≥ 200 kB, ceiling −16 kB), test image boot heap, binary (from 483 216 B, ceiling +52
+kB), per-component flash and static RAM, the stack peak of the app worker over the soak (the
+fill-pattern method of STARK-0606; the UART and measurement views are its deepest), transient
+buffers, host coverage of every pure file, test counts, the soak's wall time, the
+before/after of the earlier soaks (gates unchanged), and blank V1 rows.
+
+**AC.**
+1. Every exit criterion's software half has its evidence named in measurements.
+2. `docs/bringup/v1-labtools.md` lists every physical half as a blank check.
+3. Production boot heap ≥ 200 kB and within the 16 kB ceiling of V0.6's 240 732 B; heap, binary, static RAM, flash and stack peaks recorded with deltas.
+4. The soak passes in CI; the earlier soaks still pass unchanged.
+5. ADR-0005 carries the LVGL scoring; ROADMAP V0.7 says "complete (software / lab-protocol-verified)" with V1 exit 13 pointing at the checklist.
+
+**Security.** None new. **Physical HIL.** The whole of `docs/bringup/v1-labtools.md`.
 
 ---
 

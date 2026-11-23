@@ -79,8 +79,8 @@ deliberately.
 | `SUBGHZ_CS` | 40 | V0.5/V0.6 | Slot 0 `MOD_CS` (§6); CC1101-class module on SPI2 |
 | `SUBGHZ_GDO0` | 41 | V0.5/V0.6 | Slot 0 `MOD_IRQ0` |
 | `SUBGHZ_GDO2` | 42 | V0.5/V0.6 | Slot 0 `MOD_IRQ1` |
-| `LAB_UART_TX` | 38 | V0.7 | UART1, level-limited, series-protected |
-| `LAB_UART_RX` | 39 | V0.7 | |
+| `LAB_UART_TX` | 38 | V0.7 | UART1, level-limited, series-protected; a lab pin (§2.4) |
+| `LAB_UART_RX` | 39 | V0.7 | A lab pin (§2.4) |
 
 **DevKitC-1 caveat:** the on-board addressable RGB LED sits on **GPIO 48** (board rev
 v1.0) or **GPIO 38** (rev v1.1). Both are only used from V0.3/V0.7 onward, and in both
@@ -112,6 +112,40 @@ and a module driver holding a claim (`stark_module_spi.c`) issue SPI2 transactio
 driven high whenever it is not addressed. How long an SD command can stall a band
 flush, and whether a given breakout releases MISO when deselected, are measured on the
 breadboard at V1 (ROADMAP V1 exit 8).
+
+---
+
+### 2.4 Lab pins and pin safety (V0.7, ADR-0023)
+
+The lab tools (GPIO, frequency and duty, I²C, SPI, UART) may only touch pins that
+`stark_board` classifies for them. The classification is derived from the pin map above in
+`components/stark_board`, never listed elsewhere, and every other GPIO is `RESERVED`:
+display, SD, buttons, buzzer, status LED, backlight, I²C, IR, USB, console, strapping and
+flash/PSRAM pins are not offered in any mode, not even to read.
+
+| Class | Pins | Offered |
+| --- | --- | --- |
+| `LAB` | 38, 39 (`LAB_UART_TX/RX`) | always; the UART tool owns them while it runs |
+| `SLOT` | a slot's `MOD_CS` and `MOD_IRQ0/1`: 40, 41, 42 for slot 0; none for slot 1 | only while that slot reads `ABSENT` (no ID EEPROM answered); withdrawn at once, and driven to hi-Z, when a module appears or a driver leases the slot |
+| `RESERVED` | everything else, and any number outside 0 to 48 | never |
+
+So the board offers two pins, or five with an empty slot 0. This board spends all 25 usable
+GPIOs; a header of spare lab pins is a V1 hardware requirement.
+
+* **Drive:** outputs need an explicit confirmation per pin; the firmware uses the weakest
+  drive strength (`GPIO_DRIVE_CAP_0`, about 5 mA per ESP-IDF's driver documentation), reads the
+  pad back after driving and goes to hi-Z on a mismatch (contention). Every pin is hi-Z, no
+  pull, when its app stops. Internal pulls are weak (about 45 kΩ).
+* **Levels:** 3.3 V logic only. The pins are **not 5 V tolerant**; RS-232 levels and
+  5 V TTL need an external level shifter. The V1 PCB protects the lab UART with series
+  resistors and a level limiter; on the breadboard add 330 Ω in series.
+* **DevKitC-1 caveat:** GPIO 38 is the on-board RGB LED on board rev v1.1 (GPIO 48 on v1.0,
+  which is not a lab pin): driving it lights the LED and the confirmation says "own hardware
+  only".
+* **Module ID EEPROMs (0x50, 0x51) are never written** by the I²C tool (ADR-0021 §2), and
+  the SPI probe is refused on any slot whose module declares a function (ADR-0023 §6).
+* The measured current, drive and measurement accuracy are V1 checks
+  (`docs/bringup/v1-labtools.md`, ROADMAP V1 exit 13).
 
 ---
 
