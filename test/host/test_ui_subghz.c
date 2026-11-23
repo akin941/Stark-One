@@ -9,6 +9,8 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include "fake_subghz_decode_vectors.h"
+#include "fake_subghz_scenes.h"
 #include "stark_app.h"
 #include "stark_caps.h"
 #include "stark_display.h"
@@ -371,7 +373,7 @@ static void test_capture_setup_start_stop_save_and_again(void)
     TEST_ASSERT_FALSE(ui_port_subghz_receiving());
     TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: capture 16 sym 24800 us"));
     TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: hist 400x7 1200x8 12400x1"));
-    pin("cap_done", UINT64_C(0x1ee1d06223e7d8b4));
+    pin("cap_done", UINT64_C(0x73ef539ed850d29e));
 
     press(STARK_KEY_OK); /* Save */
     frame();
@@ -385,7 +387,7 @@ static void test_capture_setup_start_stop_save_and_again(void)
     TEST_ASSERT_EQUAL(STARK_OK, subghz_raw_parse(text, strlen(text), back, 2048, &r));
     TEST_ASSERT_EQUAL(16, r.n);
     TEST_ASSERT_EQUAL_INT32_ARRAY(k_frame, back, 16); /* exactly what was captured */
-    pin("cap_saved", UINT64_C(0xf1a7993bd315cde6));
+    pin("cap_saved", UINT64_C(0x901f5220037ea5d0));
 
     press(STARK_KEY_OK); /* Save again: the next number */
     frame();
@@ -412,7 +414,7 @@ static void test_a_capture_that_cannot_be_saved(void)
     TEST_ASSERT_EQUAL_UINT32(433920000u, ui_port_subghz_capture_hz());
     ui_port_subghz_capture_end(); /* nothing was heard */
     frame();
-    pin("cap_done_empty", UINT64_C(0x75cce9e458813dc4));
+    pin("cap_done_empty", UINT64_C(0x55722c0354b17dae));
     press(STARK_KEY_OK); /* Save: there is nothing to save */
     TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: save refused: nothing captured"));
     TEST_ASSERT_NULL(ui_port_storage_file("rf_0001.rf"));
@@ -430,7 +432,7 @@ static void test_a_capture_that_cannot_be_saved(void)
     frame();
     TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: save failed:"));
     TEST_ASSERT_NULL(ui_port_storage_file("rf_0001.rf"));
-    pin("cap_save_failed", UINT64_C(0x41c2e89c3eb8e8c4));
+    pin("cap_save_failed", UINT64_C(0xecd64a5f7ddba8ae));
     press(STARK_KEY_BACK);
 
     /* no card at all */
@@ -467,8 +469,9 @@ static void test_the_saved_captures(void)
     TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: opened rf_0003.rf (16 sym) hash 0x"));
     TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: hist 400x7 1200x8 12400x1"));
     TEST_ASSERT_FALSE(ui_port_subghz_receiving()); /* reading a file never touches the radio */
-    pin("file_view", UINT64_C(0x5ca351bf71d73b02));
-    press(STARK_KEY_OK); /* nothing to activate */
+    pin("file_view", UINT64_C(0x7c44f68816634ccc));
+    press(STARK_KEY_OK); /* its one selectable row, Decode (read-only: test_the_analysis_*) */
+    press(STARK_KEY_BACK);
     press(STARK_KEY_BACK);
     pin("saved_list_again", UINT64_C(0xacf37c967d0d6769)); /* back in the list, the same rows */
 
@@ -570,6 +573,178 @@ static void test_capture_views_survive_the_module_going_and_refusals(void)
     TEST_ASSERT_NULL(sgfile_symbols());
 }
 
+/* ---- the analysis (STARK-0604) ------------------------------------------------------------ */
+
+static const fake_dec_vector_t *dec_vector(const char *name)
+{
+    for (size_t i = 0; i < FAKE_DEC_VECTOR_COUNT; i++) {
+        if (strcmp(k_fake_dec_vectors[i].name, name) == 0) {
+            return &k_fake_dec_vectors[i];
+        }
+    }
+    TEST_FAIL_MESSAGE(name);
+    return NULL;
+}
+
+/* Home -> Capture -> Start, the symbols arrive, the capture ends, and Decode (after Save and
+ * Capture again) is opened. */
+static void capture_to_analysis(const subghz_sym_t *sym, size_t n)
+{
+    start_capture();
+    ui_port_subghz_capture_feed(sym, n);
+    ui_port_subghz_capture_end();
+    frame();
+    press(STARK_KEY_DOWN);
+    press(STARK_KEY_DOWN);
+    press(STARK_KEY_OK);
+}
+
+/* BACK to the finished capture, BACK again to the home list. */
+static void leave_analysis(void)
+{
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+}
+
+static void test_the_analysis_of_a_capture_is_read_only_and_goes_back(void)
+{
+    ui_port_subghz_reset();
+    ui_port_subghz_set_ready(true);
+    mount_card();
+    launch();
+    capture_to_analysis(k_frame, 16);
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: decode 1 bursts, 1 decoded, 0 unknown"));
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: pwm short=400 long=1200 bits=8 hex=a9 x1"));
+    TEST_ASSERT_FALSE(ui_port_subghz_receiving());
+    pin("decode_pwm", UINT64_C(0xf2f6ec8fa1984201));
+    press(STARK_KEY_OK); /* nothing on the view activates */
+    press(STARK_KEY_LEFT);
+    press(STARK_KEY_RIGHT);
+    pin("decode_pwm_still", UINT64_C(0xb9f5ddc8c552fa0d));
+    TEST_ASSERT_EQUAL(1, ui_port_subghz_capture_starts());
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_capture_finishes()); /* no Stop was asked */
+    press(STARK_KEY_BACK);
+    pin("cap_done_after_analysis", UINT64_C(0x73ef539ed850d29e)); /* the finished capture again */
+    press(STARK_KEY_OK);                                          /* Save still works after it */
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: saved rf_0001.rf (16 sym)"));
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+}
+
+static void test_the_three_kinds_and_what_does_not_fit(void)
+{
+    ui_port_subghz_reset();
+    ui_port_subghz_set_ready(true);
+    mount_card();
+    launch();
+
+    const fake_subghz_scene_t *ppm = &k_fake_scenes[FAKE_SUBGHZ_SCENE_PPM24 - 1];
+    capture_to_analysis(ppm->sym, ppm->n);
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: decode 4 bursts, 4 decoded, 0 unknown"));
+    TEST_ASSERT_TRUE(
+        ui_port_log_contains("subghzapp: ppm short=400 long=1200 bits=24 hex=5a3cc3 x4"));
+    TEST_ASSERT_EQUAL_STRING("5a3cc3", k_fake_dec_scenes[FAKE_SUBGHZ_SCENE_PPM24 - 1].burst[0].hex);
+    pin("decode_ppm", UINT64_C(0x0da25948a8422f25));
+    leave_analysis();
+
+    const fake_subghz_scene_t *man = &k_fake_scenes[FAKE_SUBGHZ_SCENE_MANCHESTER32 - 1];
+    capture_to_analysis(man->sym, man->n);
+    TEST_ASSERT_TRUE(
+        ui_port_log_contains("subghzapp: manchester t=500 long=1000 bits=32 hex=c3a5f00f x3"));
+    pin("decode_manchester", UINT64_C(0xbf6e72c9bf08ef19));
+    leave_analysis();
+
+    /* ten distinct frames: the view lists four, the log eight, two more are only counted */
+    const fake_dec_vector_t *many = dec_vector("ten_distinct_pwm");
+    capture_to_analysis(many->sym, many->n);
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: decode 10 bursts, 10 decoded, 0 unknown"));
+    TEST_ASSERT_TRUE(
+        ui_port_log_contains("subghzapp: pwm short=400 long=1200 bits=16 hex=0203 x1"));
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: decode: 2 more bursts not listed"));
+    pin("decode_many", UINT64_C(0xc405b4b96932060b));
+    for (int i = 0; i < 9; i++) {
+        press(STARK_KEY_DOWN); /* the rows below the screen are reachable: down to the last */
+    }
+    pin("decode_many_end", UINT64_C(0x308ffcab8b63ccaf));
+    leave_analysis();
+
+    /* nothing decodes: two bursts of mixed timing */
+    const fake_dec_vector_t *mixed = dec_vector("mixed_in_a_burst");
+    capture_to_analysis(mixed->sym, mixed->n);
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: decode 2 bursts, 0 decoded, 2 unknown"));
+    pin("decode_unknown", UINT64_C(0x450e2474e54512cd));
+    leave_analysis();
+
+    /* a capture of nothing */
+    capture_to_analysis(k_frame, 0);
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: decode 0 bursts, 0 decoded, 0 unknown"));
+    pin("decode_empty", UINT64_C(0x2abd0b06ebea922b));
+    leave_analysis();
+    press(STARK_KEY_BACK);
+}
+
+static void test_the_analysis_of_a_saved_file(void)
+{
+    ui_port_subghz_reset();
+    ui_port_subghz_set_ready(true);
+    mount_card();
+    add_capture_file("rf_0001.rf", SUBGHZ_MOD_OOK, 433920000u);
+    launch();
+    open_home_row(3); /* Saved */
+    press(STARK_KEY_OK);
+    frame(); /* the file view: Decode is its first row */
+    press(STARK_KEY_OK);
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: decode 1 bursts, 1 decoded, 0 unknown"));
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: pwm short=400 long=1200 bits=8 hex=a9 x1"));
+    TEST_ASSERT_FALSE(ui_port_subghz_receiving());
+    pin("decode_file", UINT64_C(0xf2f6ec8fa1984201));
+    press(STARK_KEY_BACK); /* the file again */
+    press(STARK_KEY_BACK); /* the list */
+    press(STARK_KEY_BACK); /* home */
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_capture_starts());
+    press(STARK_KEY_BACK);
+    TEST_ASSERT_NULL(sgfile_symbols());
+}
+
+static void test_the_analysis_rows_and_text(void)
+{
+    ui_port_subghz_reset();
+    ui_port_subghz_set_ready(true);
+    launch();
+    /* a file the decoders cannot take (a description without symbols) says so, never crashes */
+    subghz_raw_t bad = {433920000u, SUBGHZ_MOD_OOK, 4800u, NULL, 3};
+    sgview_set_file("x.rf", &bad);
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, sgview_decode(true));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, sgview_decode_status());
+    size_t n = 0;
+    const ui_menu_item_t *items = sgview_items(SGAPP_DECODE, &n);
+    TEST_ASSERT_EQUAL(1, n);
+    TEST_ASSERT_EQUAL_STRING("Cannot decode", items[0].label);
+    TEST_ASSERT_EQUAL(SGAPP_FILE, sgview_decode_back());
+    TEST_ASSERT_EQUAL(STARK_OK, sgview_decode(false));
+    TEST_ASSERT_EQUAL(SGAPP_CAPTURE, sgview_decode_back());
+    TEST_ASSERT_EQUAL(STARK_OK, sgview_decode_status());
+
+    subghz_dec_burst_t b;
+    memset(&b, 0, sizeof b);
+    b.kind = SUBGHZ_DEC_PWM;
+    b.bits = 8;
+    b.repeats = 2;
+    b.short_us = 300;
+    b.long_us = 900;
+    b.data[0] = 0xC3;
+    char text[112];
+    sgview_decode_text(&b, text, sizeof text);
+    TEST_ASSERT_EQUAL_STRING("pwm short=300 long=900 bits=8 hex=c3 x2", text);
+    b.kind = SUBGHZ_DEC_MANCHESTER;
+    sgview_decode_text(&b, text, sizeof text);
+    TEST_ASSERT_EQUAL_STRING("manchester t=300 long=900 bits=8 hex=c3 x2", text);
+    TEST_ASSERT_TRUE(strlen("manchester t=1000000 long=1000000 bits=128 hex=") + 32 + 7 <
+                     sizeof text);
+    press(STARK_KEY_BACK);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -585,5 +760,9 @@ int main(void)
     RUN_TEST(test_the_saved_captures);
     RUN_TEST(test_saved_without_captures_or_card);
     RUN_TEST(test_capture_views_survive_the_module_going_and_refusals);
+    RUN_TEST(test_the_analysis_of_a_capture_is_read_only_and_goes_back);
+    RUN_TEST(test_the_three_kinds_and_what_does_not_fit);
+    RUN_TEST(test_the_analysis_of_a_saved_file);
+    RUN_TEST(test_the_analysis_rows_and_text);
     return UNITY_END();
 }

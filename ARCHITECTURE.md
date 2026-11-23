@@ -1000,6 +1000,24 @@ modulation), progress and the histogram (up to eight bins, count and mean µs). 
 `subghzapp: capture <n> sym <µs> us`, `subghzapp: hist 400x92 1200x96 12400x4`,
 `subghzapp: saved rf_0001.rf (192 sym) hash 0x…`, `subghzapp: opened rf_0001.rf …`.
 
+**Generic decoders and the analysis view (STARK-0604).** `subghz_decode.c` (public header, pure,
+no allocation, no static state) reads a capture as bits by generic PWM, PPM or Manchester
+timing and nothing else (ADR-0022 §7): bursts are cut at a low longer than four shortest
+clusters, each burst is read by the three demodulators, and it decodes only when exactly one
+accepts it with 8–128 bits and every symbol within ±25 % of its cluster; anything else is
+"unknown". The result (`subghz_dec_result_t`, 232 bytes, the caller's) holds up to eight distinct
+decodes with their repeat counts and measured clusters, and counts of bursts that decoded, did
+not, or did not fit. It is display only: it names no protocol, has no device database, and there
+is no path from decoded bits back to symbols. The rules, limits and what it cannot read are in
+docs/subghz-decode.md; its vectors and the independent Python reference are
+`scripts/gen_subghz_vectors.py` (host tests only, `test/fake/fake_subghz_decode_vectors.h`).
+The app's Decode row (the finished capture, and the first row of a saved file's view) runs it
+once and opens a read-only list: bursts decoded/total, then for each of the first four distinct
+decodes its kind, bits, repeats, hex and `short/long µs`. Every row is selectable and none acts
+(a menu scrolls only to rows it can select); BACK returns to the capture or the file. Logs:
+`subghzapp: decode 4 bursts, 4 decoded, 0 unknown`, `subghzapp: ppm short=400 long=1200 bits=24
+hex=5a3cc3 x4` (Manchester `manchester t=500 long=1000 …`, one line per distinct decode).
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -1009,7 +1027,7 @@ modulation), progress and the histogram (up to eight bins, count and mean µs). 
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
-| `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); decoders and gated replay planned (ADR-0022, TASKS STARK-0604/0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
+| `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); gated replay planned (ADR-0022, TASKS STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 

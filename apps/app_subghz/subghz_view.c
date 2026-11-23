@@ -34,9 +34,13 @@ static size_t s_start_row = NO_ROW;
 static size_t s_stop_row = NO_ROW;
 static size_t s_save_row = NO_ROW;
 static size_t s_restart_row = NO_ROW;
+static size_t s_decode_row = NO_ROW;
 static sgapp_mode_t s_mode;
 static char s_file_name[16];
 static subghz_raw_t s_file;
+static subghz_dec_result_t s_dec; /* 232 B: what the analysis shows */
+static stark_err_t s_dec_err = STARK_OK;
+static bool s_dec_from_file;
 
 void sgview_reset(void)
 {
@@ -44,6 +48,9 @@ void sgview_reset(void)
     s_mod = SUBGHZ_MOD_OOK;
     s_seen_ready = false;
     memset(&s_file, 0, sizeof s_file);
+    memset(&s_dec, 0, sizeof s_dec);
+    s_dec_err = STARK_OK;
+    s_dec_from_file = false;
     s_file_name[0] = '\0';
 }
 
@@ -107,6 +114,42 @@ void sgview_set_file(const char *name, const subghz_raw_t *raw)
 {
     (void)snprintf(s_file_name, sizeof s_file_name, "%s", name);
     s_file = *raw;
+}
+
+/* ---- analysis -------------------------------------------------------------------------- */
+
+stark_err_t sgview_decode(bool from_file)
+{
+    const subghz_sym_t *sym = from_file ? s_file.sym : sgfile_symbols();
+    size_t n = from_file ? s_file.n : s_st.symbols;
+    s_dec_from_file = from_file;
+    s_dec_err = subghz_decode(sym, n, &s_dec);
+    return s_dec_err;
+}
+
+const subghz_dec_result_t *sgview_decoded(void)
+{
+    return &s_dec;
+}
+
+stark_err_t sgview_decode_status(void)
+{
+    return s_dec_err;
+}
+
+sgapp_mode_t sgview_decode_back(void)
+{
+    return s_dec_from_file ? SGAPP_FILE : SGAPP_CAPTURE;
+}
+
+void sgview_decode_text(const subghz_dec_burst_t *b, char *out, size_t size)
+{
+    char hex[SUBGHZ_DEC_HEX_SIZE];
+    subghz_dec_hex(b, hex, sizeof hex);
+    (void)snprintf(out, size, "%s %s=%lu long=%lu bits=%u hex=%s x%u",
+                   subghz_dec_kind_name((subghz_dec_kind_t)b->kind),
+                   b->kind == SUBGHZ_DEC_MANCHESTER ? "t" : "short", (unsigned long)b->short_us,
+                   (unsigned long)b->long_us, (unsigned)b->bits, hex, (unsigned)b->repeats);
 }
 
 /* ---- rows ---------------------------------------------------------------------------- */
@@ -244,6 +287,7 @@ static void capture_rows(void)
                 value_text(s_save_row, sgfile_saved_name());
             }
             s_restart_row = row("Capture again", !sgfile_busy());
+            s_decode_row = row("Decode", !sgfile_busy());
             break;
         }
     }
@@ -263,6 +307,7 @@ static void saved_rows(void)
 
 static void file_rows(void)
 {
+    s_decode_row = row("Decode", true); /* first: a file view has nothing else to select */
     value_text(row("File", false), s_file_name);
     value_mhz(row("Frequency", false), s_file.freq_hz);
     value_text(row("Modulation", false), s_file.mod == SUBGHZ_MOD_OOK ? "OOK" : "2-FSK");
@@ -272,10 +317,73 @@ static void file_rows(void)
     hist_rows(s_file.sym, s_file.n);
 }
 
+/* A row whose label is `text` copied (at most LABEL_SIZE - 1 characters). */
+static size_t row_text(bool enabled, const char *text)
+{
+    (void)snprintf(s_labels[s_count], LABEL_SIZE, "%s", text);
+    return row(s_labels[s_count], enabled);
+}
+
+#define DECODE_SHOWN     4u  /* distinct bursts the view lists; the log has them all */
+#define DECODE_HEX_CHARS 16u /* hex digits in a row */
+
+static const char *kind_label(uint8_t kind)
+{
+    return kind == SUBGHZ_DEC_PWM ? "PWM" : (kind == SUBGHZ_DEC_PPM ? "PPM" : "Manchester");
+}
+
+/* "Bursts decoded/total", "Unknown n", then each distinct burst: its kind, bits and repeats,
+ * its bits as hex in rows of 16 digits with the measured clusters beside the first, and
+ * what does not fit. NOTE: every row is selectable though none does anything: a menu scrolls
+ * only to rows it can select, and this list can be longer than the screen. */
+static void decode_rows(void)
+{
+    const subghz_dec_result_t *r = &s_dec;
+    if (s_dec_err != STARK_OK) {
+        value_text(row("Cannot decode", true), "...");
+        return;
+    }
+    size_t summary = row("Bursts", true);
+    (void)snprintf(s_values[summary], VALUE_SIZE, "%u/%u", (unsigned)r->decoded,
+                   (unsigned)(r->decoded + r->unknown));
+    s_has_value[summary] = true;
+    if (r->unknown > 0) {
+        value_unsigned(row("Unknown", true), "%lu", r->unknown);
+    }
+    for (unsigned i = 0; i < r->n && i < DECODE_SHOWN; i++) {
+        const subghz_dec_burst_t *b = &r->burst[i];
+        char text[LABEL_SIZE];
+        char hex[SUBGHZ_DEC_HEX_SIZE];
+        (void)snprintf(text, sizeof text, "%s %u bits", kind_label(b->kind), (unsigned)b->bits);
+        value_unsigned(row_text(true, text), "x%lu", b->repeats);
+        subghz_dec_hex(b, hex, sizeof hex);
+        for (size_t at = 0, len = strlen(hex); at < len; at += DECODE_HEX_CHARS) {
+            char chunk[DECODE_HEX_CHARS + 1u];
+            (void)snprintf(chunk, sizeof chunk, "%.*s", (int)DECODE_HEX_CHARS, hex + at);
+            size_t hr = row_text(true, chunk);
+            if (at == 0) {
+                if (b->kind == SUBGHZ_DEC_MANCHESTER) {
+                    (void)snprintf(s_values[hr], VALUE_SIZE, "T %lu us",
+                                   (unsigned long)b->short_us);
+                } else {
+                    (void)snprintf(s_values[hr], VALUE_SIZE, "%lu/%lu us",
+                                   (unsigned long)b->short_us, (unsigned long)b->long_us);
+                }
+                s_has_value[hr] = true;
+            }
+        }
+    }
+    unsigned hidden = (r->n > DECODE_SHOWN ? r->n - DECODE_SHOWN : 0u) + r->omitted;
+    if (hidden > 0) {
+        value_unsigned(row("Not shown", true), "+%lu", hidden);
+    }
+}
+
 const ui_menu_item_t *sgview_items(sgapp_mode_t mode, size_t *count)
 {
     s_count = 0;
     s_again_row = s_start_row = s_stop_row = s_save_row = s_restart_row = NO_ROW;
+    s_decode_row = NO_ROW;
     s_mode = mode;
     if (!s_ready) {
         bool lost = s_seen_ready;
@@ -292,6 +400,8 @@ const ui_menu_item_t *sgview_items(sgapp_mode_t mode, size_t *count)
         saved_rows();
     } else if (mode == SGAPP_FILE) {
         file_rows();
+    } else if (mode == SGAPP_DECODE) {
+        decode_rows();
     } else {
         value_mhz(row("RSSI meter", true), s_hz);
         (void)row("Band scan", true);
@@ -350,6 +460,11 @@ bool sgview_is_save_row(size_t index)
 bool sgview_is_restart_row(size_t index)
 {
     return index == s_restart_row;
+}
+
+bool sgview_is_decode_row(size_t index)
+{
+    return index == s_decode_row;
 }
 
 void sgview_hist_text(const subghz_hist_t *h, char *out, size_t size)

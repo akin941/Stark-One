@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "stark_event.h"
 #include "stark_subghz.h"
+#include "subghz_decode.h"
 #include "subghz_raw.h"
 #include "ui_menu.h"
 
@@ -19,7 +20,8 @@ typedef enum {
     SGAPP_SCAN,    /* one sweep of the band */
     SGAPP_CAPTURE, /* setup, capturing, or the finished capture (by the service's status) */
     SGAPP_SAVED,   /* the saved captures */
-    SGAPP_FILE     /* one saved capture, read back */
+    SGAPP_FILE,    /* one saved capture, read back */
+    SGAPP_DECODE   /* the generic decoders' reading of a capture or a saved file (read-only) */
 } sgapp_mode_t;
 
 #define SGAPP_DEFAULT_HZ 433920000u
@@ -60,6 +62,7 @@ bool sgview_is_start_row(size_t index);   /* SETUP: begin */
 bool sgview_is_stop_row(size_t index);    /* RUNNING: end it now */
 bool sgview_is_save_row(size_t index);    /* DONE: save it */
 bool sgview_is_restart_row(size_t index); /* DONE: capture again */
+bool sgview_is_decode_row(size_t index);  /* DONE and a saved file: open the analysis */
 /* The capture as a raw description, from the status and the chosen modulation. */
 bool sgview_capture_raw(subghz_raw_t *out, subghz_sym_t *symbols);
 
@@ -109,3 +112,13 @@ void sgview_hist_text(const subghz_hist_t *h, char *out, size_t size);
 
 /* ---- file view rows (subghz_view.c) ---- */
 void sgview_set_file(const char *name, const subghz_raw_t *raw);
+
+/* ---- analysis (subghz_view.c; STARK-0604): display only, nothing here can transmit ---- */
+/* Runs the decoders over the finished capture (from_file false) or the open file. */
+stark_err_t sgview_decode(bool from_file);
+const subghz_dec_result_t *sgview_decoded(void); /* the last sgview_decode() */
+stark_err_t sgview_decode_status(void);          /* its outcome: STARK_OK, or why it did not run */
+sgapp_mode_t sgview_decode_back(void);           /* the view the analysis was opened from */
+/* "ppm short=400 long=1200 bits=24 hex=5a3cc3 x4" (Manchester: "manchester t=500 long=1000 ...").
+ */
+void sgview_decode_text(const subghz_dec_burst_t *b, char *out, size_t size);

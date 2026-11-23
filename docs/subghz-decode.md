@@ -1,0 +1,81 @@
+# Generic OOK decoders (STARK-0604)
+
+`components/stark_subghz/subghz_decode.c` reads a raw capture (docs/subghz-format.md) as bits by
+one of three generic demodulations: pulse-width (PWM), pulse-distance (PPM) or Manchester. It is
+**display only** (ADR-0022 §7): no protocol names, no device database, no decoding of rolling or
+encrypted codes, and nothing turns bits back into symbols. The only transmit source stays a raw
+capture file (ADR-0022 §6; STARK-0605). The core is pure (no ESP-IDF, no allocation, bounded work)
+and is checked against an independent Python implementation of these same rules,
+`ref_decode()` in `scripts/gen_subghz_vectors.py`.
+
+## Input
+
+A capture's symbols: at most 2048, alternating in sign and starting high, each `|v|` 1..1 000 000
+µs. Anything else (a zero, a bigger value, `INT32_MIN`, two highs in a row, a low first, more than
+2048) is `STARK_ERR_INVALID_ARG` and nothing is decoded. An empty capture is valid and has no
+bursts.
+
+## Rules
+
+All arithmetic is integer. A mean is the nearest µs (halves up). "Within ±25 % of m" is
+`4·|d − m| <= m`.
+
+1. **Bursts.** The *shortest cluster* is the first group of the capture's duration histogram
+   (docs/subghz-format.md) with at least two members; its mean is `s0`. (A single glitch shorter
+   than everything else therefore does not set it.) A **low longer than 4 × s0** ends a burst (a
+   low of exactly 4 × s0 does not) and is not part of it. A burst keeps its symbols up to its last
+   high: the low after it is the gap or was cut by the end of the capture, and is not examined. A
+   burst is `H L H L … H`. A capture with no two alike has no bursts at all.
+2. **Two clusters.** The durations being classified are split into a short and a long cluster by
+   two-means (start at the midpoint of the extremes, at most five passes). There are two clusters
+   only if the long mean is at least 1.5 × the short mean (one spread of ±25 % splits at about
+   1.3). All equal, or fewer than two durations: one cluster, so no decode.
+3. **PPM** (pulse-distance): every high within ±25 % of their common mean; the lows (one per bit,
+   the lows *between* highs, so a closing pulse ends the last bit) in two clusters; a short low is
+   0, a long low 1. Bits = highs − 1. Reported `short`/`long` are the low clusters.
+4. **PWM** (pulse-width): the highs (one per bit) in two clusters, long high = 1; the period is
+   the mean of `high + low` over the bits that have a low; each low is within ±25 % of what the
+   period leaves of its high's cluster mean (`period − cluster`). The last bit's low is the gap, so
+   it is not checked. Reported `short`/`long` are the high clusters.
+5. **Manchester**: every symbol of the burst (highs and lows) in two clusters whose long mean is
+   between 1.5 and 2.5 times the short one (T and 2T), each symbol within ±25 % of its cluster. A
+   symbol is one half-bit (T) or two (2T); a cell is two halves that differ, high-low = 1,
+   low-high = 0. The burst starts on a cell, or on the second half of its first cell (that cell's
+   low half merged into the silence before the burst, so it is a 0); a half-bit left at the end is
+   a high whose low half is the gap, a 1. A burst with a 2T symbol reads in at most one of the
+   two alignments. Reported `short` is T, `long` the 2T cluster.
+6. **Acceptance.** A burst decodes only if exactly one of the three accepts it, with **8 to 128
+   bits** (fewer, or more, is unknown; a burst is never truncated to 128). Two accepting kinds
+   (for example pulse-distance with a 2T gap and a single 1, which also reads as Manchester) are
+   ambiguous and not guessed: unknown. Every other burst is unknown.
+7. **Result.** At most eight *distinct* decodes (kind, bits, data) in the order first seen, each
+   with how many bursts repeated it, the measured clusters of the first, and counts of bursts that
+   decoded, did not decode, or decoded but did not fit (`omitted`). The 232-byte
+   `subghz_dec_result_t` is the caller's.
+
+Bits are packed first bit first (most significant bit of byte 0); the hex text is two lower-case
+digits per started byte with the last byte padded with zeros (24 bits are six digits, 12 bits are
+four). The app logs `subghzapp: ppm short=400 long=1200 bits=24 hex=5a3cc3 x4` (Manchester:
+`manchester t=500 long=1000 …`) and the analysis view shows the same, read-only.
+
+## What it cannot do
+
+A signal whose long timing is 4 × its shortest or more is cut into pieces by rule 1. A stream of
+all equal bits has one cluster and does not decode. A PPM stream with a 2T gap and few 1s is
+ambiguous. A signal without a closing pulse (PPM) loses its last bit. Inverted conventions
+(short = 1, low-high = 1) read as their complement: the app shows what the timing says, not what
+a device means. These are deliberate: a generic demodulator that guesses is worse than one that
+says "unknown".
+
+## Vectors
+
+`test/fake/fake_subghz_decode_vectors.h` (generated by `scripts/gen_subghz_vectors.py`, host
+tests only): 72 captures built from known bits (24 per kind, 8 to 128 bits, ±10 % jitter), three
+exact ones, 28 tolerance edges (a symbol 15 permille either side of where the reference first
+refuses it), the 7/8 and 128/129-bit limits of every kind, Manchester starts and ends of both
+parities, 16 noise captures, single pulses, a square wave, all-equal bits, mixed timing in one
+burst, two kinds in one capture, ten distinct bursts (more than a result keeps), an ambiguous
+burst and 48 mutated captures whose expectation is the reference's. Generation fails unless the
+reference decoder reads every constructed vector as it was built; the firmware's result,
+including the measured clusters to the microsecond, is then compared with the reference's. They
+are spec-derived, never recordings of a real device.

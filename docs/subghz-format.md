@@ -77,7 +77,8 @@ The app and the log show the durations grouped by ±20 %: the shortest duration 
 `lo`, starts a bin holding every duration up to 1.5 × `lo` (a window of ±20 % about 1.25 × `lo`);
 at most 8 bins, ascending, each with its count and mean (rounded to the nearest µs), and what is
 longer than the eighth bin counted as "Longer". The grouping does not depend on the order of the
-symbols. The decoders of STARK-0604 do their own clustering.
+symbols. The decoders of STARK-0604 use the first group of at least two members as the shortest
+cluster and do their own two-cluster split (docs/subghz-decode.md).
 
 ## Test scenes
 
@@ -86,4 +87,5 @@ the test-only fake CC1101 plays on GDO2: pulse-width, pulse-distance and Manches
 round-number timings, and two limit scenes. They are **spec-derived, never recordings of a real
 device**, and each carries the expectation a capture of it must meet (symbols kept, fingerprint,
 histogram), computed by code written independently of the firmware. Captures of our own remote
-join at V1 (docs/bringup/v1-subghz.md).
+join at V1 (docs/bringup/v1-subghz.md). The decoder vectors (STARK-0604) live in
+`test/fake/fake_subghz_decode_vectors.h`, host tests only (docs/subghz-decode.md).
