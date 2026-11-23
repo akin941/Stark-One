@@ -4241,14 +4241,342 @@ again. Link-time registration is implemented only if measurement contradicts thi
 
 # V0.6 — Sub-GHz laboratory module
 
-| ID | Goal |
-| --- | --- |
-| STARK-0601 | CC1101 driver: SPI init, register profiles, GDO handling |
-| STARK-0602 | RSSI meter + band scan view |
-| STARK-0603 | OOK/2-FSK bitstream capture + raw-to-SD format |
-| STARK-0604 | Generic non-security OOK decoders (host-tested codecs) |
-| STARK-0605 | Gated replay of our own captures: confirmation, duty-cycle limiter, power cap, TX logging |
-| STARK-0606 | Hardware checklist + RF measurements |
+**Scope source:** [ROADMAP.md](ROADMAP.md) "V0.6" and [docs/SECURITY_SCOPE.md](docs/SECURITY_SCOPE.md).
+Nothing from V0.7+ is pulled forward: no GPIO, I²C, UART or SPI lab tools, no other band,
+no protocol database.
+
+**Completion levels (ADR-0022, 2026-11-23).** *V0.6 complete* means **software /
+RF-protocol verified**. It never means a radio transmitted or received. Every task lists
+its **physical HIL evidence (deferred to V1)**, collected in ROADMAP V1 exit 12 and
+`docs/bringup/v1-subghz.md`.
+
+**Hardware (ADR-0021 §5, ADR-0022).** A CC1101 module in slot 0: EEPROM 0x50 declaring
+`SUBGHZ | MOD_SPI | MOD_IRQ`, `MOD_CS` 40, GDO0 on `MOD_IRQ0` 41 (data into the chip in
+asynchronous serial mode), GDO2 on `MOD_IRQ1` 42 (data out of the chip). 26 MHz crystal.
+Shared SPI2 through `stark_module_spi` only.
+
+**Fixed limits (ADR-0022 §5–6, constants, never Kconfig):** tune 433.05–434.79 MHz
+only; `PATABLE` 0x60; at most 360 s of TX in any rolling 3600 s and an off-time of at
+least 9× the last transmission; one transmission ≤ 2048 symbols and ≤ 2 s; one
+transmission per confirmation; source is a raw capture file only.
+
+**Validation layers.**
+
+* **Host (Tier 1).** Pure cores: register profiles, the driver over an injected
+  transport, RSSI and scan, the raw format, the decoders, the TX policy. Spec-derived
+  vectors from `scripts/gen_subghz_vectors.py`, an independent Python implementation
+  (`test/fake/fake_subghz_scenes.h`).
+* **Host, fake CC1101.** The production service over `test/fake/fake_cc1101.c`.
+* **Host UI port (Tier 4B).** The Sub-GHz app, inspected goldens.
+* **Emulator, production image.** Slot 0 is "generic (bad magic)": no `SUBGHZ`, the row
+  dimmed, boot unaffected.
+* **Emulator, test image.** `stark_subghz_transport` substituted (fourth allowed
+  substitution). Pokes: `emu_mod_slot0 = 32` puts the CC1101 module's EEPROM in slot 0
+  (catalogue entry 32, appended by STARK-0601 so existing indices keep their meaning); `emu_sg_chip` (0 none, 1 CC1101 0x14, 2 wrong
+  chip), `emu_sg_carrier_khz` and `emu_sg_level` (the air: one carrier and its dBm),
+  `emu_sg_scene` (a scene index, played on GDO2 once per write), `emu_sg_own_rx` (feed
+  GDO0 back into GDO2), `emu_sg_fault` (a `fake_cc1101_fault_t`). Integration evidence
+  only.
+
+**Exit-criteria map** (each row's V1 half is ROADMAP V1 exit 12):
+
+| Exit criterion | V0.6 software evidence | Proven by |
+| --- | --- | --- |
+| 1. RSSI/scan shows our own transmitter, tracks distance | RSSI conversion vectors; scan finds the injected carrier's channel; the meter follows `emu_sg_level` | STARK-0602 |
+| 2. Raw capture reproduces documented timing | Spec-derived scenes captured, saved, parsed back, measured within ±1 symbol tick and decoded | STARK-0603, STARK-0604 |
+| 3. Replay triggers our own receiver | The replay leaves GDO0 symbol for symbol; `emu_sg_own_rx` captures it back within tolerance | STARK-0605 |
+| 4. TX impossible without confirmation, duty cap respected | Every refusal path on the host and the test image; `PATABLE` only ever 0x60 | STARK-0605 |
+
+**Capability bit** (adds to the V0.5 table): bit 5 `STARK_CAP_SUBGHZ`, "a CC1101-class
+radio answers on a claimed slot", confirmed by `stark_subghz`. Exclusive. Unsupported
+unless both `MOD_SPI` and `MOD_IRQ` are declared.
+
+**System event id** (ARCHITECTURE §6.3): 7 `STARK_SYS_SUBGHZ` (`arg` =
+`STARK_SUBGHZ_EVT_MODULE` / `_RSSI` / `_SCAN_DONE` / `_CAPTURE_DONE` / `_TX_DONE` /
+`_TX_FAILED` / `_TX_REFUSED`).
+
+**Launcher.** Sub-GHz is a Lab row after NFC: Lab header 10, IR 11, NFC 12, Sub-GHz 13,
+Device header 14, Modules 15, Settings 16, Storage 17. Every pre-existing walk that
+passes it gains one press; the row is dimmed on the production image, so production walks
+skip it without a press.
+
+---
+
+## STARK-0601 — CC1101 driver: transport seam, register profiles, detection, capability
+
+**Goal.** A CC1101 in slot 0 is claimed, identified by its own answer, configured for the
+433 MHz band, and confirmed as `STARK_CAP_SUBGHZ`; anything else stays absent with a
+reason. The test image has a fake CC1101.
+
+**Layers.** L2 `components/stark_subghz/{cc1101_regs.c,cc1101_drv.c}` (pure; the driver
+takes an injected `xfer`); L1 `components/stark_subghz_transport` (production:
+`stark_module_spi` + RMT on the claimed IRQ lines); L3 `components/stark_subghz/stark_subghz.c`
+(task, claim, events); root `main/module_bridge.c` (confirm). `stark_module`: bit 5 and
+its rule.
+
+**Files.** `components/stark_module/{include/stark_caps.h,module_desc.c,module_core.c}`,
+`scripts/gen_module_vectors.py` (+ the CC1101 module entry), `test/fake/fake_module_catalog.h`,
+`components/stark_subghz/*`, `components/stark_subghz_transport/*`,
+`main/{module_bridge.c,stark_main.c,CMakeLists.txt,Kconfig.projbuild}`,
+`test/fake/{fake_cc1101.c,fake_cc1101.h}`,
+`test/emu/storage_image/{CMakeLists.txt,components/stark_subghz_transport/*}`,
+`scripts/{check_emu_image.py,test_check_emu_image.py,check_layers.py,test_emu.py}`,
+`test/host/{test_cc1101_regs.c,test_cc1101_drv.c,test_fake_cc1101.c,test_subghz_service.c,CMakeLists.txt}`,
+`test/emu/v06-subghz-absent.toml`, `test/emu/storage/v06-detect.toml`, `docs/module-format.md`,
+ARCHITECTURE §6.3, §6.9g (new), §7, §8, §10, HARDWARE §6–7.
+
+**Transport API** (`stark_subghz_transport.h`, the only Sub-GHz code that touches SPI
+or RMT):
+
+```c
+typedef int32_t subghz_sym_t;   /* µs: > 0 high (carrier on), < 0 low; |v| 1..1 000 000 */
+stark_err_t stark_subghz_transport_open(const stark_module_lease_t *lease);
+void        stark_subghz_transport_close(void);
+stark_err_t stark_subghz_transport_xfer(const uint8_t *tx, uint8_t *rx, size_t len);
+stark_err_t stark_subghz_transport_rx_start(void);              /* GDO2 → symbols */
+size_t      stark_subghz_transport_rx_take(subghz_sym_t *out, size_t max, uint32_t timeout_ms);
+void        stark_subghz_transport_rx_stop(void);
+stark_err_t stark_subghz_transport_tx(const subghz_sym_t *s, size_t n, uint32_t timeout_ms); /* GDO0 */
+```
+
+**Register profiles** (`cc1101_regs.h`, pure): `cc1101_freq_regs(hz, out[3])` =
+round(hz · 2¹⁶ / 26 MHz), `STARK_ERR_INVALID_ARG` outside 433 050 000–434 790 000;
+`cc1101_rate_regs(baud, &mdmcfg4, &mdmcfg3)` for 600–50 000 Bd; presets `OOK_RX`,
+`OOK_TX`, `FSK2_RX` as complete register lists (asynchronous serial mode: `PKTCTRL0` =
+0x32, `IOCFG2` = 0x0D, `IOCFG0` = 0x2E for RX and 0x2D for TX, `FREND0` = 0x11 for OOK).
+The `PATABLE` value is the constant `CC1101_PA_CAP` (0x60); nothing takes a power argument.
+
+**Driver** (`cc1101_drv.h`): `cc1101_reset` (`SRES`, then `MARCSTATE` IDLE within 5 ms),
+`cc1101_detect` (`PARTNUM` 0x00 and `VERSION` 0x14 or 0x04, else `STARK_ERR_NOT_FOUND`,
+logging what answered), `cc1101_configure(preset, hz, baud)`, `cc1101_strobe`,
+`cc1101_rssi_raw`, `cc1101_marcstate`. Every call is bounded; a chip that never reaches
+the expected state gives `STARK_ERR_TIMEOUT`, never a hang.
+
+**Service.** On `STARK_SYS_MODULE`, when a slot is `KNOWN` and declares `SUBGHZ`, claim
+it (`SUBGHZ | MOD_SPI | MOD_IRQ`), open the transport, reset and detect, then
+`stark_module_confirm(STARK_CAP_SUBGHZ, true)` through the bridge and publish
+`STARK_SUBGHZ_EVT_MODULE`. A lost lease, an SPI error or the slot leaving: release,
+unconfirm, publish. Logs: `subghz: cc1101 version 0x%02x`, `subghz: no module`,
+`subghz: not a cc1101 (partnum 0x%02x version 0x%02x)`, `subghz: module lost`.
+Task `stark_subghz`, static stack `CONFIG_STARK_SUBGHZ_TASK_STACK` (4096), core 0, below
+the UI. No allocation after init.
+
+**Fake CC1101** (`test/fake/fake_cc1101.c`): the status byte on every transfer;
+single and burst register access (0x00–0x2E), `PATABLE` (8 bytes, records every write),
+status registers 0x30–0x3D with the burst bit; strobes `SRES`, `SRX`, `STX`, `SIDLE`,
+`SFRX`, `SFTX`, `SNOP` driving `MARCSTATE` (IDLE 0x01, RX 0x0D, TX 0x13); `PARTNUM`,
+`VERSION` settable; RSSI = the injected air at the tuned frequency (one carrier ±50 kHz
+at its level, else -110 dBm) encoded as the chip encodes it with offset 74; GDO2 plays
+injected scenes while in RX, GDO0 records while in TX; `own_rx` copies the recording into
+GDO2. Faults: `NO_ANSWER` (MISO all 0xFF), `STUCK` (`MARCSTATE` never changes),
+`BIT_FLIP`, `SPI_ERROR`, each with a count.
+
+Existing catalogue vectors that set bit 5 as an "unknown" bit change their expected
+result under the new rule; each such change is listed in the commit.
+
+**Host tests.** Frequency registers at both band edges and 433.92 MHz against values
+from the datasheet formula computed in Python; out-of-band refused; every preset's
+register list; detect with 0x14, 0x04, a wrong chip and no answer; reset timeout; every
+fake fault (bounded, recovers); the service over the fake: declared without chip →
+nothing confirmed; chip appears → confirmed; slot removed → unconfirmed and released.
+
+**Emulator.** Production `v06-subghz-absent.toml`: `subghz: no module`, effective caps
+without bit 5, heap ≥ 200 kB. Test image `storage/v06-detect.toml`: `emu_mod_slot0 = 32`
+and `emu_sg_chip = 1` → `subghz: cc1101 version 0x14`, caps include 0x20; `emu_sg_chip
+= 2` → `not a cc1101`, bit 5 withdrawn; `emu_mod_slot0 = 0` → `module lost`.
+`check_emu_image.py` allows exactly four substitutions, with a negative test.
+
+**AC.**
+1. A descriptor alone never sets bit 5; only `cc1101_detect` success does (host + test image).
+2. No frequency outside 433.05–434.79 MHz reaches the chip; `PATABLE` is only ever written with 0x60 (fake records).
+3. Every driver call is bounded under every fake fault; ASan/UBSan clean; pure cores at 100 % lines.
+4. Both emulator scenarios pass; production has no fake or simulator reference; four substitutions exactly.
+5. Pre-existing scenarios and goldens pass unchanged.
+
+**Security.** No TX path in this task. **Budget.** `stark_subghz` + transport static ≤
+5 kB including the stack; flash ≤ 8 kB. **Physical HIL (V1).** SPI at the chosen clock,
+the `CHIP_RDYn` wait on MISO after chip select, reset timing, GDO pins through RMT.
+
+---
+
+## STARK-0602 — RSSI meter, band scan, the Sub-GHz app
+
+**Goal.** The Sub-GHz app shows a live RSSI meter at a chosen frequency and a scan of
+the whole band, and finds the strongest channel.
+
+**Layers.** L2 `components/stark_subghz/subghz_rssi.c` (conversion, scan state machine);
+L3 service modes; `apps/app_subghz` (meter and scan views); registry.
+
+**Rules.** dBm = (raw ≥ 128 ? (raw − 256) / 2 : raw / 2) − 74. The scan steps 25 kHz
+from 433.075 to 434.775 MHz (69 channels), settles 1 ms after each retune, takes the
+maximum of 4 reads, and reports the peak channel and level; one sweep takes ≤ 500 ms.
+The meter samples every 50 ms. The radio is in RX only while a view is open; leaving the
+app returns it to IDLE (`MARCSTATE` asserted on the fake).
+
+**Files.** `components/stark_subghz/{subghz_rssi.c,include/subghz_rssi.h,stark_subghz.c}`,
+`apps/app_subghz/*`, `main/app_registry.c`, `test/host/{test_subghz_rssi.c,test_ui_subghz.c,port/ui_port_subghz.c}`,
+`test/emu/storage/v06-scan.toml`, updated walks in pre-existing scenarios.
+
+**Host tests.** Every raw byte 0–255 to dBm; the scan state machine with an injected
+reader (peak at each edge and the middle, ties, a flat floor, a read error mid-sweep);
+UI goldens for meter, scan, "No Sub-GHz module", module lost while open.
+
+**Emulator.** `storage/v06-scan.toml`: module in, open Sub-GHz, scan → `subghz: peak
+433.925 MHz -40 dBm` for `emu_sg_carrier_khz = 433920`, `emu_sg_level = -40`; the meter
+follows `emu_sg_level` -40 → -70 → -55 (logged); leaving → `subghz: idle`.
+
+**AC.**
+1. The scan peak is the injected carrier's channel on the host and the test image.
+2. The meter tracks the injected level within 1 dB.
+3. The radio is never left in RX after the app leaves.
+4. Pre-existing scenario changes are row indices only, each explained.
+
+**Security.** Receive only. **Budget.** `app_subghz` static ≤ 2 kB, flash ≤ 4 kB.
+**Physical HIL (V1).** Our own transmitter at its frequency; level against distance.
+
+---
+
+## STARK-0603 — Capture: GDO2 symbols, raw format, save, timing view
+
+**Goal.** A capture records the demodulated data line as timed symbols, saves it as
+`captures/rf_NNNN.rf`, reads it back exactly, and shows its timing.
+
+**Layers.** L2 `components/stark_subghz/subghz_raw.c` (format, parse, histogram);
+L3 capture mode; `apps/app_subghz` capture and saved views.
+
+**Format** (`rf` v1, text, like `.ir` and `.nfc`): `stark-subghz 1`, `freq <hz>`,
+`mod ook|2fsk`, `rate <baud>`, `symbols <n>`, then symbol lines of at most 16 signed
+decimal µs values. Signs alternate starting with a positive value; |v| 1..1 000 000;
+n 1..2048; the total ≤ 2 s; nothing after the last symbol. Comments `#` allowed. The
+parser is strict and rejects everything else with `STARK_ERR_INVALID_ARG`.
+
+**Capture.** RX in the chosen preset; symbols until the user stops, 2048 symbols or 2 s;
+leading silence dropped; adjacent same-sign symbols merged; the histogram groups
+durations into ≤ 8 bins by ±20 % and shows count and mean per bin.
+
+**Files.** `components/stark_subghz/{subghz_raw.c,include/subghz_raw.h,stark_subghz.c}`,
+`apps/app_subghz/*`, `scripts/gen_subghz_vectors.py`, `scripts/test_gen_subghz_vectors.py`,
+`test/fake/fake_subghz_scenes.h`, `test/host/test_subghz_raw.c`, `test/emu/storage/v06-capture.toml`,
+`.github/workflows/ci.yml` (lint: `gen_subghz_vectors.py --check`).
+
+**Host tests.** Round trip of every scene; every malformed case (sign order, zero, too
+long, too many, trailing data, bad header) rejected; 10 000 seeded mutations under
+ASan/UBSan; capture limits; the histogram on every scene.
+
+**Emulator.** `storage/v06-capture.toml`: `emu_sg_scene` plays a PWM scene; capture, save
+→ `subghzapp: saved rf_0001.rf (n sym)`; reopening it shows the same symbol count and
+histogram means within one 1 µs tick of the scene's.
+
+**AC.**
+1. Saved and parsed symbols equal the captured ones exactly.
+2. Scene timing is reproduced within ±1 µs per symbol through the production pipeline on the test image.
+3. Malformed files never crash, allocate past their buffer, or partly load.
+4. The parser is at 100 % lines; fuzzing clean.
+
+**Security.** Captures are our own data; no import of third-party sets.
+**Budget.** Capture buffer 2048 × 4 B static (the only large one); flash ≤ 4 kB.
+**Physical HIL (V1).** A capture of our own remote against its documented timing.
+
+---
+
+## STARK-0604 — Generic OOK decoders and the analysis view
+
+**Goal.** A capture can be read as bits by generic PWM, PPM or Manchester demodulation,
+with the timing that was measured.
+
+**Layer.** L2 `components/stark_subghz/subghz_decode.c` (pure); the analysis view in
+`apps/app_subghz`.
+
+**Rules.** Split bursts on a low longer than 4× the shortest cluster. Two-cluster
+classification of highs and lows. PWM: highs short/long, lows near the period remainder.
+PPM: highs equal, lows short/long. Manchester: durations T and 2T. A burst is accepted at
+≥ 8 bits with every symbol within ±25 % of its cluster; otherwise "unknown". Output per
+burst: kind, short and long (or T) in µs, bit count ≤ 128, bits as hex. No protocol
+names, no device database, no transmit path from bits (ADR-0022 §7).
+
+**Files.** `components/stark_subghz/{subghz_decode.c,include/subghz_decode.h}`,
+`scripts/gen_subghz_vectors.py` (decoder scenes), `test/host/test_subghz_decode.c`,
+`apps/app_subghz/*`, `test/emu/storage/v06-decode.toml`.
+
+**Host tests.** ≥ 20 spec-derived scenes per kind with ±10 % jitter decoding to their
+bits; tolerance edges just inside and outside 25 %; noise, single pulses, mixed kinds,
+empty input → "unknown"; 10 000 random captures never crash and never report > 128 bits.
+
+**Emulator.** `storage/v06-decode.toml`: a PPM scene captured and opened → `subghzapp:
+ppm short=… long=… bits=24 hex=…` matching the scene.
+
+**AC.**
+1. Every vector decodes to its bits and kind; no false decode of noise vectors.
+2. The decoder is at 100 % lines; fuzzing clean.
+3. The view shows the result read-only; nothing in it can transmit.
+
+**Security.** Analysis of open, generic modulations only. **Budget.** Flash ≤ 4 kB,
+no static buffers beyond 256 B. **Physical HIL (V1).** Decoding our own remote.
+
+---
+
+## STARK-0605 — Gated replay of our own captures
+
+**Goal.** A saved capture can be sent once, after an explicit confirmation, within the
+fixed limits, logged; every other attempt is refused with a reason.
+
+**Layers.** L2 `components/stark_subghz/subghz_txpolicy.c` (pure, injected clock); L3 TX
+mode; `apps/app_subghz` replay dialog.
+
+**Policy** (ADR-0022 §6, checked when the dialog opens and again when OK is pressed):
+in band; ≤ 2048 symbols; ≤ 2 s; rolling 3600 s budget of 360 s; off-time ≥ 9× the last
+transmission. Refusals: `subghz: tx refused: <band|length|duration|budget|offtime|file|no module|busy>`.
+The dialog text: `Send <file>? <freq> MHz, <ms> ms, <n> symbols. Own devices only.`
+Cancel sends nothing. OK sends exactly once. TX: configure `OOK_TX`, `PATABLE` 0x60,
+`STX`, symbols on GDO0, `SIDLE`, then back to the previous mode. Logged
+`subghz: tx rf_0001.rf 433920000 Hz 64 sym 52 ms` to the console and the log file.
+
+**Files.** `components/stark_subghz/{subghz_txpolicy.c,include/subghz_txpolicy.h,stark_subghz.c}`,
+`apps/app_subghz/*`, `test/host/{test_subghz_txpolicy.c,test_subghz_tx.c,test_ui_subghz.c}`,
+`test/emu/storage/v06-replay.toml`.
+
+**Host tests.** Every refusal reason, budget arithmetic across the window edge, the
+off-time rule, clock wrap, a failure mid-transmission (counts against the budget, logged,
+radio back to IDLE), the fake's `PATABLE` record holds only 0x60, no transmission
+without OK, one transmission per OK.
+
+**Emulator.** `storage/v06-replay.toml`: capture a scene, save, open, Replay → dialog;
+BACK → `tx cancelled`, nothing recorded on GDO0; OK → `subghz: tx …`; with
+`emu_sg_own_rx = 1` the transmission is captured back and matches within ±1 µs per
+symbol; an immediate second OK → `tx refused: offtime`.
+
+**AC.**
+1. No GDO0 symbol without a confirmation (host and test image).
+2. Every policy limit is enforced at its exact boundary; none is configurable.
+3. The replay leaves GDO0 equal to the file and the fake's own receiver gets it back.
+4. Every transmission and refusal is logged.
+
+**Security.** ADR-0022 §6 in full; SECURITY_SCOPE §3 non-features stay absent.
+**Budget.** Flash ≤ 4 kB. **Physical HIL (V1).** Our own receiver triggered; power and
+on-air time on a spectrum analyser.
+
+---
+
+## STARK-0606 — V0.6 exit: soak, measurements, V1 Sub-GHz checklist
+
+**Goal.** The software halves are proven end to end and measured; the physical halves
+are written down as blank V1 checks.
+
+**Files.** `test/emu/soak/v06-soak.toml` (60 s, test image: detect, meter, scan,
+capture, save, decode, a refused and an accepted replay, module lost and back; drops 0,
+heap Δ ≤ 1 kB), `.github/workflows/ci.yml` (soak step), `docs/bringup/v1-subghz.md`,
+`docs/VALIDATION.md` §3.9, `docs/measurements.md`, `ROADMAP.md` (status), `README.md`,
+`TESTING.md`.
+
+**AC.**
+1. Every exit criterion's software half has its evidence named in measurements.
+2. `docs/bringup/v1-subghz.md` lists every physical half as a blank check.
+3. Production boot heap ≥ 200 kB; heap, binary, static RAM, flash and stack peaks recorded with deltas from V0.5 (250 344 B, 456 656 B).
+4. The soak passes in CI.
+
+**Security.** None new. **Physical HIL.** The whole of `docs/bringup/v1-subghz.md`.
+
+---
 
 # V0.7 — diagnostics & lab tools
 

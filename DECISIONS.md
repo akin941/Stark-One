@@ -853,3 +853,102 @@ separates software, fake-device, host, emulator and deferred physical evidence.
 
 **Revisit trigger:** an esp-emu release with an I²C device model, the V1 board's pin
 allocation, or a module that must expose more than one slot.
+
+## ADR-0022 — V0.6 Sub-GHz: RF-protocol-verified against a test-only fake CC1101, physical RF at V1
+
+**Status:** accepted (2026-11-23). The owner delegated the V0.6 product decisions to the
+implementer and asked for autonomous progress; every decision below is recorded here
+rather than taken silently. Applies ADR-0017 to V0.6 as ADR-0019, ADR-0020 and ADR-0021
+applied it to V0.3–V0.5.
+
+**Context.** ROADMAP V0.6 adds a CC1101-class 433 MHz module: RSSI and band scan, raw
+OOK/2-FSK capture to SD, generic non-security decoders, and gated replay of our own
+captures. Its four exit criteria name our own transmitter, our own device's timing and
+our own receiver; three of them are physical. No CC1101, antenna or test transmitter
+exists before the V1 prototype, no paid tools are allowed (ADR-0017), and esp-emu 0.44.0
+has no CC1101 or radio model. Its RMT loopback joins only the first TX channel to the
+first RX channel, and IR already owns that pair (docs/VALIDATION.md §2). The module
+interface from V0.5 is in place: slot 0 wires `MOD_CS` 40, `MOD_IRQ0` 41 (`SUBGHZ_GDO0`)
+and `MOD_IRQ1` 42 (`SUBGHZ_GDO2`), claimed through `stark_module_claim()`.
+
+**Decision.**
+1. **Two levels of completion.** *V0.6 complete* means **software / RF-protocol
+   verified**: register profiles, chip detection and capability confirmation, RSSI and
+   scan logic, the capture pipeline and raw format, the decoders, the transmit policy and
+   its refusals, the app, storage, logging, and error and recovery behaviour. It never
+   means a radio transmitted or received. Exits 1–3 split into a software half (V0.6) and
+   a physical half that **becomes ROADMAP V1 exit 12**. Exit 4 (no transmission without a
+   confirmation, duty cycle respected) is enforced by firmware logic and is verified in
+   full in software; its RF measurement (power and on-air time on a spectrum analyser) is
+   in V1 exit 12.
+2. **Capability bit 5, `STARK_CAP_SUBGHZ`.** A slot module declares `SUBGHZ | MOD_SPI |
+   MOD_IRQ`. Only `stark_subghz` confirms it, after claiming the slot and reading the
+   chip's `PARTNUM` = 0x00 and `VERSION` = 0x14 or 0x04 over SPI. A descriptor declaring
+   it grants nothing (ADR-0021 §2). `SUBGHZ` without both wiring bits is an unsupported
+   combination, and `SUBGHZ` is exclusive like `NFC`. Format v1's layout does not change:
+   bit 5 was "unknown, listed and ignored" in V0.5, so older descriptors stay valid.
+3. **The transport seam is `stark_subghz_transport` (L1).** It carries SPI bytes to the
+   chip and the GDO data line as timed symbols: `xfer`, `rx_start`/`rx_take`/`rx_stop`
+   for GDO2, `tx` for GDO0. Production uses `stark_module_spi` on the claimed slot and RMT
+   on the claimed IRQ lines (asynchronous serial mode). The test image substitutes it with
+   a test-only fake CC1101, the fourth allowed substitution in `check_emu_image.py`.
+   Production code has no fake mode and no simulator branch (ADR-0010).
+4. **The fake CC1101 is test-only.** `test/fake/fake_cc1101.c` models the chip as seen over
+   SPI: the status byte, configuration registers, burst access, `PATABLE`, strobes and the
+   IDLE/RX/TX states with `MARCSTATE`, status registers, and an RSSI derived from an
+   injected "air" (signal level per frequency). Its data line replays injected symbol
+   scenes into GDO2 and records what GDO0 sends. An "own receiver" switch feeds the
+   recorded transmission back into GDO2, so a replay can be captured and compared.
+   Scenes come from `scripts/gen_subghz_vectors.py`, an independent implementation, and
+   are documented as spec-derived, never as recordings of a real device.
+5. **Band lock.** V0.6 tunes only 433.05–434.79 MHz, for receive, scan and transmit. The
+   register profile refuses any other frequency. Other bands need antenna and matching
+   work and wait for V1 hardware (HARDWARE §7).
+6. **Transmit policy** (SECURITY_SCOPE §4, a pure host-tested core; none of it is
+   user-adjustable or a Kconfig option):
+   * **Power:** `PATABLE` is the constant 0x60, about 0 dBm conducted at 433 MHz, under
+     the 10 mW ERP limit with margin for antenna gain. No code path writes another value.
+   * **Duty cycle:** at most 360 s of transmission in any rolling 3600 s (10 %), and after
+     each transmission an off-time of at least nine times its length.
+   * **Length:** one transmission is at most 2048 symbols and at most 2 s.
+   * **Source:** only a raw capture file in the device's own format. There is no
+     transmission synthesised from decoded bits, no editor, and no import of
+     third-party code sets.
+   * **One per confirmation:** a modal dialog names the frequency, the duration and the
+     file, and says "Own devices only". OK sends it once. There is no repeat, loop,
+     sweep or schedule.
+   * **Logged:** `subghz: tx <file> <freq> Hz <n> sym <ms> ms`, as well as every refusal
+     with its reason, to the console and to the log file.
+   The duty budget lives in RAM and starts empty at boot. That is acceptable because no
+   transmission happens without a key press.
+7. **Decoders are generic.** PWM (pulse-width), PPM (pulse-distance) and Manchester
+   demodulators turn symbols into bits with their measured timing. There are no protocol
+   names, no device database and no decoding of rolling or encrypted codes. Their output
+   is display-only and cannot be transmitted.
+8. **The emulator is integration evidence only.** The production image has slot 0
+   "generic (bad magic)" (ADR-0021), so Sub-GHz stays dimmed. The test image shows
+   detection, RSSI, scan, capture, save, decode, the transmit dialog and policy, and a
+   replay captured by the fake's own receiver. None of it shows that a signal left an
+   antenna. The production RMT and GDO path is exercised only on hardware; IR's RMT
+   evidence (ADR-0019) covers the driver calls in general, not these pins.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| Buying a CC1101 module and a test transmitter now | Hardware is V1 (ADR-0017, owner policy) |
+| A fake CC1101 inside production code with a test flag | ADR-0010: one code path |
+| Using the esp-emu RMT loopback for the GDO lines | Only TX 0 → RX 0 loops, and IR owns that pair; a second pair delivers nothing |
+| Full CC1101 band coverage (315/868/915 MHz) now | Needs antenna and matching; SRD 433 is the documented target (HARDWARE §7) |
+| The legal maximum (+10 dBm) as the power cap | Conducted power plus antenna gain could exceed 10 mW ERP; a lab tool does not need range |
+| Transmitting decoded or edited codes | Turns analysis into code synthesis (SECURITY_SCOPE §3, brute force) |
+| A persistent duty budget in NVS | Flash wear for no gain: transmission is never unattended |
+
+**Consequences.** A Sub-GHz app joins the Lab category with `caps_required =
+STARK_CAP_SUBGHZ`. `stark_subghz` publishes `STARK_SYS_SUBGHZ` (id 7). Captures are
+`captures/rf_NNNN.rf`. The V0.6 report separates software, fake-device, host, emulator
+and deferred physical evidence. `docs/bringup/v1-subghz.md` (STARK-0606) is written now
+and filled in at V1.
+
+**Revisit trigger:** a radio model in esp-emu, the V1 board's antenna and matching, a
+regulatory change for 433 MHz SRD, or a need for another band.
