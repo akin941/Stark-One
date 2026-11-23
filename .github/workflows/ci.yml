@@ -12,8 +12,9 @@
 #               internal-flash FAT; check_emu_image.py proves that against the
 #               production build, then test/emu/storage/*.toml run. Mandatory.
 #   esp-emulator-soak — the 60 s soaks (test/emu/soak/): V0.1 on the production
-#               image, V0.2, V0.3 and V0.4 (STARK-0207, 0307, 0405; V0.3/V0.4
-#               with the RMT loopback, V0.4 with the fake PN532 transport) on the
+#               image, V0.2 to V0.6 (STARK-0207, 0307, 0405, 0505, 0606; V0.3/V0.4
+#               with the RMT loopback, V0.4 with the fake PN532 transport, V0.5
+#               with the fake 24C02, V0.6 with the fake CC1101) on the
 #               storage test image; pull requests
 #               and manual dispatch; mandatory on pull requests.
 #
@@ -262,6 +263,9 @@ jobs:
 
       - name: scripts/test_emu.sh --image storage (60 s V0.5 module soak, STARK-0505)
         run: scripts/test_emu.sh --image storage test/emu/soak/v05-soak.toml
+
+      - name: scripts/test_emu.sh --image storage (60 s V0.6 Sub-GHz soak, STARK-0606)
+        run: scripts/test_emu.sh --image storage test/emu/soak/v06-soak.toml
 
       - name: Upload soak logs
         if: always()

@@ -317,6 +317,27 @@ static void test_own_receiver_hears_the_recording(void)
     TEST_ASSERT_EQUAL(300, out[3]);
 }
 
+static void test_releasing_the_recording_leaves_no_dangling_scene(void)
+{
+    static const subghz_sym_t tx[] = {300, -300, 600};
+    subghz_sym_t out[8];
+    const subghz_sym_t *rec;
+    fake_cc1101_own_rx(true);
+    strobe(0x35);
+    TEST_ASSERT_TRUE(fake_cc1101_gdo0_put(tx, 3));
+    strobe(0x36);
+    fake_cc1101_gdo0_release(); /* the own receiver was playing it: it plays nothing now */
+    TEST_ASSERT_EQUAL(0, fake_cc1101_gdo0_recorded(&rec));
+    TEST_ASSERT_NULL(rec);
+    strobe(0x34);
+    TEST_ASSERT_EQUAL(0, fake_cc1101_gdo2_take(out, 8));
+    strobe(0x36);
+    fake_cc1101_gdo0_release(); /* twice is harmless */
+    strobe(0x35);               /* the next transmission records again */
+    TEST_ASSERT_TRUE(fake_cc1101_gdo0_put(tx, 3));
+    TEST_ASSERT_EQUAL(3, fake_cc1101_gdo0_recorded(&rec));
+}
+
 static void test_stats_and_counters(void)
 {
     uint32_t before = fake_cc1101_stats()->transfers;
@@ -341,6 +362,7 @@ int main(void)
     RUN_TEST(test_frequency_observation);
     RUN_TEST(test_scenes_on_gdo2_and_recording_on_gdo0);
     RUN_TEST(test_own_receiver_hears_the_recording);
+    RUN_TEST(test_releasing_the_recording_leaves_no_dangling_scene);
     RUN_TEST(test_stats_and_counters);
     return UNITY_END();
 }

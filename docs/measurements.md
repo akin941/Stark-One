@@ -249,10 +249,48 @@ claimed** here.
 | 2026-11-23 | STARK-0605 | Host suite | 70 test programs; `test_subghz_txpolicy` 20 tests, `test_subghz_tx` 30 (a failure injected at each of the 92 transfers of a send and a dead bus from each of them, two hours of a sender asking every 250 ms three times over, one across the 32-bit clock wrap), `test_cc1101_drv` 23, `test_ui_subghz` 22, all under ASan and UBSan | `test_host.sh` |
 | 2026-11-23 | STARK-0605 | Emulator `storage/v06-replay` (31 s of virtual time): refused inside the boot lock (`subghz: tx refused: offtime`), cancel sends nothing, one OK sends `subghz: tx rf_0001.rf 433920000 Hz 192 sym 202 ms`, an immediate second ask is refused, and the fake's own receiver captures back 192 symbols with the file's fingerprint `0x78a82ac5` | passes; wall time 207 s | `test_emu.sh --image storage` |
 | 2026-11-23 | STARK-0605 | Root heap, first vs last `stark_diag` line over each 60 s soak — **gate ≤ 1 kB**; event drops — **gate 0** | v01 242 932 → 242 968 B (Δ 36 B); v02 230 220 → 230 252 B (Δ 32 B); v03, v04, v05 230 220 → 230 264 B (Δ 44 B); drops 0 | `soak/v01…v05-soak` |
+| 2026-11-23 | STARK-0606 | Production boot heap, first `diag: heap=` (V0.5 250 344 B, STARK-0605 240 732 B) — **gate ≥ 200 kB** | 240 732 B (−9 612 B from V0.5; no firmware source changed in this task) | `v0-boot`, `v06-subghz-absent` |
+| 2026-11-23 | STARK-0606 | Test image boot heap, first `diag: heap=` (STARK-0605 237 812 B) | 237 812 B (unchanged: the test-only change is code in the fake, no static state); minimum 209 092 B over the soak (the app's 8 kB capture buffer open during a replay) | `soak/v06-soak` |
+| 2026-11-23 | STARK-0606 | Firmware binary (V0.5 456 656 B, STARK-0605 483 216 B) | 483 216 B (+26 560 B from V0.5; byte-identical size to STARK-0605: no firmware source changed); test image 500 288 B | `build/stark-one.bin`, `build/emu-storage/stark-one-emu-storage.bin` |
+| 2026-11-23 | STARK-0606 | V0.6 flash, code + rodata (V0.5 had none of these) | `stark_subghz` 12 356 B, `app_subghz` 7 798 B, `stark_subghz_transport` 1 393 B: 21 547 B in all; the image is +26 560 B from V0.5, the rest being the module catalogue and capability changes, the launcher row and the registry | `idf.py size-components` |
+| 2026-11-23 | STARK-0606 | V0.6 static RAM (.bss + .data) | `stark_subghz` 6 665 B (of which the task stack 4 096 B, the duty ledger 1 536 B, the 128-symbol scratch 512 B), `app_subghz` 1 947 B, `stark_subghz_transport` 397 B: 9 009 B in all. The 8 kB capture buffer is heap, held only while the app captures or has a file open | `idf.py size-components` |
+| 2026-11-23 | STARK-0606 | **Task stack peak** over the 60 s V0.6 soak (two passes of every view, two saves, two decodes, two transmissions, two module losses; test image), untouched bytes counted from the stack's low end in a fill-pattern dump at the end: `stark_subghz` task | **1 600 of 4 096 B** (2 496 B never touched; 39 %). 0601's "4 096 B" is the stack's size, never a measurement | GDB dump, `soak/v06-soak` |
+| 2026-11-23 | STARK-0606 | Other task stacks in the same run, same method: app worker / module task / NFC task / IR task | 2 484 of 4 096 B (1 612 untouched; saves and file reads run here) / 1 472 of 2 560 B (1 088 untouched; V0.5 1 468 B) / 680 of 4 096 B / 728 of 3 072 B (the last two idle: the NFC and IR apps are never opened in this soak) | GDB dump, `soak/v06-soak` |
+| 2026-11-23 | STARK-0606 | Root heap, first vs last `stark_diag` line over the new 60 s V0.6 soak — **gate ≤ 1 kB**; event drops — **gate 0** | 230 220 → 230 264 B (Δ 44 B); drops 0 on all seven periodic lines (the first at 1 s, then every 10 s); heap 222 068 B at the lines taken inside the app (the capture buffer), back to 230 264 B at the launcher both times | `soak/v06-soak` |
+| 2026-11-23 | STARK-0606 | What the V0.6 soak did (log lines) | 2 module losses and re-finds, 2 meter sessions (`-40`, `-70`, `-55` dBm), 2 band scans (`peak 433.925 MHz -55 dBm`), 2 captures (192 symbols, `0x78a82ac5`), 2 saves (`rf_0001.rf`, `rf_0002.rf`), 2 decodes (`pwm short=400 long=1200 bits=24 hex=a5c3e1 x4`), 2 transmissions (`subghz: tx rf_000N.rf 433920000 Hz 192 sym 202 ms`, one per confirmation), 2 refusals (`subghz: tx refused: offtime`) | `soak/v06-soak` |
+| 2026-11-23 | STARK-0606 | Emulator wall time of `soak/v06-soak` (62.5 s of virtual time) | 525 s | `test_emu.sh --image storage` |
+| 2026-11-23 | STARK-0606 | Root heap, first vs last `stark_diag` line over each earlier 60 s soak — **gate ≤ 1 kB**; event drops — **gate 0** | v01 242 932 → 242 968 B (Δ 36 B); v02 230 220 → 230 252 B (Δ 32 B); v03, v04, v05 230 220 → 230 264 B (Δ 44 B); drops 0 | `soak/v01…v05-soak` |
+| 2026-11-23 | STARK-0606 | Host line coverage: every Sub-GHz pure core and the module core | 100 % lines each: `cc1101_regs.c`, `cc1101_drv.c`, `subghz_rssi.c`, `subghz_raw.c`, `subghz_decode.c`, `subghz_txpolicy.c`, `subghz_svc.c`, `module_core.c`, `module_desc.c` | `test_host.sh --coverage` |
+| 2026-11-23 | STARK-0606 | Host suite | 70 test programs, all pass under ASan and UBSan (`test_fake_cc1101` gained one test, the recording's release); no other test changed | `test_host.sh` |
+
+### V0.6 exit criteria — evidence (ROADMAP.md "V0.6", ADR-0022)
+
+V0.6 completion is **software / RF-protocol verified**. Every physical half is open until
+the V1 prototype (ROADMAP V1 exit 12, `docs/bringup/v1-subghz.md`) and is **not claimed**
+here: no radio has transmitted or received, and nothing below measures a signal.
+
+| # | Criterion | Software evidence (V0.6) | Physical evidence |
+| --- | --- | --- | --- |
+| 1 | RSSI/scan view shows our own transmitter and tracks distance sensibly | `test_subghz_rssi` (conversion vectors), `test_subghz_measure` (the sweep finds the injected carrier's channel in ≤ 140 ms of waiting); `storage/v06-scan` (the meter follows the fake's air through −40, −70, −55 dBm; the scan reports `peak 433.925 MHz -40 dBm`; the radio is idle after both); both passes of `soak/v06-soak` | Open: checks 10–13 |
+| 2 | Raw capture of an own device's transmission reproduces its documented timing | `test_subghz_capture` (every symbol of the spec-derived scenes equal to the generator's to the µs, through fake chip → service → file → parser), `test_subghz_raw` (strict format, 10 000 mutations), `test_subghz_decode` (every vector against an independent reference); `storage/v06-capture` (fingerprint `0x78a82ac5` live, saved and re-read; histogram `400 µs ×92, 1200 µs ×96, 12400 µs ×4`), `storage/v06-decode`; the soak's captures and decodes | Open: checks 14–17 |
+| 3 | Replay of our own capture triggers our own receiver | `test_subghz_tx` (the file is on GDO0 symbol for symbol; the own receiver hears it); `storage/v06-replay` (192 symbols captured back with the file's own fingerprint `0x78a82ac5`) | Open: checks 20, 24 |
+| 4 | TX is impossible without an explicit confirmation and respects the duty-cycle cap | `test_subghz_txpolicy` (20 tests, every limit at its exact boundary), `test_subghz_tx` (30 tests: every refusal with nothing on GDO0, a failure at every transfer of a send, two hours of a greedy sender held to 360 s per hour and 9× off-time, `PATABLE` only ever 0x00 or 0x60); `storage/v06-replay` (boot lock, cancel sends nothing, one OK one transmission, a second ask refused); the soak (2 sends, 2 refusals, none before a confirmation) | Open: checks 18–23, 25 |
+
+**Not claimed:** the CC1101 answering on real SPI, the `CHIP_RDYn` wait, the analogue
+register values, the production RMT receive and transmit paths on GDO2 and GDO0, RSSI against
+a real level, any real remote's timing (the 20 ms frame-end low in `rx_take` is a guess until
+check 14), conducted or radiated power, on-air time, spurious emissions, antenna and matching.
+
+**How the stack peak is read.** FreeRTOS fills a static task stack with 0xa5 when the task is
+created. After the soak ended at the launcher, a GDB script (esp-emu halted at its sampling
+breakpoint) counted the bytes still holding 0xa5 from the low end of each stack array, which is
+the part the task never reached (`while $p[$n] == 0xa5`, `$p = 'stark_subghz.c'::s_stack`, likewise
+`app_worker.c`, `stark_module.c`, `stark_nfc.c`, `stark_ir.c`). Peak = size − untouched. It covers
+what the soak exercised; interrupt and ISR stacks are not part of it.
 
 Software evidence only: no CC1101, antenna or SPI signal exists before the V1 prototype
-(ROADMAP V1 exit 12, `docs/bringup/v1-subghz.md` from STARK-0606). The production RMT receive
-path for GDO2 is built but not exercised by any test.
+(ROADMAP V1 exit 12, `docs/bringup/v1-subghz.md`). The production RMT receive and transmit
+paths for GDO2 and GDO0 are built but not exercised by any test.
 
 ## Hardware (gated, V1 prototype)
 
@@ -290,6 +328,14 @@ simulated figure above kept alongside for reference.
 | Tag detection range and orientation; removal latency (V0.4) | (record) | | |
 | Weak, noisy and two nearby tags; module absent / unplugged while running (V0.4) | (record) / pass | | |
 | Current with the RF field on and off (V0.4) | (record) | | |
+| CC1101 identified over SPI at 4 MHz; `CHIP_RDYn` and reset timing (V0.6) | pass / (record) | | |
+| RSSI of our own transmitter at 0.5, 1, 2, 4, 8 m; against a known level (V0.6) | falls with distance / offset within ±6 dB | | |
+| Scan peak at our own transmitter's frequency (V0.6) | within 25 kHz | | |
+| Capture of our own remote against its documented timing; decode (V0.6) | ±10 % / matches | | |
+| Replay of our own capture triggers our own receiver (V0.6) | pass | | |
+| Conducted power at `PATABLE` 0x60 (V0.6) | ≤ +3 dBm | | |
+| On-air time and duty over an hour of permitted sends (V0.6) | ≤ 360 s, off-time ≥ 9× | | |
+| GDO0 waveform vs the file; carrier gone after the last symbol (V0.6) | ≤ 2 µs error, ends low | | |
 
 ## V0 exit criteria — evidence (ROADMAP.md "V0")
 

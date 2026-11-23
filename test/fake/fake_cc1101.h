@@ -68,6 +68,9 @@ size_t fake_cc1101_gdo2_take(subghz_sym_t *out, size_t max);
 bool fake_cc1101_gdo0_put(const subghz_sym_t *s, size_t n);
 size_t fake_cc1101_gdo0_recorded(const subghz_sym_t **out);
 void fake_cc1101_own_rx(bool on); /* a recording is also played on GDO2 */
+/* Gives the recording's 8.4 kB back (the next transmission allocates it again). For a long
+ * run that has no own receiver to feed: a soak must not hold it for ever. */
+void fake_cc1101_gdo0_release(void);
 
 /* ---- observation ---------------------------------------------------------- */
 

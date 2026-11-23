@@ -173,7 +173,10 @@ reinsertion), and since STARK-0307 the V0.3 soak (`test/emu/soak/v03-soak.toml`,
 RMT loopback: ten confirmed replays across every protocol, saves, browse, App Test's IR
 self-test, a write test and settings), and since STARK-0405 the V0.4 soak
 (`test/emu/soak/v04-soak.toml`, with the fake PN532 transport: ten tag arrivals, two
-confirmed writes, two dumps, a module loss and recovery, an IR replay and a write test).
+confirmed writes, two dumps, a module loss and recovery, an IR replay and a write test), since STARK-0505 the V0.5 soak (module churn with the
+inspector open), and since STARK-0606 the V0.6 soak (`test/emu/soak/v06-soak.toml`, with the fake
+CC1101 transport: two passes of meter, scan, capture, save, decode, one confirmed replay and
+one refusal, the module lost and replugged in each).
 
 **Planned scenarios by milestone**
 
@@ -200,6 +203,8 @@ that milestone before a scenario depends on them.
 | V0.4 | `v04-nfc-boot.toml`, `v04-nfc-absent.toml`, `v02-no-card.toml` | Production image on an empty I²C bus: `nfc: no module`, the NFC app shows it and polls nothing (ADR-0020) |
 | V0.5 | `v05-empty-bus.toml`, `v04-nfc-absent.toml`, `v02-no-card.toml` | Production image: slot 0 generic (esp-emu answers at 0x50 with zeros), slot 1 no ID, NFC dimmed and skipped, boot unaffected |
 | V0.5 | `storage/v05-*.toml`, `soak/v05-soak.toml` | Test image with the fake-24C02 transport: discovery, hotplug through the launcher and inspector, the capability following the reader, SPI traffic on a claimed slot, 60 s of churn. Integration evidence, not connector or signal evidence |
+| V0.6 | `v06-subghz-absent.toml` | Production image: slot 0 generic, no radio declared, Sub-GHz dimmed and skipped, boot heap above the gate |
+| V0.6 | `storage/v06-*.toml`, `soak/v06-soak.toml` | Test image with the fake-CC1101 transport: detection, RSSI meter, band scan, capture, save, decode, gated replay with its refusals and the own-receiver round trip; the 60 s soak runs detect, meter, scan, capture, save, decode, a replay and a refusal, and the module lost and replugged, twice. Integration evidence, not RF |
 | V0.4 | `storage/v04-*.toml`, `soak/v04-soak.toml` | Test image with the fake-PN532 transport: detection, identification, 20/20 reads, confirmed NDEF write + read-back, dumps, faults and recovery; 60 s soak. Not RF evidence |
 | V0.7 | `v07-i2c-scan.toml` | Scanner finds esp-emu's built-in I²C EEPROM (and nothing else) |
 | V0.7 | `v07-uart-loopback.toml` | UART bridge round-trips via esp-emu's `--uart1-tcp` side channel |
@@ -307,7 +312,8 @@ esp-emulator-storage (needs firmware; ADR-0018)
 esp-emulator-soak (needs firmware; pull requests + manual dispatch)
   ├─ scripts/test_emu.sh test/emu/soak/v01-soak.toml   (60 s: drops, heap delta)
   ├─ scripts/build.sh --docker --emu-storage
-  └─ scripts/test_emu.sh --image storage test/emu/soak/v02-soak.toml   (V0.2, STARK-0207)
+  ├─ scripts/test_emu.sh --image storage test/emu/soak/v02-soak.toml   (V0.2, STARK-0207)
+  └─ … v03, v04, v05 and v06-soak.toml   (IR, NFC, module bus, Sub-GHz; STARK-0307 … 0606)
 
 wokwi.yml — OPTIONAL, never required (ADR-0017): manual dispatch or `wokwi` PR label
   ├─ scripts/wokwi_gate.py       (runtime-relevant change set? else "not applicable")

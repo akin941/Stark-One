@@ -297,6 +297,45 @@ docs/measurements.md "V0.5 exit criteria"; every physical half is open in
 | 2. Unknown/absent EEPROM | every corrupt vector generic, no capabilities; absent "no ID" | production: slot 0 generic, slot 1 no ID, boot unaffected | blank and absent chips on a connector |
 | 3. Two modules share SPI | claims, chip selects never crossed, stale leases, two wired slots | one stand-in driver alongside rendering | **the gate itself**: two modules and the panel on a logic analyser |
 
+### 3.9 V0.6 — Sub-GHz laboratory module (ADR-0022)
+
+V0.6 completion means **software / RF-protocol verified**; a radio transmitting or
+receiving is never claimed below V1.
+
+**What runs where.**
+* **Host:** the pure cores (CC1101 register profiles, the RSSI conversion and scan, the
+  `rf` file format, the three OOK decoders, the transmit policy) against vectors from
+  `scripts/gen_subghz_vectors.py`, an independent Python implementation; the production
+  driver and service against the fake CC1101 (`test/fake/fake_cc1101.c`), which models the
+  chip as seen over SPI (status byte, registers, `PATABLE`, strobes, `MARCSTATE`, an RSSI
+  from an injected air, scenes played on GDO2, GDO0 recorded and optionally fed back);
+  the app on the host UI port. Fault injection reaches every transfer of a send.
+* **Emulator, production image:** slot 0 reads as an unknown EEPROM, so the radio is
+  never declared, the row is dimmed and the boot is unaffected (`v06-subghz-absent`).
+* **Emulator, test image:** `stark_subghz_transport` is substituted by one built on the
+  fake (the fourth and last allowed substitution); GDB pokes choose the module
+  (`emu_mod_slot0 = 32`), the chip, the air (`emu_sg_carrier_khz`, `emu_sg_level`), the scene
+  (`emu_sg_scene`), the own receiver (`emu_sg_own_rx`) and faults (`emu_sg_fault`).
+  `storage/v06-detect`, `-scan`, `-capture`, `-decode` and `-replay` each prove one stage
+  through the production service, app, policy and storage; `soak/v06-soak` runs all of them,
+  in order, twice, with the module lost and replugged in between.
+* **Not proven anywhere before V1:** the CC1101 itself (SPI timing, `CHIP_RDYn`, the
+  analogue register values), the production RMT receive and transmit paths on GDO2 and
+  GDO0, RSSI against a real level, timing of a real remote, power, on-air time, spurious
+  emissions, antenna and matching, the shared SPI bus with a real chip.
+
+**Status (STARK-0606): every software half met** — evidence in docs/measurements.md
+"V0.6 exit criteria"; every physical half open in `docs/bringup/v1-subghz.md`.
+
+| Exit criterion | Host | Emulator (test image) | Physical, deferred to HIL (V1) |
+| --- | --- | --- | --- |
+| 1. RSSI/scan shows our own transmitter, tracks distance | RSSI conversion vectors; the sweep finds the injected carrier's channel | `v06-scan`: the meter follows `emu_sg_level`, the scan peaks at the carrier's channel | our own transmitter at its frequency, the level falling with distance |
+| 2. Raw capture reproduces documented timing | spec-derived scenes captured, saved, parsed back, measured within ±1 symbol tick, decoded | `v06-capture`, `v06-decode`: fingerprints equal the generator's | a capture of our own remote against its datasheet |
+| 3. Replay triggers our own receiver | the replay leaves GDO0 symbol for symbol; the own receiver captures it back | `v06-replay`: 192 symbols with the file's fingerprint | our own receiver reacts |
+| 4. TX impossible without confirmation, duty cap respected | every refusal path; `PATABLE` only ever 0x60; two simulated hours of a greedy sender | `v06-replay`: boot lock, cancel, one send, off-time refusal | power and on-air time on a spectrum analyser |
+
+---
+
 ## 4. Hardware-in-the-loop (future tier, V1 prototype)
 
 Not a V0.x prerequisite. When the breadboard exists (ROADMAP "V1 prototype"):
