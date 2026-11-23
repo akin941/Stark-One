@@ -294,24 +294,51 @@ The fixed limits (433.05–434.79 MHz only, `PATABLE` 0x60, 10 % per rolling hou
 
 **Goal:** the everyday bench tools — the apps that will get the most real use.
 
+**Entry:** V0.6 complete (STARK-0606). Tasks: STARK-0701 … STARK-0708 in
+[TASKS.md](TASKS.md).
+
 **Scope**
 
 * GPIO app: per-pin read/write/toggle/pulse, pull configuration, PWM out, frequency and
-  duty measurement (PCNT/MCPWM-free implementation), safe-pin allowlist
+  duty measurement (PCNT/MCPWM-free implementation: timestamped edges, ADR-0023 §4),
+  safe-pin allowlist
 * I²C scanner: bus scan, address list, register read/write, known-device hints
-* SPI probe: simple transaction sender/inspector
-* UART tools: bridge, monitor, auto-baud detection, hex/ASCII view, logging to SD
-* Self-test/diagnostics app: RAM, flash, SD, display, buttons, buzzer, module bus
+* SPI probe: simple transaction sender/inspector, on a leased module slot only
+* UART tools: monitor, loopback "bridge", auto-baud detection, hex/ASCII view, logging to
+  SD (a USB-CDC bridge to a host is not built: USB classes are out of scope until V2)
+* Self-test/diagnostics app: RAM, flash, SD, display, buttons, buzzer, module bus, and a
+  log/report export
 * Pin-safety guardrails: reserved pins are not offered; output drive is confirmed
 
-**Verification:** largely simulatable — I²C master, UART, GPIO and PWM are modelled by
-Wokwi. `sim/diagram.i2c.json` gains I²C peripherals for the scanner scenario.
+**Out of scope:** any pin, bus or module a lab tool does not own; raw SPI to a driver-owned
+module (the Sub-GHz radio's transmit policy would be bypassable); writes to the module ID
+EEPROMs; unattended loops; a USB bridge; a device or code database; a lab header (V1
+hardware).
 
-**Exit criteria**
+**Verification (ADR-0023).** Software / lab-protocol verified through host tests, the
+production image in esp-emu, and the emulator test image with a test-only fake behind the
+fifth and last substitution, `stark_lab_transport`. Wokwi is optional (ADR-0017) and
+`sim/diagram.i2c.json` is not created. Physical electrical behaviour is ROADMAP V1 exit 13.
 
-1. I²C scanner finds simulated devices at the expected addresses in a Wokwi scenario.
-2. UART bridge round-trips data at 115200 in simulation.
-3. GPIO app cannot configure a reserved pin.
+**Completion levels (ADR-0023).** *V0.7 complete* = **software / lab-protocol verified**.
+It never means a pad was driven, a wire was measured or a real peripheral answered. The
+fixed limits (the offered pins, weakest drive strength, I²C write refusals, SPI slot rules,
+the measurement range, UART formats) are in ADR-0023 §3–7.
+
+**Exit criteria.** The three criteria below are the original ones, reworded from "a Wokwi
+scenario" and "simulation" to the evidence ADR-0017 allows; their intent is unchanged.
+Criteria 4 and 5 are added because two scope items (measurement, self-test and export) had
+none.
+
+| # | Criterion | V0.7 software evidence (required) | V1 physical HIL evidence (deferred) |
+| --- | --- | --- | --- |
+| 1 | I²C scanner finds devices at the expected addresses (was: "simulated devices … in a Wokwi scenario") | Host: five fake devices at known addresses found exactly, nothing else, with fault injection (NACK, timeout, stuck bus); test image: the same through the production app and service over the fake; production image: esp-emu's one device, 0x50, found and nothing else | Real I²C devices on the breadboard at their addresses; pull-ups and waveform on a logic analyser |
+| 2 | UART bridge round-trips data at 115200 (was: "in simulation") | Host: the 64-byte pattern round-trips with zero errors at every standard baud and format, and a baud or format mismatch is reported as errors; test image: the same through the fake peer, plus auto-baud; production image: a host-side peer on `--uart1-tcp` if the S3 model supports it (STARK-0705 probe) | TX wired to RX, and a USB-serial adapter, at 115200 and at the baud limits; level and series-resistor checks |
+| 3 | GPIO app cannot configure a reserved pin (extended to the other tools' guards) | Every GPIO number from -1 to 64 against every call: only the offered pins are accepted, from the core and from the transport; output needs an arm; slot pins withdrawn on hot-plug; I²C writes to module EEPROMs and the SPI probe on a driver-owned slot refused (host and test image) | The offered pins on the board; drive strength, contention and hi-Z on exit measured |
+| 4 | Frequency and duty measurement (added) | The pure measurement core against synthetic, jittered edge sets over 1 Hz to 50 kHz within the ADR-0023 §4 tolerances, with overflow and out-of-range reported; test image: a PWM out wired to a measured pad reads back its frequency and duty | `LAB_UART_TX` PWM wired to `LAB_UART_RX` and to a signal generator: real accuracy and ISR latency |
+| 5 | Self-test and export (added) | Every automated check passes on the host and the test image and fails when its fault is injected (host: all; test image: storage and the module bus); operator-attested checks are recorded `attested`, never `pass`; the report is written, bounded and free of control characters | The same on the breadboard, with each attested check really observed |
+
+**Status:** planned. Nothing in V0.7 is built until STARK-0701 starts.
 
 ---
 
@@ -370,6 +397,19 @@ simulated milestones (ADR-0011):
     triggering our own receiver; conducted and radiated power at `PATABLE` 0x60; on-air
     time and duty cycle on a spectrum analyser; antenna and matching; the module sharing
     SPI with the display and SD. The procedure is `docs/bringup/v1-subghz.md` (28 blank checks).
+13. **Deferred V0.7 lab-tool gates** (ADR-0023): the offered pins on the board (38, 39 and
+    an empty slot's 40 to 42) and nothing else reachable; weakest drive strength, pulls,
+    hi-Z on exit, contention detection and the current into a known load; PWM out
+    (100 Hz to 40 kHz) on a logic analyser; frequency and duty accuracy and the GPIO ISR's
+    real latency from 1 Hz to 50 kHz, with `LAB_UART_TX` wired to `LAB_UART_RX` and against a
+    signal generator; the I²C scan and register read/write against real devices at their
+    addresses, pull-ups, 100 and 400 kHz waveforms, and the refused writes to the module ID
+    EEPROMs; the SPI probe on a SPI breakout slot at 100 kHz to 4 MHz with the panel and SD
+    sharing the bus, and its refusal of a Sub-GHz module; UART loopback at 115200 and at the
+    baud limits, a USB-serial adapter, auto-baud on a real stream, 3.3 V level and series
+    protection, and SD logging of a long stream; the self-test on the breadboard with every
+    attested check really observed; flash and RAM checks on silicon. The procedure is
+    `docs/bringup/v1-labtools.md` (written by STARK-0708, blank until V1).
 
 ---
 

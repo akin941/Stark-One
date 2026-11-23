@@ -1044,3 +1044,231 @@ reads higher fails the check and the cap is lowered in a new task; it is never r
 
 **Revisit trigger:** a radio model in esp-emu, the V1 board's antenna and matching, a
 regulatory change for 433 MHz SRD, or a need for another band.
+
+---
+
+## ADR-0023 — V0.7 lab tools: software-verified behind one lab transport seam, physical electrical behaviour at V1; pin and bus safety
+
+**Status:** accepted (2026-11-23). The owner delegated the V0.7 product decisions to the
+planner and asked for autonomous progress; every decision below is recorded here rather
+than taken silently. Applies ADR-0017 to V0.7 as ADR-0019 to ADR-0022 applied it to V0.3
+to V0.6. Plan only: no product code exists yet (STARK-0701 to STARK-0708 build it).
+
+**Context.** ROADMAP V0.7 adds the everyday bench tools: a GPIO app with a safe-pin
+allowlist, frequency and duty measurement without PCNT or MCPWM, an I²C scanner with
+register access, an SPI probe, UART tools and a self-test with log export. Its three exit
+criteria say "in a Wokwi scenario" or "in simulation". Since ADR-0017 nothing depends on
+Wokwi, and its Free plan is not available to the project. What exists, verified:
+
+* **The board has no spare pins.** HARDWARE §1 to §2 spend all 25 usable GPIOs. The only
+  pins no peripheral owns are `LAB_UART_TX`/`RX` (38, 39) and, while no module is fitted,
+  slot 0's `MOD_CS` 40 and `MOD_IRQ0/1` 41, 42 (HARDWARE §2.2, §6). Slot 1 has no GPIO.
+* **esp-emu 0.44.0 models, per its README at the `v0.44.0` tag:** UART, USB Serial JTAG,
+  GPIO, GDMA, GP-SPI, RMT, LEDC, PCNT, MCPWM and I²C "with a built-in EEPROM slave". Its
+  options include `--uart1-tcp HOST:PORT` (UART1 as a TCP server for a host-side peer;
+  upstream verified it with `uart_echo` on C3 and P4, not on S3) and `--rmt-loopback`. It
+  has **no** `--i2c-dev` and no co-simulation option (both appear only in the v1.x
+  documentation). No option drives an external GPIO pad. Verified earlier by this project
+  (docs/VALIDATION.md §2, STARK-0502): the I²C bus ACKs 0x50 and reads zeros, and NACKs
+  0x10, 0x24, 0x51, 0x52; GPIO inputs with pull-ups read released; the RMT loopback joins
+  only TX 0 to RX 0, which IR owns; LEDC, buzzer and LED levels are not observable from
+  outside. **Not verified, and not assumed:** an output pad read back as an input,
+  pull-down reads, GPIO interrupts from a self-driven pad, LEDC reaching a pad, and the
+  UART1 bridge on the S3 model. The planner could not run esp-emu in this session (the
+  pinned binary is not installed and was not downloaded); STARK-0701 and STARK-0705 probe
+  those behaviours first and record the result in docs/VALIDATION.md §2. No acceptance
+  criterion below depends on an unprobed behaviour except where it says so.
+* The V0.5 and V0.6 pattern works: a production driver over an L1/L3 transport seam, a
+  test-only fake behind the seam in the emulator test image, pure cores with 100 % line
+  coverage, and the physical half written down as a V1 exit and a blank bring-up document.
+
+**Decision.**
+
+1. **Two levels of completion.** *V0.7 complete* means **software / lab-protocol
+   verified**: the pin allowlist and its guards, the GPIO, PWM and measurement logic, the I²C
+   scan and register logic, the SPI probe rules, the UART logic including auto-baud and
+   logging, the self-test and its report, the apps, storage, logging and error behaviour. It
+   never means a pad was driven, a wire was measured or a real peripheral answered. Each
+   exit criterion splits into a software half (V0.7) and a physical half that **becomes
+   ROADMAP V1 exit 13** and `docs/bringup/v1-labtools.md` (written by STARK-0708, blank
+   until V1). The three exit criteria that name "a Wokwi scenario" or "simulation" are
+   reworded to the host and emulator evidence in ROADMAP V0.7; their intent is unchanged.
+   Two exit criteria are added (frequency and duty measurement; self-test and export)
+   because two scope items had none. Wokwi stays optional (ADR-0017) and no
+   `sim/diagram.i2c.json` is created.
+2. **One new seam, `stark_lab_transport`, the fifth and last allowed substitution of V0.7.**
+   It carries four groups of calls and nothing else: pads (configure, level, hi-Z, edge
+   capture, PWM), the shared I²C bus (probe, write, write-read), SPI transactions on a leased
+   module slot, and the lab UART (open, read, write, change baud, close). Production is a
+   thin wrapper over `stark_hal` (pads, PWM, UART), `stark_board_i2c_bus()` and
+   `stark_module_spi`. The emulator test image substitutes it with one built on
+   `test/fake/fake_lab.c`: a model of pads with an external source, an I²C bus with several
+   devices at known addresses, SPI devices and a UART peer, all driven by pokes. One seam
+   rather than four keeps `check_emu_image.py` at five substitutions, the fake in one file,
+   and the layer table to one new transport component. **Reuse was considered and
+   rejected:** `stark_module_transport` is read-only by construction (ADR-0021 §2) and one
+   write call would remove that guarantee; `stark_subghz_transport` is the CC1101's.
+   Production code has no fake mode and no simulator branch (ADR-0010). The production
+   firmware needs **no new FreeRTOS task**: lab operations run on the app worker, and the
+   UART driver is installed without an event queue. The raw GPIO and LEDC drivers stay in
+   `stark_board` and `stark_hal` (`scripts/check.sh` `gpio-centralized` is unchanged);
+   `stark_hal` gains the pad calls the transport wraps.
+3. **Pin safety, owned by `stark_board`** (GPIO numbers stay there; SECURITY_SCOPE §4.6):
+   * `stark_board` classifies every GPIO number, derived from the pin map and never
+     hand-listed: `LAB` (38, 39: the lab UART pins, always offered), `SLOT` (a module slot's
+     `MOD_CS` and `MOD_IRQ0/1`) and `RESERVED` (everything else, including every number
+     outside 0 to 48). A `SLOT` pin is offered **only while its slot reads `ABSENT`** (no ID
+     EEPROM answered). A `GENERIC`, `KNOWN` or `CONFLICT` slot, or any lease on it, withdraws
+     its pins. Reserved pins are never offered, in no mode, not even to read: display, SD,
+     buttons, buzzer, status LED, backlight, I²C, IR, USB, console, strapping and
+     flash/PSRAM pins (HARDWARE §1, §2).
+   * Enforcement is in the service, not only the UI: every pin call checks the offer, so a
+     reserved pin returns `STARK_ERR_NOT_SUPPORTED` from the core, and again from the
+     transport (defence in depth). A host test sweeps GPIO -1 to 64 against every call.
+   * **Hot-plug:** the offer is recomputed on `STARK_SYS_MODULE`; a withdrawn pin goes to
+     hi-Z at once and the owner is told (`lab: pin 40 withdrawn (slot 0)`).
+   * **Drive needs an explicit arm.** An output, a PWM or a pulse is refused with
+     `STARK_ERR_STATE` until the app has shown a confirm dialog naming the pin and
+     "connected hardware may be damaged" and the user has pressed OK; the arm is per pin,
+     lives in RAM, and is cleared by release, withdrawal and leaving the app. Before the
+     dialog the app shows what the pin reads (floating, driven high, driven low), found with
+     each pull for 2 ms; the dialog says so.
+   * **Weakest drive strength** (`GPIO_DRIVE_CAP_0`, which ESP-IDF's driver documents as
+     about 5 mA) for every lab output; the internal pulls are weak (about 45 kΩ, as noted in
+     `board_devkitc1.c`).
+   * **Contention is detected:** after an output is set, the pad is read back; a mismatch
+     after 1 ms puts the pin in hi-Z, logs `lab: contention pin <n>` and tells the user.
+   * **Default is input/hi-Z:** every pin is released to hi-Z (no pull) when the app stops,
+     when a pin is withdrawn, and on a failed operation; PWM is stopped and the pad
+     reconfigured as an input.
+   * **V1 notes** (HARDWARE §2.4): 3.3 V logic only, not 5 V tolerant; the lab UART pins are
+     series-protected and level-limited by design; the current into or out of any lab pin is
+     bounded by the weakest drive and the V1 checks measure it. The board offers at most
+     five pins; a lab header with spare pins is a V1 hardware requirement (ROADMAP V1
+     hardware), not something V0.7 can invent.
+4. **Frequency and duty without PCNT or MCPWM: timestamped edges.** A GPIO any-edge
+   interrupt (in IRAM) stores `esp_cpu_get_cycle_count()` into a bounded ring of 1024
+   entries owned by the app (4 kB of heap while the view is open); a pure core computes the
+   frequency from the span of the rising edges and the duty from complete high intervals. A
+   20 ms pre-gate counts edges to size the capture window so it fits the ring (10 ms to
+   4 s). Range: **1 Hz to 50 kHz** measured; a faster signal reports "> 50 kHz, not
+   measured" and a slower one "< 1 Hz"; a ring that overflows says so instead of returning a
+   wrong number. Targets: frequency ±0.5 % up to 10 kHz and ±2 % to 50 kHz; duty ±2
+   percentage points to 10 kHz and ±5 to 50 kHz. The host proves the arithmetic and the
+   bounds on synthetic, jittered edge sets; **ISR latency and the real accuracy are V1
+   measurements** (the V1 check wires `LAB_UART_TX` PWM into `LAB_UART_RX`).
+   PWM out is LEDC through `stark_hal_pwm_*` on channel 2 (its own timer, since the HAL
+   gives each channel one), 100 Hz to 40 kHz at the HAL's 10-bit resolution, duty 0 to 100 %
+   in 1 % steps.
+5. **I²C rules** (constants, never Kconfig): scan is address-only on 0x08 to 0x77, 112
+   probes with a 5 ms timeout each, one sweep per request; speeds 100 or 400 kHz, default
+   100; register reads of 1 to 16 bytes, a dump of at most 256 bytes after a confirm,
+   because a read can change a device's state; **every write is confirmed** (address,
+   register, bytes) and logged, 1 to 8 bytes; **writes are refused at the service** to the
+   module ID EEPROM addresses (`stark_board` `module[i].eeprom_addr`, ADR-0021 §2: a
+   descriptor is never written) and to the PN532's address while NFC is confirmed (its
+   driver owns the protocol); no write loops, no repeat, no sweep-write. The hints table is
+   at most 48 generic public addresses with "may be" wording, data only, no probing of
+   identity registers, no secrets, no vendor database.
+6. **SPI probe rules:** only on a **leased module slot**, through `stark_module_claim()` and
+   `stark_module_spi`; only slots whose descriptor declares `MOD_SPI` and **no function
+   bit** (a "SPI breakout" module, catalogue entry 34, `0x08`). A slot declaring `SUBGHZ` or
+   any other function is refused (`owned by <driver>`): raw SPI to a CC1101 could write
+   `PATABLE` or strobe `STX` and walk around the transmit policy (ADR-0022 §6), so the
+   probe never touches a driver-owned module. One transaction of 1 to 32 bytes per
+   confirmation (the dialog shows the bytes, slot, clock and mode), clock 100 kHz to 4 MHz
+   (default 1 MHz), mode 0 to 3, no repeat or stream, every transaction logged with MOSI
+   and MISO. No new capability bit: the probe is a tool on wiring, not a function a driver
+   confirms (ADR-0021 §2); the app reads the module table itself, as Modules does.
+7. **UART rules.** UART1 on the lab pins (`LAB_UART_TX/RX`, 38, 39), 3.3 V TTL only.
+   Baud 1 200 to 921 600 from a fixed list; formats 8N1, 8E1, 8O1, 8N2, 7E1. Monitor: a
+   4 kB RAM ring of received bytes, hex and ASCII views, framing and parity errors counted,
+   overrun counted and shown (never silently dropped). Send: 1 to 32 bytes from a nibble
+   editor, a short canned list, or a file `uart/send.txt` of at most 1 kB; one send per key
+   press, no repeat. **"Bridge" is defined as the loopback bridge**: the device sends a
+   known 64-byte pattern out of TX and verifies the identical bytes back on RX (with TX
+   wired to RX, or through a peer that echoes), at the chosen baud, reporting bytes, errors
+   and the first mismatch; ROADMAP exit 2's intent ("data round-trips at 115200") is met.
+   **A USB-CDC bridge to a host is not built:** GPIO 19/20 are reserved and USB classes are
+   out of scope until V2 (PROJECT.md out-of-scope list). **Auto-baud** is a pure core over
+   the same edge capture: the shortest pulse width on RX, snapped to the nearest standard
+   baud within 3 %, else "unknown". **SD logging** writes the received stream to
+   `logs/uart_NNNN.log` through a 2 kB buffer on the app worker, at most 1 MiB per file, then
+   stops and says so.
+8. **Self-test** is a pure core in `stark_diag` over an injected check table, registered at
+   the composition root (`main/selftest_checks.c`) so `stark_diag` needs no new edge.
+   Automated: internal RAM (bounded pattern tests on one block of at most 32 kB that never
+   takes free heap below 128 kB; PSRAM stays unused, ADR-0014), flash (two read-only SHA-256
+   passes over the running image must agree, and the chip size must match the image header;
+   nothing is erased or written), settings (NVS reads back), storage (if a card is mounted: a
+   4 kB write, read-back and delete), module bus (the table agrees with address probes of
+   the slot EEPROMs), event and stack sanity. **Operator-attested** (the device cannot see
+   or hear itself): display colour bars, buttons (each key pressed in turn), buzzer, status
+   LED; each is recorded as `attested`, never as `pass`. **Log export** writes
+   `logs/report_NNNN.txt` (at most 16 kB: firmware version, board, uptime, `stark_diag`
+   snapshot and tasks, module table, storage state, every self-test result with its
+   evidence, and the tail of the log ring); without a card it is shown and logged only.
+   The report stays on the device (SECURITY_SCOPE §2: "Self-test, diagnostics, measurement,
+   logging, export"); nothing is sent anywhere.
+9. **Emulator evidence is integration evidence.** *Production image:* the I²C app finds
+   exactly 0x50 and reads zeros there through the real driver (the facts of V0.5), a write
+   there is refused, the GPIO app offers exactly 38 and 39 (slot 0 reads generic), a
+   pull-up read of an unconnected pin is high, and, if the STARK-0705 probe shows the UART1
+   bridge works on the S3 model, a host-side peer round-trips bytes through the production
+   UART driver. *Test image:* the fake carries the multi-device bus, an external source on
+   a pad, a wire between two pads, a UART peer, SPI devices and faults. The emulator never
+   shows a pad moving, a wire carrying a signal or a peripheral answering; the fake is
+   spec-derived and never a recording. Harness additions (not firmware): `test_emu.py`
+   gains the poke names and an optional `uart1_peer` for the bridge scenario.
+10. **Budgets and gates.** Production boot heap **≥ 200 kB** (current 240 732 B) with a V0.7
+    ceiling of **16 kB** of boot-heap cost in total (closing figure ≥ 224 kB); per-task
+    limits are in each task. Binary 483 216 B now; ceiling **+52 kB** (≤ 535 kB of the 4 MB
+    partition). Test image boot heap 237 812 B now. Transient buffers (4 kB edge ring, 4 kB
+    UART ring and driver, the RAM-test block) are heap, held only while a view runs, and
+    freed on exit like STARK-0603's capture buffer. Heap after leaving every app is within
+    1 kB; drops 0.
+11. **LVGL re-evaluation (ADR-0005's V0.7 trigger).** Scored at the end, from the apps
+    actually built: a hex/ASCII monitor is scrollable text (one trigger); there is no chart
+    widget, animation or on-screen keyboard (the nibble editor and fixed lists are enough).
+    Provisional outcome, to be confirmed by STARK-0708: **keep the in-house UI**, since fewer
+    than two triggers are met; the scoring is a STARK-0708 deliverable recorded as an ADR-0005
+    addendum.
+12. **Task order** (dependency order, each the size of a V0.6 task): 0701 pin safety, the lab
+    seam and the fifth substitution; 0702 GPIO app; 0703 frequency and duty; 0704 I²C
+    scanner; 0705 UART tools; 0706 SPI probe; 0707 self-test and export; 0708 exit.
+    Launcher rows, events and pokes are in TASKS.md.
+13. **Scope bound.** These are bench tools for our own hardware (SECURITY_SCOPE §1 to §2). No
+    tool drives a pin, bus or module it does not own, no tool bypasses another owner's
+    policy (the transmit limits, the module EEPROMs), no tool loops unattended, and nothing
+    is a database of third-party devices, codes or credentials.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| Four seams (pads, I²C, SPI, UART) | Four substitutions and four fakes for one milestone; one transport with four call groups is one substitution and one fake |
+| Extending `stark_module_transport` with writes | Removes the "read-only by construction" guarantee of ADR-0021 §2 |
+| Relying on esp-emu alone (no fake) | It cannot drive a pad, has one I²C device, and has no SPI device; the multi-device and wire evidence would be missing |
+| Waiting for `--i2c-dev` (esp-emu v1.x) | Not in the pinned 0.44.0; a version bump is its own change (`esp_emu.lock`), and one register-file device would still not be several known devices wired to our own scenarios |
+| PCNT or MCPWM capture for frequency | The roadmap excludes them; PCNT cannot see duty, and the emulator cannot stimulate either |
+| Offering the status LED, buzzer, IR or other owned pins | Their drivers own them; the guard is that no lab call can reach a pin another owner has |
+| Offering slot pins on `GENERIC` slots | A slot with an unreadable ID may still hold a chip whose outputs would fight ours |
+| Raw SPI to any slot, including a radio | Bypasses the transmit policy (ADR-0022 §6) |
+| A USB-CDC to UART bridge | USB pins are reserved and USB classes are out of scope until V2 |
+| A new capability bit for the lab apps | Nothing a driver confirms; the pins are onboard, the slot rules are checked in the probe |
+| Treating operator-attested checks as `pass` | A device cannot see its own panel; claiming it would be a false green |
+| A persistent pin "profile" in NVS | Flash wear and a risk of driving a pin at boot; the state is RAM and starts hi-Z |
+
+**Consequences.** Five apps join the launcher: System gains Self-Test; Lab gains GPIO, I2C,
+SPI and UART (titles sort `GPIO`, `I2C`, `IR`, `NFC`, `SPI`, `Sub-GHz`, `UART`).
+`stark_board` gains `lab_uart_tx/rx`, pin classes and validation; `stark_hal` gains pad
+configuration, hi-Z, edge capture and PWM stop (with its host fake); a new component
+`stark_lab` (L2 cores, L3 service) and `stark_lab_transport` (L3 port, uses `stark_module`'s
+lease). System event ids: 8 `STARK_SYS_LAB`, 9 `STARK_SYS_SELFTEST`. `check_emu_image.py`
+allows exactly five substitutions. The module catalogue gains entry 34, the SPI breakout.
+The V0.7 report separates software, fake-device, host, emulator and deferred physical
+evidence. `docs/bringup/v1-labtools.md` is written by STARK-0708 and filled in at V1.
+
+**Revisit trigger:** an esp-emu with external pad stimulus or a multi-device I²C model
+(`--i2c-dev`, co-simulation) which could replace parts of the fake, the V1 board's lab
+header, the first real measurement of ISR latency, or a need for a USB bridge.
