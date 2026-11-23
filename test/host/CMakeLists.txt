@@ -98,6 +98,7 @@ add_executable(run_board_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_board.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/stark_err/stark_err.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../components/stark_board/stark_board.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/stark_board_host.c
 )
 target_compile_options(run_board_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_board_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
@@ -707,6 +708,48 @@ foreach(sg_test cc1101_regs cc1101_drv fake_cc1101 subghz_service subghz_rssi su
     target_link_libraries(run_${sg_test}_tests PRIVATE unity)
     add_test(NAME stark_${sg_test}_tests COMMAND run_${sg_test}_tests)
 endforeach()
+
+# The lab's pin safety (STARK-0701, ADR-0023): the board's pin classes, the test-only pad model,
+# the pure pad decisions over the real module core and fake 24C02, and the production transport
+# over the fake HAL.
+set(FAKE_LAB ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_lab.c)
+set(LAB_INCLUDES ${STARK_COMPONENTS}/stark_lab ${STARK_COMPONENTS}/stark_lab/include
+    ${STARK_COMPONENTS}/stark_lab_transport/include ${MODULE_INCLUDES})
+add_executable(run_board_pins_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_board_pins.c
+    ${STARK_COMPONENTS}/stark_err/stark_err.c ${STARK_COMPONENTS}/stark_board/stark_board.c)
+target_compile_options(run_board_pins_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_board_pins_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_board_pins_tests PRIVATE unity)
+add_test(NAME stark_board_pins_tests COMMAND run_board_pins_tests)
+
+add_executable(run_fake_lab_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_fake_lab.c ${FAKE_LAB}
+    ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_fake_lab_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+target_compile_options(run_fake_lab_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_fake_lab_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_fake_lab_tests PRIVATE unity)
+add_test(NAME stark_fake_lab_tests COMMAND run_fake_lab_tests)
+
+add_executable(run_lab_pins_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_pins.c
+    ${STARK_COMPONENTS}/stark_lab/lab_pins.c ${FAKE_LAB} ${FAKE_24C02}
+    ${STARK_COMPONENTS}/stark_err/stark_err.c ${STARK_COMPONENTS}/stark_board/stark_board.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/stark_board_host.c
+    ${STARK_COMPONENTS}/stark_module/module_desc.c ${STARK_COMPONENTS}/stark_module/module_core.c)
+target_include_directories(run_lab_pins_tests PRIVATE ${LAB_INCLUDES})
+target_compile_options(run_lab_pins_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_pins_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_pins_tests PRIVATE unity)
+add_test(NAME stark_lab_pins_tests COMMAND run_lab_pins_tests)
+
+add_executable(run_lab_service_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_service.c
+    ${STARK_COMPONENTS}/stark_lab_transport/lab_transport_hal.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/stark_hal_host.c
+    ${STARK_COMPONENTS}/stark_err/stark_err.c ${STARK_COMPONENTS}/stark_board/stark_board.c)
+target_include_directories(run_lab_service_tests PRIVATE ${LAB_INCLUDES})
+target_compile_options(run_lab_service_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_service_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_service_tests PRIVATE unity)
+add_test(NAME stark_lab_service_tests COMMAND run_lab_service_tests)
 
 # The real NFC app on the UI port (STARK-0404) with a fake stark_nfc.
 add_executable(run_ui_nfc_tests

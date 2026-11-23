@@ -87,6 +87,10 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
             --filter "$PROJECT_ROOT/components/stark_nfc/" \
             --filter "$PROJECT_ROOT/components/stark_module/" \
             --filter "$PROJECT_ROOT/components/stark_subghz/" \
+            --filter "$PROJECT_ROOT/components/stark_lab/" \
+            --filter "$PROJECT_ROOT/components/stark_lab_transport/" \
+            --filter "$PROJECT_ROOT/components/stark_board/stark_board.c" \
+            --filter "$PROJECT_ROOT/test/fake/fake_lab.c" \
             --filter "$PROJECT_ROOT/components/stark_storage/log_rotate" \
             --filter "$PROJECT_ROOT/components/stark_storage/storage_log" \
             --filter "$PROJECT_ROOT/components/stark_buzzer/buzzer_volume" \

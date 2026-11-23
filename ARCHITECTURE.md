@@ -173,7 +173,9 @@ typedef struct {
     int      sd_cs;                     /* -1 when absent */
     int      i2c_sda, i2c_scl;          /* -1 when absent */
     int      ir_tx, ir_rx;              /* RMT TX -> IR LED, RX <- demodulator (V0.3); -1 when absent */
+    int      lab_uart_tx, lab_uart_rx;  /* the lab UART pins, always offered to the lab tools (V0.7); -1 */
     uint32_t tft_spi_hz;
+    stark_board_module_slot_t module[STARK_BOARD_MODULE_SLOTS]; /* cs, irq0, irq1, en, eeprom_addr */
 } stark_board_pins_t;
 
 const stark_board_pins_t *stark_board_pins(void);
@@ -181,7 +183,22 @@ const char               *stark_board_name(void);
 stark_err_t               stark_board_init(void);   /* clocks, SPI2 + I2C buses, common GPIO */
 stark_err_t               stark_board_heartbeat_start(void); /* status LED, 1 Hz 10 % */
 struct i2c_master_bus_t  *stark_board_i2c_bus(void); /* I2C_NUM_0 on I2C_SDA/SCL; NULL if absent (STARK-0402) */
+
+/* pin safety (STARK-0701, ADR-0023 §3): pure, derived from the map above */
+typedef enum { STARK_PIN_RESERVED, STARK_PIN_LAB, STARK_PIN_SLOT } stark_pin_class_t;
+stark_pin_class_t stark_board_pin_class(int gpio, int *slot);   /* RESERVED for every number not offered */
+size_t            stark_board_lab_pins(stark_board_lab_pin_t *out, size_t max); /* the offer table, <= 8 */
 ```
+
+**Pin classes (STARK-0701).** `stark_board` is also the one place that says which GPIOs a lab
+tool may touch (HARDWARE §2.4). The classification is *derived* from the map: the two
+`lab_uart_*` pins are `LAB` (always offered), each module slot's `cs`, `irq0` and `irq1` are
+`SLOT` (offered only while that slot reads empty), and every other number, including any number
+below 0 or above 48, is `RESERVED`: never offered, in no mode, not even to read. The table is
+built from the struct on every call (a changed pin moves its class and nothing else), so no number
+is written twice; `stark_board_pin_class_of()` and `stark_board_lab_pins_of()` take a map so the host
+tests can change it. `stark_board_validate()` counts the two lab pins for collisions and range.
+Names are board-neutral (`LAB_UART_TX`, `MOD0_CS`, `MOD0_IRQ0`, …).
 
 A board *capability* structure (`has_sdcard`, `has_ir`, `has_nfc`, …) is deliberately
 **absent in V0**: nothing would read it. It is introduced by the first milestone that
@@ -206,6 +223,10 @@ stark_err_t stark_hal_gpio_config_input(int pin, bool pullup);
 stark_err_t stark_hal_gpio_config_output(int pin, bool initial);
 bool        stark_hal_gpio_read(int pin);
 void        stark_hal_gpio_write(int pin, bool level);
+/* lab pads (STARK-0701): range-checked only; which pins a lab tool may use is stark_board's call */
+stark_err_t stark_hal_gpio_config_in(int pin, stark_hal_pull_t pull);   /* input, optional pull, irq off */
+stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial);      /* GPIO_DRIVE_CAP_0, read-back on */
+stark_err_t stark_hal_gpio_hiz(int pin);                                /* input, no pull, released */
 
 /* pwm (LEDC) */
 stark_err_t stark_hal_pwm_init(int pin, uint32_t hz, uint8_t channel);
@@ -217,7 +238,7 @@ stark_err_t stark_hal_pwm_set_duty_pct(uint8_t channel, uint8_t pct);
 ```
 
 Host builds link `stark_hal_host.c`: a fake clock the tests advance explicitly, and a
-GPIO array the tests read/write. Determinism is the point — host tests never sleep.
+GPIO array the tests read/write (with the pad calls' mode, pull and drive recorded for inspection). Determinism is the point — host tests never sleep.
 
 ### 6.3 `stark_event` (L2 core + L3 port)
 
@@ -310,6 +331,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
 | 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
 | 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602), `_CAPTURE` / `_CAPTURE_DONE` (STARK-0603), `_TX_DONE` (6) / `_TX_FAILED` (7) / `_TX_REFUSED` (8) (STARK-0605) |
+| 8 | `STARK_SYS_LAB` | `stark_lab` (STARK-0701) | `STARK_LAB_EVT_PINS` (the offer changed or a held pin was withdrawn); later `_MEASURE_DONE`, `_SCAN_DONE`, `_UART_DATA`, `_UART_ERROR`, `_SPI_DONE` (STARK-0703…0706) |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -1063,6 +1085,47 @@ under it. Logs: `subghz: tx rf_0001.rf 433920000 Hz 192 sym 202 ms`, `subghz: tx
 transmit channel with a streaming simple encoder, created per transmission on GDO0) is exercised
 only on hardware at V1; the host and the test image run the same service and policy over the fake.
 
+### 6.9h `stark_lab` (L3) and `stark_lab_transport` — STARK-0701, ADR-0023
+
+The lab service is the one place that decides which pins a lab tool may touch (SECURITY_SCOPE
+§4.6, HARDWARE §2.4). `lab_pins.c` is pure, over an injected I/O table (the module table, the
+four pad calls, a microsecond delay, a log): no lock, no allocation, no ESP-IDF header, 100 %
+line coverage. `stark_lab.c` binds it to `stark_module_list()`, `stark_lab_transport`, the log and
+the event bus under one mutex; it creates no task and subscribes to nothing, so every call runs on
+its caller's task and the production firmware gains no FreeRTOS task. The composition root calls
+`stark_lab_init()` after `stark_module_init()` (`lab: pins 38 39`) and `stark_lab_refresh()` from
+`module_bridge.c` on `STARK_SYS_MODULE`.
+
+**The offer.** A `LAB` pin is always offered; a `SLOT` pin only while its slot reads `ABSENT` (no ID
+EEPROM answered: a `GENERIC`, `KNOWN` or `CONFLICT` slot withdraws its pins, and a lease can only
+exist on a `KNOWN` slot); everything else never. *Every* call checks the **live** offer first (the
+module table as it is, not a cached flag) and then the hold, so a pin is never used in the gap
+before a refresh runs: a number the board does not offer returns `STARK_ERR_NOT_SUPPORTED` before
+any hardware is touched, an offered pin that is not held `STARK_ERR_STATE`. A held pin that has
+stopped being offered is withdrawn by the call that finds it, or by the refresh: driven to hi-Z at
+once (releasing is allowed on any classified pin), its owner and arm cleared, and logged as `lab:
+pin 40 withdrawn (slot 0)`; the offer is logged again as `lab: pins …` when it changed, and
+`STARK_SYS_LAB` / `STARK_LAB_EVT_PINS` is published.
+
+**Drive.** `acquire(pin, owner)` releases the pad to hi-Z before it is held. A write, a PWM or a
+pulse needs the **arm**, set by the app after the user pressed OK on a dialog naming the pin and
+"connected hardware may be damaged": it is per pin, in RAM, and cleared by release, release-all,
+withdrawal and by any failed drive. The pad is driven at the weakest strength and read back after
+1 ms: a mismatch (contention) puts the pin in hi-Z, clears the arm, logs `lab: contention pin <n>`
+and returns `STARK_ERR_IO`; so does any transport error. `state` finds what a pad is doing by
+applying each pull for 2 ms and leaves it an input with no pull.
+
+**The transport** (`stark_lab_transport.h`) is the seam and the fifth and last test-image
+substitution: today the pad group (`pad_in`, `pad_out`, `pad_read`, `pad_hiz`); later V0.7 tasks append
+PWM and edge capture, the shared I²C bus, SPI on a leased slot and the lab UART. It re-checks
+the pin on every call (`stark_lab_pad_ok()`: stark_board's class and, for a slot line, the module
+table), so no caller can reach a pin the board does not offer even by bypassing the service; the
+policy is an inline function in the header, shared by the production transport
+(`lab_transport_hal.c`, a thin wrapper over `stark_hal_gpio_*`) and the test one
+(`test/emu/storage_image/components/stark_lab_transport`, built on `test/fake/fake_lab.c`: pads with
+an external source, wires between pads and faults), so neither can touch what the policy refuses.
+Production has no fake mode and no simulator branch.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -1073,6 +1136,7 @@ only on hardware at V1; the host and the test image run the same service and pol
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); the fixed transmit policy and the gated replay of a saved capture implemented (§6.9g, STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
+| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO, measurement, I²C, UART and SPI tools and the self-test are planned (ADR-0023, TASKS STARK-0702…0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
@@ -1100,6 +1164,7 @@ app_main()
  ├─ stark_ir_init()                        – RMT RX channel + IR task, RX off (STARK-0303)
  ├─ stark_nfc_init()                       – PN532 detection on the I2C bus, field off (STARK-0402)
  ├─ stark_module_init()                    – slots read twice, then a 1 s polling task (STARK-0502)
+ ├─ stark_lab_init()                       – opens the lab transport, logs the pins on offer; no task (STARK-0701)
  └─ stark_subghz_init()                    – the Sub-GHz task: claims a slot that declares a radio (STARK-0601)
 ```
 
@@ -1189,9 +1254,9 @@ to set differently (ADR-0010).
   | universal | `stark_err` (any layer may require it; it requires nothing) |
   | L0 | `stark_board` |
   | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018), `stark_nfc_transport` (the PN532's I²C port, ADR-0020), `stark_module_transport` (ID EEPROMs' I²C port, ADR-0021) |
-  | (L3, a port) | `stark_subghz_transport` (the CC1101's SPI and GDO port, ADR-0022): a hardware port like the three above, but it uses `stark_module`'s lease and SPI device, so it is classed L3 and reaches `stark_module` over a same-layer edge |
+  | (L3, a port) | `stark_subghz_transport` (the CC1101's SPI and GDO port, ADR-0022) and `stark_lab_transport` (the lab's pad, I²C, SPI and UART port, ADR-0023): hardware ports like the three above, but they use `stark_module`'s lease, SPI device or table, so they are classed L3 and reach `stark_module` over a same-layer edge |
   | L2 | `stark_gfx` (the only all-pure component) |
-  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port), `stark_nfc` (L2 NFC core + L3 PN532 task), `stark_module` (L2 descriptor and discovery core + L3 task), `stark_subghz` (L2 register, driver and service cores + L3 task) |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port), `stark_nfc` (L2 NFC core + L3 PN532 task), `stark_module` (L2 descriptor and discovery core + L3 task), `stark_subghz` (L2 register, driver and service cores + L3 task), `stark_lab` (L2 pad cores + L3 service, STARK-0701) |
   | L4 | `stark_ui`, `stark_app` |
   | L5 | every `apps/app_*` |
   | root | `main` — the composition root, may require anything |
@@ -1206,7 +1271,10 @@ to set differently (ADR-0010).
   `stark_module → stark_event` (table and capability changes, STARK-0502) and
   `stark_subghz → stark_event`, `stark_subghz → stark_module` (the claim) and
   `stark_subghz → stark_subghz_transport` (the chip's wires), and
-  `stark_subghz_transport → stark_module` (the lease and SPI device), all STARK-0601. Pure
+  `stark_subghz_transport → stark_module` (the lease and SPI device), all STARK-0601, and
+  `stark_lab → stark_event` (offer-change events), `stark_lab → stark_module` (the table that
+  decides which slot pins are offered), `stark_lab → stark_lab_transport` (the pads' wires) and
+  `stark_lab_transport → stark_module` (its pin guard reads the table), all STARK-0701. Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with

@@ -79,8 +79,8 @@ deliberately.
 | `SUBGHZ_CS` | 40 | V0.5/V0.6 | Slot 0 `MOD_CS` (§6); CC1101-class module on SPI2 |
 | `SUBGHZ_GDO0` | 41 | V0.5/V0.6 | Slot 0 `MOD_IRQ0` |
 | `SUBGHZ_GDO2` | 42 | V0.5/V0.6 | Slot 0 `MOD_IRQ1` |
-| `LAB_UART_TX` | 38 | V0.7 | UART1, level-limited, series-protected; a lab pin (§2.4) |
-| `LAB_UART_RX` | 39 | V0.7 | A lab pin (§2.4) |
+| `LAB_UART_TX` | 38 | V0.7 | UART1, level-limited, series-protected; a lab pin (§2.4) — in `stark_board` since STARK-0701 |
+| `LAB_UART_RX` | 39 | V0.7 | A lab pin (§2.4) — in `stark_board` since STARK-0701 |
 
 **DevKitC-1 caveat:** the on-board addressable RGB LED sits on **GPIO 48** (board rev
 v1.0) or **GPIO 38** (rev v1.1). Both are only used from V0.3/V0.7 onward, and in both
@@ -128,6 +128,11 @@ flash/PSRAM pins are not offered in any mode, not even to read.
 | `LAB` | 38, 39 (`LAB_UART_TX/RX`) | always; the UART tool owns them while it runs |
 | `SLOT` | a slot's `MOD_CS` and `MOD_IRQ0/1`: 40, 41, 42 for slot 0; none for slot 1 | only while that slot reads `ABSENT` (no ID EEPROM answered); withdrawn at once, and driven to hi-Z, when a module appears or a driver leases the slot |
 | `RESERVED` | everything else, and any number outside 0 to 48 | never |
+
+The firmware names the offered pins `LAB_UART_TX`, `LAB_UART_RX`, `MOD0_CS`, `MOD0_IRQ0` and
+`MOD0_IRQ1` (board-neutral: slot 0's lines are `SUBGHZ_CS` and `SUBGHZ_GDO0/2` in §2.2, but a lab
+tool does not know what a slot carries). A pin that is not offered is refused by the lab service
+and again by its transport, before any hardware is touched.
 
 So the board offers two pins, or five with an empty slot 0. This board spends all 25 usable
 GPIOs; a header of spare lab pins is a V1 hardware requirement.

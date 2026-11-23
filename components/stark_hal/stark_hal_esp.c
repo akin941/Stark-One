@@ -113,6 +113,80 @@ stark_err_t stark_hal_gpio_config_output(int pin, bool initial)
     return stark_err_from_esp(gpio_set_level(pin, initial ? 1 : 0));
 }
 
+/*
+ * NOTE: gpio_config() reserves a pad it makes an output (esp_gpio_reserve) and warns `gpio:
+ * conflict found for GPIO[n]` on every later output configuration of the same pad, a reservation
+ * that stays until gpio_reset_pin() revokes it (esp-emu 0.44.0 run, docs/VALIDATION.md §2). The
+ * lab pads therefore track the pads this HAL made outputs: a drive of a pad that is already an
+ * output only sets the level, and any other configuration of it resets the pin first, which also
+ * detaches whatever the pad was routed to. Callers are serialised (the lab service's mutex).
+ */
+static uint64_t s_lab_out_mask;
+
+static void lab_release_output(int pin)
+{
+    if (((s_lab_out_mask >> pin) & 1u) != 0u) {
+        (void)gpio_reset_pin((gpio_num_t)pin);
+        s_lab_out_mask &= ~(1ULL << pin);
+    }
+}
+
+stark_err_t stark_hal_gpio_config_in(int pin, stark_hal_pull_t pull)
+{
+    if (!STARK_HAL_GPIO_IN_RANGE(pin)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    lab_release_output(pin);
+    gpio_config_t cfg = {
+        .pin_bit_mask = 1ULL << pin,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = pull == STARK_HAL_PULL_UP ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
+        .pull_down_en = pull == STARK_HAL_PULL_DOWN ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    return stark_err_from_esp(gpio_config(&cfg));
+}
+
+stark_err_t stark_hal_gpio_hiz(int pin)
+{
+    return stark_hal_gpio_config_in(pin, STARK_HAL_PULL_NONE);
+}
+
+stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial)
+{
+    if (!STARK_HAL_GPIO_IN_RANGE(pin)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    /* NOTE: the weakest strength and the level are in place before the output is enabled, so
+     * the pad never drives harder or to another level than the caller asked for. */
+    esp_err_t err = gpio_set_drive_capability((gpio_num_t)pin, GPIO_DRIVE_CAP_0);
+    if (err == ESP_OK) {
+        err = gpio_set_level((gpio_num_t)pin, initial ? 1 : 0);
+    }
+    if (err == ESP_OK && ((s_lab_out_mask >> pin) & 1u) == 0u) {
+        gpio_config_t cfg = {
+            .pin_bit_mask = 1ULL << pin,
+            .mode = GPIO_MODE_INPUT_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        err = gpio_config(&cfg);
+        if (err == ESP_OK) {
+            s_lab_out_mask |= 1ULL << pin;
+        }
+    }
+    gpio_drive_cap_t cap = GPIO_DRIVE_CAP_3;
+    if (err == ESP_OK) {
+        err = gpio_get_drive_capability((gpio_num_t)pin, &cap);
+    }
+    if (err != ESP_OK || cap != GPIO_DRIVE_CAP_0) {
+        (void)stark_hal_gpio_hiz(pin);
+        return err != ESP_OK ? stark_err_from_esp(err) : STARK_ERR_IO;
+    }
+    return STARK_OK;
+}
+
 bool stark_hal_gpio_read(int pin)
 {
     /* gpio_get_level() does no validation of its own and takes gpio_num

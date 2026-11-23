@@ -160,6 +160,7 @@ commit. Reserved prefixes:
 | `ir:` | `stark_ir` | `ir: init rx=48 tx=47` / `ir: rx on` / `ir: rx NEC addr=0x10 cmd=0x12` / `ir: rx RAW n=67` (STARK-0303) / `ir: tx NEC addr=0x00 cmd=0x12 carrier=38000 dur=68 repeats=0` / `ir: tx done` (STARK-0304) |
 | `irapp:` | IR app | `irapp: view NEC 00/12` / `irapp: saved ir_0001.ir` / `irapp: save refused: no card` (STARK-0305) |
 | `storageapp:` | Storage app | `storageapp: status mounted` / `storageapp: eject requested` / `storageapp: mount requested` (STARK-0202) / `storageapp: wtest ok bytes=102400 crc=<hex> frames=<n>` / `storageapp: wtest failed: <err> at <offset>` (STARK-0203) |
+| `lab:` | `stark_lab` | `lab: pins 38 39` / `lab: pin 40 withdrawn (slot 0)` / `lab: contention pin 38` (STARK-0701; `pins` lists the offer at boot and after each change) |
 
 **Scenario budget:** ≤ 20 s of emulated time each. Emulator scenarios are free and
 all run on every push and pull request. (Wokwi's quota once forced a push-only smoke
@@ -206,6 +207,8 @@ that milestone before a scenario depends on them.
 | V0.6 | `v06-subghz-absent.toml` | Production image: slot 0 generic, no radio declared, Sub-GHz dimmed and skipped, boot heap above the gate |
 | V0.6 | `storage/v06-*.toml`, `soak/v06-soak.toml` | Test image with the fake-CC1101 transport: detection, RSSI meter, band scan, capture, save, decode, gated replay with its refusals and the own-receiver round trip; the 60 s soak runs detect, meter, scan, capture, save, decode, a replay and a refusal, and the module lost and replugged, twice. Integration evidence, not RF |
 | V0.4 | `storage/v04-*.toml`, `soak/v04-soak.toml` | Test image with the fake-PN532 transport: detection, identification, 20/20 reads, confirmed NDEF write + read-back, dumps, faults and recovery; 60 s soak. Not RF evidence |
+| V0.7 | `v07-lab-boot.toml` | Production image: the lab offers exactly the two lab UART pins (`lab: pins 38 39`, slot 0 reads generic), nothing is driven, boot heap above the gate (STARK-0701) |
+| V0.7 | `storage/v07-pins.toml` | Test image with the pad-model transport (the fifth and last substitution, ADR-0023): slot 0 empty offers `38 39 40 41 42`; a module appearing logs each slot pin withdrawn; it leaving offers them again. Integration evidence, not pad evidence |
 | V0.7 | `v07-i2c-scan.toml` | Scanner finds esp-emu's built-in I²C EEPROM (and nothing else) |
 | V0.7 | `v07-uart-loopback.toml` | UART bridge round-trips via esp-emu's `--uart1-tcp` side channel |
 

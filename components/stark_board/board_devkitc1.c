@@ -38,8 +38,10 @@ static const stark_board_pins_t s_pins = {
     .sd_cs = 8,
     .i2c_sda = 1,
     .i2c_scl = 2,
-    .ir_tx = 47, /* HARDWARE.md §2.2; STARK-0303 */
-    .ir_rx = 48, /* also the DevKitC-1 v1.0 RGB LED: cosmetic flicker only */
+    .ir_tx = 47,       /* HARDWARE.md §2.2; STARK-0303 */
+    .ir_rx = 48,       /* also the DevKitC-1 v1.0 RGB LED: cosmetic flicker only */
+    .lab_uart_tx = 38, /* HARDWARE.md §2.2, §2.4; STARK-0701: a lab pin, always offered */
+    .lab_uart_rx = 39,
     .tft_spi_hz = CONFIG_STARK_DISPLAY_SPI_HZ,
     /* HARDWARE.md §6, ADR-0021 §5: slot 1 is identification only, and MOD_EN has
      * no GPIO, until the V1 board allocates them. */

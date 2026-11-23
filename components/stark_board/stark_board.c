@@ -14,7 +14,7 @@ stark_err_t stark_board_validate(const stark_board_pins_t *pins)
     }
 
     /* Every scalar/array pin field, upper-bounded generously. */
-    int assigned[7 + STARK_KEY_COUNT + 7 + 4 * STARK_BOARD_MODULE_SLOTS];
+    int assigned[7 + STARK_KEY_COUNT + 9 + 4 * STARK_BOARD_MODULE_SLOTS];
     int count = 0;
 
 #define STARK_BOARD_COLLECT(pin)                                                                   \
@@ -41,6 +41,8 @@ stark_err_t stark_board_validate(const stark_board_pins_t *pins)
     STARK_BOARD_COLLECT(pins->i2c_scl);
     STARK_BOARD_COLLECT(pins->ir_tx);
     STARK_BOARD_COLLECT(pins->ir_rx);
+    STARK_BOARD_COLLECT(pins->lab_uart_tx);
+    STARK_BOARD_COLLECT(pins->lab_uart_rx);
     for (int i = 0; i < STARK_BOARD_MODULE_SLOTS; i++) {
         STARK_BOARD_COLLECT(pins->module[i].cs);
         STARK_BOARD_COLLECT(pins->module[i].irq0);
@@ -70,4 +72,73 @@ stark_err_t stark_board_validate(const stark_board_pins_t *pins)
     }
 
     return STARK_OK;
+}
+
+/* ---- Pin safety (STARK-0701, ADR-0023 §3) ----------------------------------- */
+
+/* The ESP32-S3's GPIO numbers; anything outside is RESERVED without being looked up. */
+#define STARK_BOARD_GPIO_MAX 48
+
+/* NOTE: board-neutral names. Slot 0's lines are SUBGHZ_CS, SUBGHZ_GDO0 and SUBGHZ_GDO2 in
+ * HARDWARE.md §2.2, but a lab tool offers them as the slot's generic wires. */
+static const char *const k_slot_line_names[STARK_BOARD_MODULE_SLOTS][3] = {
+    {"MOD0_CS", "MOD0_IRQ0", "MOD0_IRQ1"},
+    {"MOD1_CS", "MOD1_IRQ0", "MOD1_IRQ1"},
+};
+
+size_t stark_board_lab_pins_of(const stark_board_pins_t *pins, stark_board_lab_pin_t *out,
+                               size_t max)
+{
+    if (pins == NULL) {
+        return 0;
+    }
+    size_t n = 0;
+
+#define STARK_BOARD_OFFER(gpio_, name_, cls_, slot_)                                               \
+    do {                                                                                           \
+        if ((gpio_) >= 0 && (gpio_) <= STARK_BOARD_GPIO_MAX) {                                     \
+            if (out != NULL && n < max) {                                                          \
+                out[n] = (stark_board_lab_pin_t){(gpio_), (name_), (cls_), (slot_)};               \
+            }                                                                                      \
+            n++;                                                                                   \
+        }                                                                                          \
+    } while (0)
+
+    STARK_BOARD_OFFER(pins->lab_uart_tx, "LAB_UART_TX", STARK_PIN_LAB, -1);
+    STARK_BOARD_OFFER(pins->lab_uart_rx, "LAB_UART_RX", STARK_PIN_LAB, -1);
+    for (int i = 0; i < STARK_BOARD_MODULE_SLOTS; i++) {
+        STARK_BOARD_OFFER(pins->module[i].cs, k_slot_line_names[i][0], STARK_PIN_SLOT, i);
+        STARK_BOARD_OFFER(pins->module[i].irq0, k_slot_line_names[i][1], STARK_PIN_SLOT, i);
+        STARK_BOARD_OFFER(pins->module[i].irq1, k_slot_line_names[i][2], STARK_PIN_SLOT, i);
+    }
+#undef STARK_BOARD_OFFER
+    return n;
+}
+
+stark_pin_class_t stark_board_pin_class_of(const stark_board_pins_t *pins, int gpio, int *slot)
+{
+    if (slot != NULL) {
+        *slot = -1;
+    }
+    stark_board_lab_pin_t tab[STARK_BOARD_LAB_PINS_MAX];
+    size_t n = stark_board_lab_pins_of(pins, tab, STARK_BOARD_LAB_PINS_MAX);
+    for (size_t i = 0; i < n; i++) {
+        if (tab[i].gpio == gpio) {
+            if (slot != NULL) {
+                *slot = tab[i].slot;
+            }
+            return tab[i].cls;
+        }
+    }
+    return STARK_PIN_RESERVED;
+}
+
+stark_pin_class_t stark_board_pin_class(int gpio, int *slot)
+{
+    return stark_board_pin_class_of(stark_board_pins(), gpio, slot);
+}
+
+size_t stark_board_lab_pins(stark_board_lab_pin_t *out, size_t max)
+{
+    return stark_board_lab_pins_of(stark_board_pins(), out, max);
 }

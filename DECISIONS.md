@@ -1052,7 +1052,8 @@ regulatory change for 433 MHz SRD, or a need for another band.
 **Status:** accepted (2026-11-23). The owner delegated the V0.7 product decisions to the
 planner and asked for autonomous progress; every decision below is recorded here rather
 than taken silently. Applies ADR-0017 to V0.7 as ADR-0019 to ADR-0022 applied it to V0.3
-to V0.6. Plan only: no product code exists yet (STARK-0701 to STARK-0708 build it).
+to V0.6. STARK-0701 to STARK-0708 build it; the first (pin safety and the lab seam) has landed, see the
+addendum at the end.
 
 **Context.** ROADMAP V0.7 adds the everyday bench tools: a GPIO app with a safe-pin
 allowlist, frequency and duty measurement without PCNT or MCPWM, an I²C scanner with
@@ -1272,3 +1273,49 @@ evidence. `docs/bringup/v1-labtools.md` is written by STARK-0708 and filled in a
 **Revisit trigger:** an esp-emu with external pad stimulus or a multi-device I²C model
 (`--i2c-dev`, co-simulation) which could replace parts of the fake, the V1 board's lab
 header, the first real measurement of ISR latency, or a need for a USB bridge.
+
+**Addendum (2026-11-24, STARK-0701).** The emulator behaviours the Context left unprobed were
+run on the pinned esp-emu 0.44.0 (a throwaway probe task on the production image; every row is
+in docs/VALIDATION.md §2). *Works:* an output pad reads back as an input; a pad the firmware
+toggles itself raises its GPIO interrupt (20 of 20 edges); the I²C sweep over 0x08 to 0x77
+finds exactly 0x50. *Does not:* **pull-down reads** (an input reads high with a pull-down, a
+pull-up or no pull on every unconnected pad tried, and a pad released after being driven low
+reads high too) and **LEDC reaching a pad** (a pad routed to LEDC reads low at every duty).
+*A correction:* the built-in EEPROM at 0x50 **accepts writes** and returns them, so STARK-0704's
+refusal of writes to it (§5) is firmware's alone; its production-image scenario checks that a
+refused write left the register at zero. Consequences for the later tasks: the pad-state probe
+(§3) reports every unconnected pad on the production image as driven high, and PWM output and
+its measurement (§4) are proven on the host and the test image only; no acceptance criterion
+may depend on either in the production image. The decisions STARK-0701 took where the plan
+was silent, each the smallest sound choice and none changing a rule above:
+
+1. **Board API.** `stark_board_lab_pins()` copies into a caller buffer instead of handing out a
+   static table (no lazy initialisation to race), and every pin function has a map-taking form
+   (`stark_board_pin_class_of()`, `stark_board_lab_pins_of()`) so the host tests can move a pin.
+   Names are board-neutral (`MOD0_CS`, `MOD0_IRQ0`, `MOD0_IRQ1`): slot 0's lines are
+   `SUBGHZ_*` in HARDWARE §2.2, but the lab does not know what a slot carries.
+2. **The transport guards slot lines too.** `stark_lab_pad_ok()` reads the module table, so
+   "again from the transport" holds for a slot pin and not only for the static class; the
+   layer edge `stark_lab_transport -> stark_module` therefore exists now rather than at
+   STARK-0706. One call is exempt: `pad_hiz` accepts any classified pin, because withdrawal must
+   be able to release a pin that has just stopped being offered.
+3. **Hot-plug.** Every call checks the *live* offer, and the refresh runs from
+   `main/module_bridge.c` on `STARK_SYS_MODULE` (the apps may call it too), so the hi-Z and the
+   log happen with no app open. The service logs `lab: pin <n> withdrawn (slot <s>)` for every
+   pin that leaves the offer, held or not (the hi-Z is for held pins), and `lab: pins <list>`
+   whenever the offer changes; `STARK_LAB_EVT_PINS` is published on each. An `ABSENT` slot
+   cannot hold a valid lease (a claim needs `KNOWN`, removal invalidates it), so "unleased" needs
+   no separate query.
+4. **A failed drive also clears the arm** (contention, a transport error), not only release,
+   withdrawal and leaving the app: after a contention the user confirms again.
+5. **Pad state.** Pull-up high and pull-down low is floating; high with both is driven high; low
+   with both is driven low; low with the pull-up and high with the pull-down is `STARK_ERR_IO`
+   (the pad moved while it was looked at) and ends in hi-Z.
+6. **Small facts.** Owner names are cut to 15 characters. `stark_lab` has no Kconfig options
+   (every limit is a constant), so it has no `Kconfig.stark`. No `emu_lab_*` poke is added: nothing
+   drives a pad before the GPIO app (STARK-0702), which brings them with it.
+7. **HAL pad hygiene (ESP-IDF).** `gpio_config()` reserves an output pad and warns `gpio:
+   conflict found` on every later output configuration, and LEDC refuses a reserved pad;
+   `gpio_reset_pin()` revokes. `stark_hal_gpio_*` therefore tracks the pads it made outputs,
+   sets only the level when a driven pad is driven again, and resets the pin on any other
+   configuration. STARK-0702 relies on this before it routes a pad to LEDC.

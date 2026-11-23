@@ -11,6 +11,7 @@
 #include "stark_input.h"
 #include "stark_module.h"
 #include "stark_ir.h"
+#include "stark_lab.h"
 #include "stark_nfc.h"
 #include "stark_subghz.h"
 #include "stark_settings.h"
@@ -184,6 +185,14 @@ void app_main(void)
         STARK_LOGE("boot", "module init failed: %s", stark_err_str(err));
     }
     module_bridge_start();
+
+    /* Not boot-critical: the lab only offers pins; it drives none until an app asks and the
+     * user confirms (STARK-0701, ADR-0023 §3). After the module table is settled, because a
+     * slot's pins are on offer only while the slot reads empty. */
+    err = stark_lab_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "lab init failed: %s", stark_err_str(err));
+    }
 
     /* Not boot-critical: without a radio module the task only says so once
      * (STARK-0601). After the module service, whose claims it needs. */

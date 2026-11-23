@@ -7,6 +7,7 @@
 #include "stark_app.h"
 #include "stark_event.h"
 #include "stark_ir.h"
+#include "stark_lab.h"
 #include "stark_module.h"
 #include "stark_nfc.h"
 #include "stark_subghz.h"
@@ -31,6 +32,8 @@ static void on_system(const stark_event_t *e, void *ctx)
         confirm_subghz();
     } else if (e->system.id == STARK_SYS_MODULE) {
         stark_app_set_caps(stark_module_caps());
+        /* A slot's pins are on offer to the lab only while it reads empty (STARK-0701). */
+        stark_lab_refresh();
     }
 }
 

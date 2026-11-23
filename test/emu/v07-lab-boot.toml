@@ -1,0 +1,23 @@
+# STARK-0701 on the production image (ADR-0023 §3, §9). The lab service starts after the
+# module table is read; esp-emu 0.44.0 answers at 0x50 with zeros, so slot 0 reads generic
+# (a device answered) and its three lines are withdrawn: the board offers exactly the two
+# lab UART pins, 38 and 39. Nothing is driven (the service drives a pin only when an app
+# asks and the user confirms); the boot, the heap gate and the diag lines are unaffected.
+# Not connector evidence: the emulator shows no pad moving (docs/VALIDATION.md §2).
+name = "emu-v07-lab-boot"
+end_ms = 3500
+heap_min = 200000
+expect = [
+    "module: slot 0 generic (bad magic)",
+]
+expect_re = [
+    "lab: pins 38 39$",
+]
+forbid = [
+    "lab init failed",
+    "lab: pins 38 39 4",
+    "withdrawn",
+    "contention",
+    "gpio: conflict",
+    "panic",
+]

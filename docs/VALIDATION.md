@@ -71,6 +71,9 @@ bump is a deliberate change with a full emulator run — never "latest".
 | I²C master with nothing on the bus (V0.4 planning) | ✅ ESP-IDF's `i2c_basic` example on the esp32s3 model: `i2c_new_master_bus` succeeds and a transaction to an absent address returns `ESP_ERR_INVALID_RESPONSE` (0x108, ESP-IDF's address-NACK result) at once — no hang. esp-emu 0.44.0 has **no** external I²C device model, so the production image sees no PN532 (ADR-0020). **Corrected at STARK-0502:** the bus is not completely empty. `i2c_master_probe` and a read at **0x50** succeed and read all zeros; 0x10, 0x24, 0x51 and 0x52 NACK. The behaviour is undocumented and has no CLI option. A descriptor-less device at 0x50 is what the production image's slot 0 sees (`generic (bad magic)`) |
 | RMT TX → RX loopback (`--rmt-loopback`, V0.3 planning) | ✅ `0:2` on esp32s3 (first TX → first RX channel): ESP-IDF's `ir_nec_transceiver` example decodes its own NEC frames; `0:4` delivers nothing. Baseband, exact durations, no carrier (ADR-0019 §2) |
 | GDB writes to a RAM global (`pokes`, storage test image, STARK-0202) | ✅ `emu_medium_present` flips stick; removal and reinsertion land at the scheduled emulated time |
+| GPIO output read back as an input (`GPIO_MODE_INPUT_OUTPUT`, STARK-0701 probe, 2026-11-24) | ✅ on pads 38, 39, 40 and 3: driven 0 reads 0, driven 1 reads 1; `gpio_set_drive_capability(GPIO_DRIVE_CAP_0)` then `gpio_get_drive_capability` returns `GPIO_DRIVE_CAP_0`. The lab's contention check (drive, wait, read back) therefore runs for real. The drive strength itself has no observable effect |
+| GPIO any-edge interrupt from a pad the firmware itself toggles (STARK-0701 probe) | ✅ 20 software toggles of pad 38 gave 20 ISR calls on pad 38 and none on pad 39 (no wire joins two pads). Edge capture of a self-driven pad is available to a test image; an *external* signal is still not |
+| I²C sweep 0x08 to 0x77 and register access (STARK-0701 probe) | ✅ 112 `i2c_master_probe` calls (5 ms timeout each, about 3.2 ms of emulated time in all): exactly **0x50** answers; a write to 0x51 at 400 kHz returns `ESP_ERR_INVALID_RESPONSE` (264, the address NACK). The built-in EEPROM at 0x50 reads zeros **and accepts writes**: A5 5A written at register 0x10 is read back from register 0x10 (a plain read after a write returned zeros). Correction to the "reads zeros" fact above: the bus does not refuse a write there, so STARK-0704's refusal of writes to 0x50 is firmware's, never the bus's |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 
 **Not available, and not faked:**
@@ -82,6 +85,9 @@ bump is a deliberate change with a full emulator run — never "latest".
 | GDB breakpoints in code running on **core 1** are never reported (0.44.0): the core stalls silently. | Injection uses the input service on core 0 (`esp_timer` task, default affinity). Nothing on the UI task (core 1) can be probed with breakpoints — so no frame capture in the emulator. Should the timer task move cores, every input scenario fails loudly (the schedule never completes), it cannot pass falsely. |
 | LEDC/buzzer waveform, status-LED level and backlight are not observable from outside. | Buzzer/LED/backlight logic stays host- or HIL-verified (§3.2). |
 | Timing is modelled. | Informational only; performance gates stay on hardware at V1 (ADR-0011). |
+| **Pull resistors are not modelled** (STARK-0701 probe): an input configured with a pull-down, a pull-up or no pull reads **high** on every unconnected pad tried (38, 39, 40, 3), with the input buffer off or on, and a pad released after being driven low also reads high (floating = high) | The lab's pad-state probe (each pull for 2 ms, `stark_lab_state()`) can only report "driven high" for an unconnected pad on the production image, and a pull-down read never returns low. Host tests and the test image's pad model carry that logic; no acceptance criterion depends on it. The earlier fact stands: a pull-up read is high |
+| **LEDC does not reach a pad** (STARK-0701 probe): a pad routed to LEDC (timer 2, channel 2, 10 bit) at 1 kHz 50 %, at 100 % duty and at 20 Hz read low in every sample (4 000 at 1 kHz, 40 000 at 20 Hz) with no pad interrupt, whether the input buffer was enabled by `gpio_set_direction` or not | The PWM output and the frequency and duty measurement of one pad against another (STARK-0702, 0703) are proven on the host and the test image only. LEDC itself configures (`ledc_timer_config`, `ledc_channel_config` return OK) |
+| ESP-IDF, not the emulator (seen in the same runs): `gpio_config()` reserves a pad it makes an output and logs `gpio: conflict found for GPIO[n]` on every later output configuration of the pad, and LEDC logs `GPIO n is not usable, maybe conflict with others` for a reserved pad; `gpio_reset_pin()` revokes the reservation. A 20 Hz LEDC timer at 10 bit on an 80 MHz clock needs a divider above the 10-bit integer limit, and reconfiguring a configured timer for it fails with `timer clock conflict` | `stark_hal_gpio_*` lab pad calls track the pads they made outputs and reset them on release (no warning per drive); the PWM floor of 100 Hz in ADR-0023 §4 is the right one (80 MHz / (100 × 1024) = 781 < 1 024) |
 
 **Input injection.** `scripts/test_emu.py` sets a breakpoint on the first statement of
 `input_core_update()` and, while the emulated `now_ms` lies inside a scenario's press
@@ -333,6 +339,33 @@ receiving is never claimed below V1.
 | 2. Raw capture reproduces documented timing | spec-derived scenes captured, saved, parsed back, measured within ±1 symbol tick, decoded | `v06-capture`, `v06-decode`: fingerprints equal the generator's | a capture of our own remote against its datasheet |
 | 3. Replay triggers our own receiver | the replay leaves GDO0 symbol for symbol; the own receiver captures it back | `v06-replay`: 192 symbols with the file's fingerprint | our own receiver reacts |
 | 4. TX impossible without confirmation, duty cap respected | every refusal path; `PATABLE` only ever 0x60; two simulated hours of a greedy sender | `v06-replay`: boot lock, cancel, one send, off-time refusal | power and on-air time on a spectrum analyser |
+
+### 3.10 V0.7 — lab tools (ADR-0023)
+
+V0.7 completion means **software / lab-protocol verified**: a pad driven, a wire measured or a
+real peripheral answering is never claimed below V1 (ROADMAP V1 exit 13). Landed so far:
+STARK-0701 (pin safety and the lab seam); the apps and tools follow in STARK-0702 to 0707.
+
+**What runs where (STARK-0701).**
+* **Host:** the board's pin classes for every number from -1 to 64 and the offer table derived
+  from the pin map (`test_board_pins`); the test-only pad model (`test_fake_lab`: hi-Z, pulls,
+  outputs, external sources, wires, faults); the pure pad decisions over the real module core and
+  the fake 24C02 (`test_lab_pins`: the offer for each slot state, acquire, the arm, contention,
+  the state probe, hot-plug withdrawal, a sweep of every service call against every number); the
+  production transport over the fake HAL (`test_lab_service`: the sweep again at the transport).
+  `lab_pins.c`, `lab_transport_hal.c`, `fake_lab.c` and the new part of `stark_board.c` run at
+  100 % lines under ASan and UBSan.
+* **Emulator, production image:** the lab starts after the module table and logs the offer:
+  slot 0 reads generic (esp-emu answers at 0x50), so exactly `lab: pins 38 39`
+  (`v07-lab-boot`). Nothing is driven.
+* **Emulator, test image:** `stark_lab_transport` is substituted by the pad model (the fifth and
+  last allowed substitution, checked by `scripts/check_emu_image.py`); the offer follows slot 0
+  through production code and a pulled module logs each withdrawn pin (`storage/v07-pins`).
+* **Probes** (docs/VALIDATION.md §2): the output pad reads back and a self-driven pad raises its
+  GPIO interrupt on esp-emu 0.44.0; pull-down reads and LEDC on a pad do not work there, so the
+  tests that need them run on the host and the test image only.
+* **Not proven anywhere before V1:** that the offered pins are the only reachable ones, drive
+  strength, hi-Z on the board, the current into or out of a pin, 3.3 V tolerance.
 
 ---
 

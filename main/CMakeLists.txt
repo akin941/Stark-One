@@ -48,6 +48,7 @@ idf_component_register(
         stark_event
         stark_input
         stark_ir
+        stark_lab
         stark_module
         stark_nfc
         stark_settings

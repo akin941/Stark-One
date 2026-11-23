@@ -50,6 +50,11 @@ LAYERS = {
     # The CC1101's SPI and GDO port. A port, but it uses stark_module's lease and SPI
     # device, so it is classed with its consumer rather than below stark_module.
     "stark_subghz_transport": 3,
+    # The lab service (STARK-0701…0707, ADR-0023): L2 pad/measurement cores + L3 service, and its
+    # one transport seam (pads now; I2C, SPI on a leased slot and the lab UART later). The
+    # transport reads stark_module's table for its pin guard, so like the CC1101's it is L3.
+    "stark_lab": 3,
+    "stark_lab_transport": 3,
     "stark_ui": 4,
     "stark_app": 4,
 }
@@ -70,6 +75,10 @@ SIDEWAYS = {
     ("stark_subghz", "stark_module"),  # claims the slot that declares a radio (STARK-0601)
     ("stark_subghz", "stark_subghz_transport"),  # the chip's wires (STARK-0601)
     ("stark_subghz_transport", "stark_module"),  # the claimed lease and SPI device (STARK-0601)
+    ("stark_lab", "stark_event"),  # offer-change events (STARK-0701)
+    ("stark_lab", "stark_module"),  # the module table decides which slot pins are on offer
+    ("stark_lab", "stark_lab_transport"),  # the pads' wires (STARK-0701)
+    ("stark_lab_transport", "stark_module"),  # the pin guard reads the table (STARK-0701)
 }
 
 PURE = {"stark_err", "stark_gfx"}
