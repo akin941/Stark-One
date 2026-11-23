@@ -202,6 +202,17 @@ GPIO allocation (ADR-0021 §5):
 | 0 | 0x50 | 40 (`SUBGHZ_CS`) | 41 (`SUBGHZ_GDO0`) | 42 (`SUBGHZ_GDO2`) | none: tied high on the prototype |
 | 1 | 0x51 | none: identification only | none | none | none |
 
+**The CC1101 module (ADR-0022, STARK-0601).** Slot 0's EEPROM declares `SUBGHZ | MOD_SPI |
+MOD_IRQ` (`0x38`). `MOD_CS` is the chip's `CSn`; `MOD_IRQ0` carries `GDO0` and `MOD_IRQ1`
+carries `GDO2`. The chip runs in asynchronous serial mode: `GDO2` is the demodulated data
+out of the chip (`IOCFG2` 0x0D) and `GDO0` is the data into the chip while transmitting
+(`IOCFG0` 0x2D; high impedance, 0x2E, while receiving). The clock is the module's 26 MHz
+crystal, which the frequency and data-rate registers assume. The firmware reads `PARTNUM`
+(0x00) and `VERSION` (0x14, or 0x04 on early silicon) before it believes the module is a
+CC1101. After chip select the CC1101 pulls `MISO` low when its crystal is stable
+(`CHIP_RDYn`); the firmware does not yet wait for that edge, so the module's real reset
+and start-up timing is a V1 measurement (`docs/bringup/v1-subghz.md`, STARK-0606).
+
 All 25 usable GPIOs are already allocated (§1, §2), and the connector has no presence
 pin. `MOD_EN` and the lines of a second wired slot are open until the V1 board. IR stays
 onboard on its own pins; the PN532 is a bus device at 0x24 with no EEPROM of its own.

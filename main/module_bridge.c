@@ -9,10 +9,17 @@
 #include "stark_ir.h"
 #include "stark_module.h"
 #include "stark_nfc.h"
+#include "stark_subghz.h"
 
 static void confirm_nfc(void)
 {
     stark_module_confirm(STARK_CAP_NFC, stark_nfc_module() == STARK_NFC_READY);
+}
+
+static void confirm_subghz(void)
+{
+    /* NOTE: the radio is confirmed by the driver's own identification, never by a descriptor. */
+    stark_module_confirm(STARK_CAP_SUBGHZ, stark_subghz_ready());
 }
 
 static void on_system(const stark_event_t *e, void *ctx)
@@ -20,6 +27,8 @@ static void on_system(const stark_event_t *e, void *ctx)
     (void)ctx;
     if (e->system.id == STARK_SYS_NFC && e->system.arg == STARK_NFC_EVT_MODULE) {
         confirm_nfc();
+    } else if (e->system.id == STARK_SYS_SUBGHZ && e->system.arg == STARK_SUBGHZ_EVT_MODULE) {
+        confirm_subghz();
     } else if (e->system.id == STARK_SYS_MODULE) {
         stark_app_set_caps(stark_module_caps());
     }
@@ -36,4 +45,5 @@ void module_bridge_start(void)
     stark_module_provide(STARK_MODULE_BUS, "NFC reader", STARK_CAP_NFC);
     stark_module_confirm(STARK_CAP_IR_TX | STARK_CAP_IR_RX, stark_ir_fitted());
     confirm_nfc();
+    confirm_subghz();
 }

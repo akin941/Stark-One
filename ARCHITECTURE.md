@@ -309,6 +309,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 4 | `STARK_SYS_IR` | `stark_ir` (STARK-0303) | `STARK_IR_EVT_RX` / `_TX_DONE` / `_TX_FAILED` |
 | 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
 | 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
+| 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601); `_RSSI` / `_SCAN_DONE` / `_CAPTURE_DONE` / `_TX_DONE` / `_TX_FAILED` / `_TX_REFUSED` arrive with STARK-0602…0605 |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -908,6 +909,45 @@ unchanged. An app open on a lost reader keeps its own lost view and recovers as 
 an app open the move waits until the app leaves. The Modules app (Device) lists every entry and shows one's details read-only, following
 `STARK_SYS_MODULE`, so a removed module never leaves stale data on screen.
 
+### 6.9g `stark_subghz` (L3) and `stark_subghz_transport` — STARK-0601, ADR-0022
+
+`cc1101_regs.c`, `cc1101_drv.c` and `subghz_svc.c` are pure and host-tested. The band and
+the power cap are constants there, not options: `cc1101_freq_regs()` refuses any frequency
+outside 433.05–434.79 MHz (`STARK_ERR_INVALID_ARG`, before a byte is sent), nothing takes a
+`PATABLE` argument, and the image written with every configuration is `{0x00, 0x60, 0…}`:
+index 0 is the OOK "off" level, index 1 the cap `CC1101_PA_CAP`. The driver runs over an
+injected `xfer`, clock and delay; every wait ends at a deadline and after at most 16 polls,
+so a chip that never answers gives `STARK_ERR_TIMEOUT`. `cc1101_detect()` reads `PARTNUM`
+0x00 and `VERSION` 0x14 or 0x04 and returns what answered either way. `cc1101_strobe()`
+refuses `STX` until STARK-0605 and `SRX` before a configuration; `cc1101_configure()` writes
+the three frequency registers as one burst, so no half-updated word is ever on the chip, and
+reads them back.
+
+`stark_subghz_transport` is the only Sub-GHz code that touches SPI or RMT: `xfer` through
+`stark_module_spi` on the claimed lease, and GDO2 → symbols through an RMT receive channel
+written like `stark_ir`'s. Pin numbers come from the lease, never from this component.
+`tx` returns `STARK_ERR_NOT_SUPPORTED` until STARK-0605: nothing can reach GDO0. The
+emulator test image substitutes the component (fourth substitution, ADR-0022 §3) with one
+built on `test/fake/fake_cc1101.c`; like production it refuses a stale lease. The component
+is class L3 in `check_layers.py`, not L1: it uses `stark_module`'s lease and SPI device,
+which sit at L3.
+
+The service (`subghz_svc.c`, task `stark_subghz`, prio 2, 4 kB static stack, core 0) checks
+the module table every 250 ms. A known slot that declares `SUBGHZ | MOD_SPI | MOD_IRQ` is
+claimed (the claim names the two wiring bits; the radio bit was checked in the table), the
+transport is opened on the lease, the chip is reset and identified by its own answer, the
+433.92 MHz OOK receive profile is written, and only then does the service report ready and
+publish `STARK_SUBGHZ_EVT_MODULE`. `main/module_bridge.c` turns that into
+`stark_module_confirm(STARK_CAP_SUBGHZ)`, so a descriptor alone never sets bit 5 and the bit
+is exclusive and withheld on a conflict like `NFC`. A ready module is identified again on every round; two
+failed checks in a row, a stale lease or a transfer error drop it: transport closed, slot
+released, `subghz: module lost` or `subghz: not a cc1101 (…)`, capability withdrawn. A
+rejected module is identified again after 2 s, then 4 s, then every 8 s while the same
+rejection repeats, and a repeat is not logged again. Logs: `subghz: no module` (once, at the start), `subghz: cc1101 version 0x14`,
+`subghz: not a cc1101 (partnum 0x.. version 0x..)`, `subghz: module lost`, `subghz: module
+not usable: <error>`. Nothing is allocated after init, and the chip is left in IDLE: this
+version neither listens nor transmits.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -917,6 +957,7 @@ an app open the move waits until the app leaves. The Modules app (Device) lists 
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
+| `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI and scan, capture, decoders and gated replay planned (ADR-0022, TASKS STARK-0602…0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
@@ -943,7 +984,8 @@ app_main()
  ├─ stark_storage_init()                   – storage task; mounts in the background (STARK-0201)
  ├─ stark_ir_init()                        – RMT RX channel + IR task, RX off (STARK-0303)
  ├─ stark_nfc_init()                       – PN532 detection on the I2C bus, field off (STARK-0402)
- └─ stark_module_init()                    – slots read twice, then a 1 s polling task (STARK-0502)
+ ├─ stark_module_init()                    – slots read twice, then a 1 s polling task (STARK-0502)
+ └─ stark_subghz_init()                    – the Sub-GHz task: claims a slot that declares a radio (STARK-0601)
 ```
 
 Since STARK-0017 the UI task (`stark_ui_task`, created by `main`) is the event bus's one
@@ -967,6 +1009,7 @@ asserts on the **presence and ordering** of that line, never on the number in it
 | `stark_ir` | 3 | 3 kB (static) | IR captures: symbols → timings → decode → ring → event (STARK-0303), core 0 |
 | `stark_storage` | 2 | 4 kB (static) | Card mount/probe/retry (STARK-0201), core 0. The only caller of the storage medium |
 | `stark_module` | 2 | 2.5 kB (static) | Module slot polling (STARK-0502), core 0. The only caller of the module transport |
+| `stark_subghz` | 2 | 4 kB (static) | Sub-GHz module service (STARK-0601), core 0. The only caller of the Sub-GHz transport |
 | `esp_timer` (input) | high | – | 5 ms key sample → publish events. Never blocks. |
 | `esp_timer` (led/buzzer) | high | – | Heartbeat blink, tone sequence steps. |
 | IDLE/main | – | – | Standard IDF. |
@@ -976,7 +1019,7 @@ asserts on the **presence and ordering** of that line, never on the number in it
 * SPI2 has three users (ADR-0008/0018/0021): `stark_display` (panel transactions, UI
   task), `stark_storage_medium` (the microSD, called only from `stark_storage` under
   its mutex — the storage task or an app worker) and `stark_module_spi.c` (a claimed
-  module's driver, STARK-0503). ESP-IDF's `spi_master` bus lock keeps their transactions
+  module's driver, STARK-0503; the CC1101's, through `stark_subghz_transport`, STARK-0601). ESP-IDF's `spi_master` bus lock keeps their transactions
   apart; `check_layers.py` fails any other direct SPI2 use.
 * Only the event bus crosses task boundaries. No shared mutable globals between tasks.
 * All allocation happens during init. The render and input paths are allocation-free.
@@ -1031,8 +1074,9 @@ to set differently (ADR-0010).
   | universal | `stark_err` (any layer may require it; it requires nothing) |
   | L0 | `stark_board` |
   | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018), `stark_nfc_transport` (the PN532's I²C port, ADR-0020), `stark_module_transport` (ID EEPROMs' I²C port, ADR-0021) |
+  | (L3, a port) | `stark_subghz_transport` (the CC1101's SPI and GDO port, ADR-0022): a hardware port like the three above, but it uses `stark_module`'s lease and SPI device, so it is classed L3 and reaches `stark_module` over a same-layer edge |
   | L2 | `stark_gfx` (the only all-pure component) |
-  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port), `stark_nfc` (L2 NFC core + L3 PN532 task), `stark_module` (L2 descriptor and discovery core + L3 task) |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port), `stark_nfc` (L2 NFC core + L3 PN532 task), `stark_module` (L2 descriptor and discovery core + L3 task), `stark_subghz` (L2 register, driver and service cores + L3 task) |
   | L4 | `stark_ui`, `stark_app` |
   | L5 | every `apps/app_*` |
   | root | `main` — the composition root, may require anything |
@@ -1044,7 +1088,10 @@ to set differently (ADR-0010).
   `stark_settings → stark_event` (change events, STARK-0204) and
   `stark_ir → stark_event` (capture and transmit events, STARK-0303) and
   `stark_nfc → stark_event` (tag and module events, STARK-0403) and
-  `stark_module → stark_event` (table and capability changes, STARK-0502). Pure
+  `stark_module → stark_event` (table and capability changes, STARK-0502) and
+  `stark_subghz → stark_event`, `stark_subghz → stark_module` (the claim) and
+  `stark_subghz → stark_subghz_transport` (the chip's wires), and
+  `stark_subghz_transport → stark_module` (the lease and SPI device), all STARK-0601. Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with

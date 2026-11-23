@@ -52,5 +52,6 @@ idf_component_register(
         stark_nfc
         stark_settings
         stark_storage
+        stark_subghz
         stark_ui
 )

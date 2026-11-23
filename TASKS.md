@@ -4393,6 +4393,52 @@ and `emu_sg_chip = 1` → `subghz: cc1101 version 0x14`, caps include 0x20; `emu
 4. Both emulator scenarios pass; production has no fake or simulator reference; four substitutions exactly.
 5. Pre-existing scenarios and goldens pass unchanged.
 
+**As built.** Differences from the plan, each the smallest sound choice:
+
+* **The transport is class L3, not L1.** `stark_subghz_transport` uses `stark_module`'s
+  lease and SPI device, which are L3, so an L1 component could not require them under
+  `check_layers.py`. It is classed L3 with two same-layer edges (`stark_subghz_transport →
+  stark_module`, `stark_subghz → stark_subghz_transport`), plus `stark_subghz →
+  stark_module` and `→ stark_event`. ARCHITECTURE §10 and the script say so.
+* **A fourth pure core, `subghz_svc.c`.** The service's decisions (find, claim, identify,
+  configure, re-check, drop) are pure over an injected I/O table, so `test_subghz_service.c`
+  runs them against the real module core, the fake 24C02 and the fake CC1101. `stark_subghz.c`
+  is the thin port and task. The event handler cannot run on the service task (the UI task
+  is the bus's one consumer), so the task polls the module table every 250 ms instead of
+  reacting to `STARK_SYS_MODULE`.
+* **The claim names the wiring bits only.** `stark_module_claim()` accepts only `MOD_SPI`
+  and `MOD_IRQ`; the radio bit is checked against the table before claiming.
+* **`PATABLE` is `{0x00, 0x60, 0, 0, 0, 0, 0, 0}`, written with every configuration.** OOK
+  needs index 0 as the "off" level, so "only ever 0x60" is read as: no byte above the cap
+  is ever written and the only non-zero value is 0x60 (the fake counts both). Writing it in
+  receive presets too leaves the chip's power-on default (0xC6, about +10 dBm) overwritten
+  before anything could ever transmit.
+* **No transmit path at all.** `cc1101_strobe()` refuses `STX` (`STARK_ERR_NOT_SUPPORTED`)
+  and `SRX` before a configuration; `stark_subghz_transport_tx()` returns
+  `STARK_ERR_NOT_SUPPORTED` in production and in the test image. STARK-0605 adds both.
+* **Detection also fails closed on a stuck reset.** The service identifies the chip even
+  when the reset times out, so the log says what answered, but a chip whose reset never
+  completes is `subghz: module not usable: timeout`, not ready.
+* **A ready module is identified again every round**, so a chip swapped under a ready
+  module withdraws bit 5 (two failed checks in a row, 0.5 s); a rejected module is identified
+  again after 2 s, then 4 s, then every 8 s while the same rejection repeats, and a repeat
+  is not logged again (found by `storage/v06-detect`: a wrong chip logged a claim every 2 s).
+* **Catalogue.** Entry 32 is the CC1101 module (`0x0A01`, caps `0x38`); entry 33 is a new
+  "unknown bit 6" vector (`0x80000040 | MOD_IRQ`) so the "unknown bits are listed and ignored"
+  tests keep meaning. Entry 10 `unknown_bits` (`0x80000020 | MOD_IRQ`) is unchanged but now
+  declares a radio without `MOD_SPI`: an unsupported combination (generic, "unsupported
+  caps"). `test_module_core`/`test_module_desc` follow.
+* **Pokes.** `emu_sg_chip`, `emu_sg_carrier_khz`, `emu_sg_level`, `emu_sg_own_rx` and
+  `emu_sg_fault` exist now (the air, the own receiver and faults are cheap in the fake);
+  `emu_sg_scene` waits for the scene catalogue of STARK-0603. The modules inspector names
+  bit 5 "Sub-GHz".
+* **No `gen_subghz_vectors.py` yet.** The frequency and data-rate vectors in
+  `test_cc1101_regs.c` were computed in Python from the datasheet formulas and are written
+  out in the test; the generator arrives with the scenes (STARK-0603).
+* **Analogue register values** (`FSCAL`, `TEST`, `AGCCTRL`, the 203 kHz channel filter) are
+  the datasheet's recommended 433 MHz settings; nothing in software can show they are best
+  on the real board (V1).
+
 **Security.** No TX path in this task. **Budget.** `stark_subghz` + transport static ≤
 5 kB including the stack; flash ≤ 8 kB. **Physical HIL (V1).** SPI at the chosen clock,
 the `CHIP_RDYn` wait on MISO after chip select, reset timing, GDO pins through RMT.

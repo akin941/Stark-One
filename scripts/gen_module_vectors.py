@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "test/fake/fake_module_catalog.h"
 
-CAP_IR_TX, CAP_IR_RX, CAP_NFC, CAP_MOD_SPI, CAP_MOD_IRQ = 1, 2, 4, 8, 16
+CAP_IR_TX, CAP_IR_RX, CAP_NFC, CAP_MOD_SPI, CAP_MOD_IRQ, CAP_SUBGHZ = 1, 2, 4, 8, 16, 32
 
 
 def crc16(data):
@@ -55,7 +55,9 @@ def entries():
         ("twin_a", 0x0401, 1, CAP_MOD_IRQ, "Twin", True),
         ("min_name", 0x0001, 0, 0, "A", True),
         ("max_name", 0xFFFE, 255, 0, "ABCDEFGHIJKLMNOPQR", True),
-        ("unknown_bits", 0x0501, 1, 0x80000020 | CAP_MOD_IRQ, "Future", True),
+        # Bit 5 became STARK_CAP_SUBGHZ at STARK-0601: this vector (kept at its index)
+        # now declares a radio without its chip-select line, an unsupported combination.
+        ("unknown_bits", 0x0501, 1, 0x80000020 | CAP_MOD_IRQ, "Future", False),
         ("all_known_slot", 0x0601, 1, CAP_NFC | CAP_MOD_IRQ, "NFC IRQ", True),
         ("unsup_ir", 0x0701, 1, CAP_IR_TX, "Claims IR TX", False),
         ("unsup_ir_rx", 0x0702, 1, CAP_IR_RX | CAP_MOD_IRQ, "Claims IR RX", False),
@@ -83,6 +85,13 @@ def entries():
         ("after_nul", encode(0x0801, 1, 0, "", raw_name=b"A\0B"), field),
     ]
     out += [(label, img, res, 0, 0, 0, "", False) for label, img, res in bad]
+    # Appended by STARK-0601 (ADR-0022): indices above keep their meaning.
+    sg_caps = CAP_SUBGHZ | CAP_MOD_SPI | CAP_MOD_IRQ
+    out.append(("cc1101_module", encode(0x0A01, 1, sg_caps, "CC1101 433 MHz"), ok, 0x0A01, 1,
+                sg_caps, "CC1101 433 MHz", True))
+    # What "unknown bits" meant before bit 5 was assigned: a bit no firmware knows.
+    out.append(("unknown_bit_6", encode(0x0502, 1, 0x80000040 | CAP_MOD_IRQ, "Future 2"), ok,
+                0x0502, 1, 0x80000040 | CAP_MOD_IRQ, "Future 2", True))
     return out
 
 

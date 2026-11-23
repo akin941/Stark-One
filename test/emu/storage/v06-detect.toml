@@ -1,0 +1,46 @@
+# STARK-0601 on the test image, whose stark_subghz_transport is the test-only fake
+# CC1101 (ADR-0022 §3). The fake NFC reader is present on this image, so the
+# effective capabilities read 0x07 without a radio and 0x27 with one. Production
+# discovery, claim, identification and confirmation run unchanged: the module core reads the descriptor from the fake
+# 24C02 (catalogue entry 32, the CC1101 module in slot 0) and the Sub-GHz service
+# identifies the chip by its own answer through the fake. Bit 5 follows the chip
+# and the slot, never the descriptor. Integration evidence only: no radio exists
+# behind any of it (ROADMAP V1 exit 12 is the physical half).
+name = "emu-v06-detect"
+image = "storage"
+end_ms = 54000
+heap_min = 200000
+pokes = [
+    # a descriptor declaring a radio, with no chip behind it: nothing is confirmed
+    { at_ms = 1000, var = "emu_mod_slot0", value = 32 },
+    # a CC1101 answers: the capability appears
+    { at_ms = 8000, var = "emu_sg_chip", value = 1 },
+    # another chip is swapped in: the capability is withdrawn
+    { at_ms = 22000, var = "emu_sg_chip", value = 2 },
+    # the CC1101 is back
+    { at_ms = 30000, var = "emu_sg_chip", value = 1 },
+    # the module is removed: the lease dies, the capability goes
+    { at_ms = 42000, var = "emu_mod_slot0", value = 0 },
+    # a module with no radio at all: nothing to claim (the service never claims it)
+    { at_ms = 49000, var = "emu_mod_slot0", value = 2 },
+]
+expect = [
+    "subghz: no module",
+    "module: slot 0 CC1101 433 MHz id=0x0a01 rev=1 caps=0x00000038",
+    "module: slot 0 claimed by subghz",
+    "subghz: not a cc1101 (partnum 0xff version 0xff)",
+    "subghz: cc1101 version 0x14",
+    "module: caps 0x00000027",
+    "subghz: not a cc1101 (partnum 0x01 version 0x77)",
+    "module: caps 0x00000007",
+    "subghz: cc1101 version 0x14",
+    "module: caps 0x00000027",
+    "subghz: module lost",
+    "module: caps 0x00000007",
+    "module: slot 0 SPI lab module id=0x0202 rev=1 caps=0x00000018",
+]
+forbid = ["subghz init failed", "module not usable", "panic"]
+# A wrong chip is tried again at 2, 4, 8 s and then every 8 s, and logged once.
+forbid_between = [
+    { after = "subghz: not a cc1101 (partnum 0x01", before = "subghz: module lost", text = "subghz: not a cc1101 (partnum 0x01 version 0x77)" },
+]

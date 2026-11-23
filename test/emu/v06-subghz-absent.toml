@@ -1,0 +1,21 @@
+# STARK-0601 on the production image (ADR-0022 §8). esp-emu 0.44.0 has no radio
+# model and slot 0 reads as an unknown EEPROM ("generic (bad magic)", ADR-0021), so
+# nothing declares a radio: the Sub-GHz service says so once, never claims the
+# slot or opens the transport, and bit 5 is never effective. The boot is
+# unaffected and the heap budget holds. Not evidence about a CC1101 or its pins.
+name = "emu-v06-subghz-absent"
+end_ms = 4500
+heap_min = 200000
+expect = [
+    "module: slot 0 generic (bad magic)",
+    "module: caps 0x00000003",
+    "subghz: no module",
+]
+forbid = [
+    "module: caps 0x00000023",
+    "subghz: cc1101",
+    "subghz: not a cc1101",
+    "claimed by subghz",
+    "subghz init failed",
+    "panic",
+]

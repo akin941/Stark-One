@@ -680,6 +680,29 @@ foreach(mod_test module_desc fake_24c02 module_core module_claim)
     add_test(NAME stark_${mod_test}_tests COMMAND run_${mod_test}_tests)
 endforeach()
 
+# stark_subghz's pure cores (STARK-0601, ADR-0022): the register profiles, the CC1101
+# driver and the module service, against the test-only fake CC1101 (shared with the
+# emulator test image) and, for the service, the real module core over the fake 24C02.
+set(SUBGHZ_CORE_SOURCES
+    ${STARK_COMPONENTS}/stark_subghz/cc1101_regs.c
+    ${STARK_COMPONENTS}/stark_subghz/cc1101_drv.c
+    ${STARK_COMPONENTS}/stark_subghz/subghz_svc.c
+)
+set(FAKE_CC1101 ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_cc1101.c)
+set(SUBGHZ_INCLUDES ${STARK_COMPONENTS}/stark_subghz ${STARK_COMPONENTS}/stark_subghz/include
+    ${STARK_COMPONENTS}/stark_subghz_transport/include ${MODULE_INCLUDES})
+foreach(sg_test cc1101_regs cc1101_drv fake_cc1101 subghz_service)
+    add_executable(run_${sg_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${sg_test}.c
+        ${SUBGHZ_CORE_SOURCES} ${FAKE_CC1101}
+        ${STARK_COMPONENTS}/stark_module/module_desc.c
+        ${STARK_COMPONENTS}/stark_module/module_core.c ${FAKE_24C02})
+    target_include_directories(run_${sg_test}_tests PRIVATE ${SUBGHZ_INCLUDES})
+    target_compile_options(run_${sg_test}_tests PRIVATE ${OUR_C_FLAGS})
+    target_link_options(run_${sg_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+    target_link_libraries(run_${sg_test}_tests PRIVATE unity)
+    add_test(NAME stark_${sg_test}_tests COMMAND run_${sg_test}_tests)
+endforeach()
+
 # The real NFC app on the UI port (STARK-0404) with a fake stark_nfc.
 add_executable(run_ui_nfc_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_nfc.c

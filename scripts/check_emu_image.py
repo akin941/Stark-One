@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
 check_emu_image.py — prove the emulator storage test image is the production
-firmware with exactly three substitutions: the storage medium (ADR-0018 §3,
-TASKS.md STARK-0201), the NFC transport (ADR-0020 §3, STARK-0402) and the module
-EEPROM transport (ADR-0021 §6, STARK-0502).
+firmware with exactly four substitutions: the storage medium (ADR-0018 §3,
+TASKS.md STARK-0201), the NFC transport (ADR-0020 §3, STARK-0402), the module
+EEPROM transport (ADR-0021 §6, STARK-0502) and the Sub-GHz transport (ADR-0022 §3,
+STARK-0601).
 
 Compares two finished builds:
   * the component sets must be identical;
   * every component must come from the same place with the same sources,
     requirements and include directories — except `stark_storage_medium`,
-    `stark_nfc_transport` and `stark_module_transport`, which must come from
+    `stark_nfc_transport`, `stark_module_transport` and `stark_subghz_transport`,
+    which must come from
     test/emu/storage_image/components/;
     managed (registry) components are compared by their name, since each
     project keeps its own managed_components/ copy;
@@ -30,7 +32,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SUBSTITUTED = ("stark_storage_medium", "stark_nfc_transport", "stark_module_transport")
+SUBSTITUTED = ("stark_storage_medium", "stark_nfc_transport", "stark_module_transport",
+               "stark_subghz_transport")
 SUBSTITUTE_DIRS = {name: "test/emu/storage_image/components/" + name for name in SUBSTITUTED}
 COMPARED_FIELDS = ("sources", "include_dirs", "reqs", "priv_reqs")
 
