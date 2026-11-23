@@ -175,5 +175,8 @@ stark_err_t stark_subghz_transport_tx(const subghz_sym_t *s, size_t n, uint32_t 
         total_us += (uint32_t)(s[i] < 0 ? -s[i] : s[i]);
     }
     vTaskDelay(pdMS_TO_TICKS((total_us + 999u) / 1000u));
+    if (s_own_rx_applied == 0) {
+        fake_cc1101_gdo0_release(); /* nobody will hear it: a long run keeps no 8.4 kB for it */
+    }
     return STARK_OK;
 }

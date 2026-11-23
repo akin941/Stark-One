@@ -4911,6 +4911,56 @@ heap Δ ≤ 1 kB), `.github/workflows/ci.yml` (soak step), `docs/bringup/v1-subg
 
 ---
 
+**As built.** Differences from the plan, each the smallest sound choice (ADR-0022's STARK-0606
+addendum records the readings):
+
+* **The soak is two passes of 25 s, in `test/emu/soak/v06-soak.toml` (62.5 s of virtual time,
+  like v04 and v05).** One pass cannot be shorter than about 25 s: the first transmission waits for
+  the 18 s boot lock. Each pass is detect (the first by a poke, the second by the replug), the RSSI
+  meter (−40, −70, −55 dBm), the module pulled and plugged back in view (the app falls to its home
+  list; the chip is claimed and identified again), the band scan (`peak 433.925 MHz -55 dBm`), a
+  capture of the pulse-width scene, its save (`rf_0001.rf`, `rf_0002.rf`), the saved file read back
+  and decoded (`pwm short=400 long=1200 bits=24 hex=a5c3e1 x4`), one confirmed replay and a second
+  replay at once, refused for the off-time (the alert is dismissed), then the launcher. The
+  `expect` list is the whole sequence in order, twice; `forbid_between` and `forbid_after` pin one
+  transmission per confirmation and none before it; every other refusal reason (`band`, `length`,
+  `duration`, `budget`, `file`, `busy`, `no module`) and every failure line is forbidden. Gates are
+  the earlier soaks': `drops=0` and first-versus-last root heap within 1 kB.
+* **One edit to the test fake, and none to production.** The first heap gate compares a line taken
+  at 1 s with the last, and the fake CC1101 allocated its 8.4 kB recording of GDO0 at the first
+  `STX` and kept it: an 8.4 kB "leak" that is the fake's, not the firmware's. The test image's
+  transport now calls `fake_cc1101_gdo0_release()` (new, with a host test) after a transmission
+  when `emu_sg_own_rx` is 0, so nothing is held when nothing listens; with the own receiver on
+  (`storage/v06-replay`) the recording stays, because the next capture plays it. No firmware
+  source, scenario or production heap figure changed (binary 483 216 B, the same as STARK-0605).
+* **Stack peak measured.** 0601 recorded the stack's size, never its use. A fill-pattern dump after
+  the soak (method in docs/measurements.md): `stark_subghz` peaks at 1 600 of 4 096 B (2 496 B never
+  touched), so the 4 096 B Kconfig default stays: it is not cut, because V1 may show a deeper
+  path (check 28 of the bring-up). The app worker peaks at 2 484 of 4 096 B, the module task at
+  1 472 of 2 560 B.
+* **`docs/bringup/v1-subghz.md` is 28 blank checks**, each with how, a pass criterion and an empty
+  result and evidence column: wiring, descriptor, chip identification, SPI signal, `CHIP_RDYn` and
+  reset timing, a wrong or absent chip, hot-plug, shared SPI, supply (1–9); RSSI floor, against a
+  known level, our own transmitter at five distances, the scan (10–13); capture timing, 2-FSK,
+  decode of our own remote, capture limits (14–17); receive never transmits, transmit refusals on
+  silicon (18–19); the RMT transmit path on GDO0 and its 20 ms frame-end counterpart on receive,
+  power at `PATABLE` 0x60, on-air time and duty, spurious emissions, replay triggering our own
+  receiver, boot lock, antenna, frame rate and stack on silicon (20–28). It is lab- and
+  own-equipment-only, transmits into a dummy load except in checks 24 and 26, and stops on any carrier without
+  a log line. The pass threshold for conducted power (+3 dBm) is mine; ADR-0022's addendum records
+  why.
+* **Docs.** ROADMAP V0.6 is "complete (software / RF-protocol-verified)" with V1 exit 12 pointing at
+  the checklist; VALIDATION §3.9 (new), README, TESTING (the V0.6 rows and the soak step in the
+  CI job's description), `.github/workflows/ci.yml` (the soak step), and measurements (the V0.6
+  figures, the exit-criteria table and eight blank V1 rows).
+* **Evidence.** AC 1: docs/measurements.md "V0.6 exit criteria" names, per criterion, the host
+  tests and scenarios. AC 2: 28 checks in the bring-up. AC 3: production boot heap, binary, static
+  RAM, flash and the three stack peaks, each with its delta from V0.5 (250 344 B, 456 656 B).
+  AC 4: `soak/v06-soak` passes (525 s of wall time), and is wired into the `esp-emulator-soak` job.
+* **Not here.** Anything physical; every row of `docs/bringup/v1-subghz.md` is blank.
+
+---
+
 # V0.7 — diagnostics & lab tools
 
 | ID | Goal |

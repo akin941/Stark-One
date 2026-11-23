@@ -268,6 +268,11 @@ verified**. Physical module-bus behaviour is verified at the **V1 prototype**.
 **Explicitly excluded by policy:** rolling-code attacks, jamming, de-authentication,
 capture-replay against access control, brute-force transmission.
 
+**Status: complete (software / RF-protocol-verified), 2026-11-23** — exits 1-4 in
+software, evidence in docs/measurements.md "V0.6 exit criteria"; every physical half is
+ROADMAP V1 exit 12 and `docs/bringup/v1-subghz.md`, none of them claimed. No radio has
+transmitted or received.
+
 **Completion levels (ADR-0022).** *V0.6 complete* = **software / RF-protocol verified**
 against a test-only fake CC1101 at the `stark_subghz_transport` seam, host-tested codecs
 and the transmit policy. RF behaviour is verified at the **V1 prototype** (V1 exit 12).
@@ -364,7 +369,7 @@ simulated milestones (ADR-0011):
     against distance; a capture of our own remote against its documented timing; a replay
     triggering our own receiver; conducted and radiated power at `PATABLE` 0x60; on-air
     time and duty cycle on a spectrum analyser; antenna and matching; the module sharing
-    SPI with the display and SD.
+    SPI with the display and SD. The procedure is `docs/bringup/v1-subghz.md` (28 blank checks).
 
 ---
 

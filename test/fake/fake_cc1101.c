@@ -324,6 +324,19 @@ size_t fake_cc1101_gdo0_recorded(const subghz_sym_t **out)
     return s.rec_n;
 }
 
+void fake_cc1101_gdo0_release(void)
+{
+    if (s.scene == s.rec) { /* the own receiver was playing it */
+        s.scene = NULL;
+        s.scene_n = 0;
+        s.scene_pos = 0;
+        s.scene_armed = false;
+    }
+    free(s.rec);
+    s.rec = NULL;
+    s.rec_n = 0;
+}
+
 void fake_cc1101_own_rx(bool on)
 {
     s.own_rx = on;

@@ -1,0 +1,183 @@
+# STARK-0606 (ROADMAP V0.6) on the test image, whose stark_subghz_transport is the test-only
+# fake CC1101 (ADR-0022 §3): 60 s of emulated use of the whole Sub-GHz module, two passes of
+#   detect (the CC1101 module appears and answers) -> RSSI meter (the level moves) -> the module
+#   pulled and plugged back (the app falls to its home list, the chip is found and identified
+#   again) -> band scan (the carrier's channel) -> capture of the pulse-width scene "pwm24"
+#   (192 symbols, fingerprint 0x78a82ac5 as scripts/gen_subghz_vectors.py computes it) -> save
+#   (rf_0001.rf, then rf_0002.rf) -> read the file back and decode it (pwm, 24 bits, x4) -> a
+#   confirmed replay (exactly one transmission) -> a second replay at once, refused for the
+#   off-time (`subghz: tx refused: offtime`, an alert) -> back to the launcher.
+# The first replay is 28 s after boot, so the 18 s boot lock has run out; the second pass's
+# is 54 s after boot and 26 s after the last transmission. Nothing is ever sent without an OK
+# on the dialog: forbid_between / forbid_after pin one transmission per confirmation and none
+# before it. The 8.4 kB recording the fake keeps of what GDO0 carries is given back after each
+# transmission (nothing listens: emu_sg_own_rx is 0), so the first-versus-last heap gate means
+# what it did in the earlier soaks. The scenario ends idle at the launcher so stark_diag's last
+# line (~61 s) is taken at the root menu, as the first one was.
+# Gates: drops=0 on every diag line and root heap within 1 kB. The esp-emulator-soak job runs
+# it. Integration evidence, not RF: no signal exists behind any of it (ROADMAP V1 exit 12).
+name = "emu-v06-soak"
+image = "storage"
+end_ms = 62500
+wall_limit_s = 1500
+heap_min = 200000
+heap_delta_max = 1024
+pokes = [
+    { at_ms = 500, var = "emu_mod_slot0", value = 32 },   # the CC1101 module's EEPROM in slot 0
+    { at_ms = 500, var = "emu_sg_chip", value = 1 },   # a CC1101 answers
+    { at_ms = 500, var = "emu_sg_carrier_khz", value = 433920 },   # the air: one carrier at 433.920 MHz ...
+    { at_ms = 500, var = "emu_sg_level", value = -40 },   # ... at -40 dBm
+    { at_ms = 500, var = "emu_sg_scene", value = 1 },   # GDO2 plays the pulse-width scene each time the chip enters RX
+    { at_ms = 7500, var = "emu_sg_level", value = -70 },   # the meter follows: -70 dBm
+    { at_ms = 8300, var = "emu_sg_level", value = -55 },   # -55 dBm
+    { at_ms = 9300, var = "emu_mod_slot0", value = 0 },   # the module is pulled: the app falls back to its home list
+    { at_ms = 12100, var = "emu_mod_slot0", value = 32 },   # plugged back in: found, claimed and identified again
+    { at_ms = 31600, var = "emu_sg_level", value = -40 },   # the air is back at -40 dBm for the next pass
+    { at_ms = 33600, var = "emu_sg_level", value = -70 },   # the meter follows: -70 dBm
+    { at_ms = 34400, var = "emu_sg_level", value = -55 },   # -55 dBm
+    { at_ms = 35400, var = "emu_mod_slot0", value = 0 },   # the module is pulled: the app falls back to its home list
+    { at_ms = 38200, var = "emu_mod_slot0", value = 32 },   # plugged back in: found, claimed and identified again
+]
+presses = [
+    { key = "UP", at_ms = 5300, hold_ms = 60 },   # Storage
+    { key = "UP", at_ms = 5500, hold_ms = 60 },   # Settings
+    { key = "UP", at_ms = 5700, hold_ms = 60 },   # Modules
+    { key = "UP", at_ms = 5900, hold_ms = 60 },   # Sub-GHz
+    { key = "OK", at_ms = 6300, hold_ms = 60 },   # open Sub-GHz: the home list
+    { key = "OK", at_ms = 7000, hold_ms = 60 },   # RSSI meter
+    { key = "DOWN", at_ms = 14900, hold_ms = 60 },   # Band scan
+    { key = "OK", at_ms = 15200, hold_ms = 60 },   # the sweep
+    { key = "BACK", at_ms = 16500, hold_ms = 60 },   # scan -> home
+    { key = "DOWN", at_ms = 17000, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 17300, hold_ms = 60 },   # Capture
+    { key = "OK", at_ms = 17600, hold_ms = 60 },   # the setup: Frequency, Modulation, Start
+    { key = "DOWN", at_ms = 18300, hold_ms = 60 },   # Modulation
+    { key = "DOWN", at_ms = 18600, hold_ms = 60 },   # Start
+    { key = "OK", at_ms = 18900, hold_ms = 60 },   # captures the scene
+    { key = "OK", at_ms = 20300, hold_ms = 60 },   # Stop
+    { key = "OK", at_ms = 21300, hold_ms = 60 },   # Save
+    { key = "BACK", at_ms = 22300, hold_ms = 60 },   # capture -> home (the radio idles)
+    { key = "DOWN", at_ms = 22800, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 23100, hold_ms = 60 },   # Capture
+    { key = "DOWN", at_ms = 23400, hold_ms = 60 },   # Saved
+    { key = "OK", at_ms = 23800, hold_ms = 60 },   # the list: the newest file
+    { key = "OK", at_ms = 24700, hold_ms = 60 },   # reads it back: Decode, Replay
+    { key = "OK", at_ms = 25500, hold_ms = 60 },   # Decode
+    { key = "BACK", at_ms = 26500, hold_ms = 60 },   # decode -> file
+    { key = "DOWN", at_ms = 27000, hold_ms = 60 },   # Replay
+    { key = "OK", at_ms = 27300, hold_ms = 60 },   # the confirmation
+    { key = "OK", at_ms = 28000, hold_ms = 60 },   # OK: one transmission
+    { key = "DOWN", at_ms = 29100, hold_ms = 60 },   # Replay again, at once
+    { key = "OK", at_ms = 29400, hold_ms = 60 },   # refused for the off-time, an alert
+    { key = "OK", at_ms = 30100, hold_ms = 60 },   # dismiss it
+    { key = "BACK", at_ms = 30600, hold_ms = 60 },   # file -> list
+    { key = "BACK", at_ms = 31000, hold_ms = 60 },   # list -> home
+    { key = "BACK", at_ms = 31400, hold_ms = 60 },   # home -> launcher (the radio idles, the buffer is freed)
+    { key = "OK", at_ms = 32400, hold_ms = 60 },   # open Sub-GHz: the home list
+    { key = "OK", at_ms = 33100, hold_ms = 60 },   # RSSI meter
+    { key = "DOWN", at_ms = 41000, hold_ms = 60 },   # Band scan
+    { key = "OK", at_ms = 41300, hold_ms = 60 },   # the sweep
+    { key = "BACK", at_ms = 42600, hold_ms = 60 },   # scan -> home
+    { key = "DOWN", at_ms = 43100, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 43400, hold_ms = 60 },   # Capture
+    { key = "OK", at_ms = 43700, hold_ms = 60 },   # the setup: Frequency, Modulation, Start
+    { key = "DOWN", at_ms = 44400, hold_ms = 60 },   # Modulation
+    { key = "DOWN", at_ms = 44700, hold_ms = 60 },   # Start
+    { key = "OK", at_ms = 45000, hold_ms = 60 },   # captures the scene
+    { key = "OK", at_ms = 46400, hold_ms = 60 },   # Stop
+    { key = "OK", at_ms = 47400, hold_ms = 60 },   # Save
+    { key = "BACK", at_ms = 48400, hold_ms = 60 },   # capture -> home (the radio idles)
+    { key = "DOWN", at_ms = 48900, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 49200, hold_ms = 60 },   # Capture
+    { key = "DOWN", at_ms = 49500, hold_ms = 60 },   # Saved
+    { key = "OK", at_ms = 49900, hold_ms = 60 },   # the list: the newest file
+    { key = "OK", at_ms = 50800, hold_ms = 60 },   # reads it back: Decode, Replay
+    { key = "OK", at_ms = 51600, hold_ms = 60 },   # Decode
+    { key = "BACK", at_ms = 52600, hold_ms = 60 },   # decode -> file
+    { key = "DOWN", at_ms = 53100, hold_ms = 60 },   # Replay
+    { key = "OK", at_ms = 53400, hold_ms = 60 },   # the confirmation
+    { key = "OK", at_ms = 54100, hold_ms = 60 },   # OK: one transmission
+    { key = "DOWN", at_ms = 55200, hold_ms = 60 },   # Replay again, at once
+    { key = "OK", at_ms = 55500, hold_ms = 60 },   # refused for the off-time, an alert
+    { key = "OK", at_ms = 56200, hold_ms = 60 },   # dismiss it
+    { key = "BACK", at_ms = 56700, hold_ms = 60 },   # file -> list
+    { key = "BACK", at_ms = 57100, hold_ms = 60 },   # list -> home
+    { key = "BACK", at_ms = 57500, hold_ms = 60 },   # home -> launcher (the radio idles, the buffer is freed)
+]
+expect = [
+    "module: slot 0 CC1101 433 MHz id=0x0a01 rev=1 caps=0x00000038",
+    "module: slot 0 claimed by subghz",
+    "subghz: cc1101 version 0x14",
+    "module: caps 0x00000027",
+    'menu: sel=13 "Sub-GHz"',
+    # pass 1
+    "app: start subghz",
+    "subghz: meter 433.920 MHz",
+    "subghz: rssi -40 dBm",
+    "subghz: rssi -70 dBm",
+    "subghz: rssi -55 dBm",
+    "subghz: module lost",
+    "module: caps 0x00000007",
+    "module: slot 0 claimed by subghz",
+    "subghz: cc1101 version 0x14",
+    "module: caps 0x00000027",
+    "subghz: peak 433.925 MHz -55 dBm",
+    "subghz: capture start 433.920 MHz ook",
+    "subghz: capture 192 sym hash 0x78a82ac5",
+    "subghzapp: saved rf_0001.rf (192 sym) hash 0x78a82ac5",
+    "subghzapp: opened rf_0001.rf (192 sym) hash 0x78a82ac5",
+    "subghzapp: decode 4 bursts, 4 decoded, 0 unknown",
+    "subghzapp: pwm short=400 long=1200 bits=24 hex=a5c3e1 x4",
+    "subghzapp: confirm rf_0001.rf: 433.920 MHz, 202 ms, 192 symbols. Duty left 360 s. Own devices only.",
+    'dialog: open "Send rf_0001.rf?"',
+    "subghzapp: tx confirmed rf_0001.rf",
+    "subghz: tx rf_0001.rf 433920000 Hz 192 sym 202 ms",
+    "subghzapp: sent rf_0001.rf",
+    "subghz: tx refused: offtime",
+    'dialog: open "Not sent"',
+    "app: stop subghz",
+    # pass 2
+    "app: start subghz",
+    "subghz: meter 433.920 MHz",
+    "subghz: rssi -40 dBm",
+    "subghz: rssi -70 dBm",
+    "subghz: rssi -55 dBm",
+    "subghz: module lost",
+    "module: caps 0x00000007",
+    "module: slot 0 claimed by subghz",
+    "subghz: cc1101 version 0x14",
+    "module: caps 0x00000027",
+    "subghz: peak 433.925 MHz -55 dBm",
+    "subghz: capture start 433.920 MHz ook",
+    "subghz: capture 192 sym hash 0x78a82ac5",
+    "subghzapp: saved rf_0002.rf (192 sym) hash 0x78a82ac5",
+    "subghzapp: opened rf_0002.rf (192 sym) hash 0x78a82ac5",
+    "subghzapp: decode 4 bursts, 4 decoded, 0 unknown",
+    "subghzapp: pwm short=400 long=1200 bits=24 hex=a5c3e1 x4",
+    "subghzapp: confirm rf_0002.rf: 433.920 MHz, 202 ms, 192 symbols. Duty left 359 s. Own devices only.",
+    'dialog: open "Send rf_0002.rf?"',
+    "subghzapp: tx confirmed rf_0002.rf",
+    "subghz: tx rf_0002.rf 433920000 Hz 192 sym 202 ms",
+    "subghzapp: sent rf_0002.rf",
+    "subghz: tx refused: offtime",
+    'dialog: open "Not sent"',
+    "app: stop subghz",
+]
+# One transmission per confirmation, and none before it: between a file being opened and its
+# confirmation nothing reaches GDO0, and after a transmission the same file is never sent again.
+forbid_between = [
+    { after = "subghzapp: opened rf_0001.rf", before = "subghzapp: tx confirmed rf_0001.rf", text = "subghz: tx rf_" },
+    { after = "subghzapp: opened rf_0001.rf", before = "subghzapp: tx confirmed rf_0001.rf", text = "subghzapp: sent" },
+    { after = "subghzapp: opened rf_0002.rf", before = "subghzapp: tx confirmed rf_0002.rf", text = "subghz: tx rf_" },
+    { after = "subghzapp: opened rf_0002.rf", before = "subghzapp: tx confirmed rf_0002.rf", text = "subghzapp: sent" },
+]
+forbid_after = [
+    { after = "subghz: tx rf_0001.rf 433920000", text = "subghz: tx rf_0001.rf 433920000" },
+    { after = "subghz: tx rf_0002.rf 433920000", text = "subghz: tx rf_0002.rf 433920000" },
+    { after = "subghzapp: tx confirmed rf_0002.rf", text = "subghzapp: tx confirmed" },
+    { after = "subghzapp: sent rf_0002.rf", text = "subghzapp: sent" },
+]
+forbid = ["module not usable", "subghz init failed", "save failed", "save refused", "open failed",
+          "capture refused", "tx failed", "tx refused: band", "tx refused: length",
+          "tx refused: duration", "tx refused: budget", "tx refused: file", "tx refused: busy",
+          "tx refused: no module", "send failed", "send refused", "panic", "app: fault"]

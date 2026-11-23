@@ -1021,5 +1021,26 @@ only at V1, like the receive path. (9) **What the confirmation says**: the file,
 the duration, the symbol count, the duty budget left and "Own devices only". A refusal is an alert
 with its reason (and, for the off-time, how long to wait) and is logged by the service.
 
+**Addendum (STARK-0606).** The exit task left these open; each is the conservative reading,
+recorded so it is not taken silently. (1) **The soak is two passes, not one long pass**, because
+the first transmission cannot come before the 18 s boot lock has run out, so one pass of the whole
+sequence already spans half a minute. Each pass runs detect, meter, a pulled and replugged module,
+scan, capture, save, decode, one confirmed replay and one replay refused for the off-time. The
+second pass's replay is 26 s after the first one's end, and the gates are those of the earlier soaks
+(`drops=0`, first versus last `stark_diag` heap within 1 kB). (2) **The test image's fake gives
+back its 8.4 kB recording after a transmission when nothing is listening** (`emu_sg_own_rx` 0:
+`fake_cc1101_gdo0_release()`, called by the test transport only). Without it the allocation at the
+first `STX` would have shown as an 8.4 kB "leak" in a gate that compares the first line, taken
+before any module exists, with the last; with an own receiver the recording stays, because the
+next capture plays it. Nothing in production changes. (3) **The stack peak is a fill-pattern read,
+not an instrumented counter.** FreeRTOS fills a static task stack with 0xa5; after the soak a GDB
+script counts the bytes still holding it from the low end, which is the untouched part (the method
+is written in docs/measurements.md). The read covers the paths the soak exercises; a worst case
+the soak does not reach is a V1 measurement (bring-up check 28). (4) **The V1 pass threshold for
+conducted power is +3 dBm at `PATABLE` 0x60** (bring-up check 21), not the 0 dBm the ADR names as
+"about": a real board's matching, a PA ripple of a few dB and the analyser's accuracy make "about
+0 dBm" an interval, and the ERP limit (10 mW, +10 dBm) leaves 7 dB for the antenna. A board that
+reads higher fails the check and the cap is lowered in a new task; it is never raised.
+
 **Revisit trigger:** a radio model in esp-emu, the V1 board's antenna and matching, a
 regulatory change for 433 MHz SRD, or a need for another band.
