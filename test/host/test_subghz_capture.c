@@ -172,9 +172,10 @@ static void io_notify(void *ctx, int evt)
     }
 }
 
-static const subghz_svc_io_t k_io = {
-    io_list,    io_claim,   io_release, io_lease_valid, io_open, io_close,   io_xfer,   io_rx_start,
-    io_rx_take, io_rx_stop, io_now,     io_delay,       io_log,  io_changed, io_notify, NULL};
+static const subghz_svc_io_t k_io = {io_list,  io_claim, io_release,  io_lease_valid, io_open,
+                                     io_close, io_xfer,  io_rx_start, io_rx_take,     io_rx_stop,
+                                     io_now,   io_delay, io_log,      io_changed,     io_notify,
+                                     NULL,     NULL,     NULL};
 
 void setUp(void)
 {

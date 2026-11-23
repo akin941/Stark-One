@@ -4,7 +4,9 @@
  * FreeRTOS time, and runs the service task. Every transport call after init is
  * made by that task. The requests (meter, scan, stop, status) and the task's own
  * steps are serialised by one mutex; a step holds it for at most one channel or one
- * identification, so a caller waits milliseconds. Target-only.
+ * identification, so a caller waits milliseconds; a transmission (at most 2.1 s) holds it
+ * for its whole length, which is why the app swallows keys while one runs and stop() simply
+ * waits. Target-only.
  */
 #include "stark_subghz.h"
 #include <stdatomic.h>
@@ -169,9 +171,30 @@ static void io_notify(void *ctx, int evt)
     (void)stark_event_publish(&e);
 }
 
-static const subghz_svc_io_t k_io = {
-    io_list,    io_claim,   io_release, io_lease_valid, io_open, io_close,   io_xfer,   io_rx_start,
-    io_rx_take, io_rx_stop, io_now,     io_delay,       io_log,  io_changed, io_notify, NULL};
+static stark_err_t io_tx(void *ctx, const subghz_sym_t *s, size_t n, uint32_t timeout_ms)
+{
+    (void)ctx;
+    return stark_subghz_transport_tx(s, n, timeout_ms);
+}
+
+/* The transmit path's log lines, to the console and the log file (SECURITY_SCOPE §4.5). */
+static void io_log_tx(void *ctx, const subghz_tx_log_t *w)
+{
+    (void)ctx;
+    if (w->verdict != SUBGHZ_TX_OK) {
+        STARK_LOGW("subghz", "tx refused: %s", subghz_tx_verdict_name(w->verdict));
+    } else if (w->err != STARK_OK) {
+        STARK_LOGW("subghz", "tx failed %s: %s", w->name, stark_err_str(w->err));
+    } else {
+        STARK_LOGI("subghz", "tx %s %u Hz %u sym %u ms", w->name, (unsigned)w->freq_hz,
+                   (unsigned)w->symbols, (unsigned)w->ms);
+    }
+}
+
+static const subghz_svc_io_t k_io = {io_list,  io_claim,  io_release,  io_lease_valid, io_open,
+                                     io_close, io_xfer,   io_rx_start, io_rx_take,     io_rx_stop,
+                                     io_now,   io_delay,  io_log,      io_changed,     io_notify,
+                                     io_tx,    io_log_tx, NULL};
 
 static void subghz_task(void *arg)
 {
@@ -233,6 +256,24 @@ void stark_subghz_capture_finish(void)
     xSemaphoreTake(s_lock, portMAX_DELAY);
     subghz_svc_capture_finish(&s_svc);
     xSemaphoreGive(s_lock);
+}
+
+subghz_tx_verdict_t stark_subghz_tx_check(const subghz_raw_t *raw, const char *name,
+                                          subghz_tx_info_t *info)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    subghz_tx_verdict_t v = subghz_svc_tx_check(&s_svc, raw, name, info);
+    xSemaphoreGive(s_lock);
+    return v;
+}
+
+subghz_tx_verdict_t stark_subghz_tx_start(const subghz_raw_t *raw, const char *name, uint32_t hash,
+                                          subghz_tx_info_t *info)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    subghz_tx_verdict_t v = subghz_svc_tx(&s_svc, raw, name, hash, info);
+    xSemaphoreGive(s_lock);
+    return v;
 }
 
 void stark_subghz_stop(void)

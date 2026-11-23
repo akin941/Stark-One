@@ -20,6 +20,7 @@
 #include "stark_subghz.h"
 #include "subghz_raw.h"
 #include "subghz_rssi.h"
+#include "subghz_txpolicy.h"
 
 #define SUBGHZ_WIRING          (STARK_CAP_SUBGHZ | STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ)
 #define SUBGHZ_DEFAULT_HZ      433920000u
@@ -48,6 +49,16 @@ typedef enum {
     SUBGHZ_LOG_CAPTURE_DONE   /* a = symbols kept, b = subghz_raw_hash() of them */
 } subghz_log_t;
 
+/* What the transmit path reports (STARK-0605): one line each in the log. */
+typedef struct {
+    subghz_tx_verdict_t verdict; /* not OK: refused, and nothing was sent */
+    stark_err_t err;             /* verdict OK: STARK_OK it went out, else why the attempt failed */
+    const char *name;            /* the file */
+    uint32_t freq_hz;
+    uint32_t symbols;
+    uint32_t ms;
+} subghz_tx_log_t;
+
 typedef struct {
     size_t (*list)(void *ctx, stark_module_entry_t *out, size_t max);
     stark_err_t (*claim)(void *ctx, uint8_t slot, stark_module_lease_t *out);
@@ -63,7 +74,10 @@ typedef struct {
     void (*delay_ms)(void *ctx, uint32_t ms);
     void (*log)(void *ctx, subghz_log_t what, unsigned a, unsigned b);
     void (*changed)(void *ctx, bool ready); /* after every change of readiness */
-    void (*notify)(void *ctx, int evt);     /* a STARK_SUBGHZ_EVT_RSSI or _SCAN_DONE */
+    void (*notify)(void *ctx, int evt);     /* a STARK_SUBGHZ_EVT_* of a measurement or a send */
+    /* GDO0: the symbols, high = carrier on; blocks until sent or timeout_ms (STARK-0605). */
+    stark_err_t (*tx)(void *ctx, const subghz_sym_t *s, size_t n, uint32_t timeout_ms);
+    void (*log_tx)(void *ctx, const subghz_tx_log_t *what);
     void *ctx;
 } subghz_svc_io_t;
 
@@ -105,6 +119,12 @@ typedef struct {
     uint16_t cap_noted;
     uint32_t cap_note_ms;
     subghz_sym_t take[SUBGHZ_TAKE_MAX];
+    /* ---- replay (STARK-0605) ---- */
+    subghz_txpolicy_t pol; /* the duty ledger: it outlives a lost and returned module */
+    bool tx_pending;       /* one confirmed request has not been carried out yet */
+    subghz_raw_t tx_raw;
+    uint32_t tx_hash;
+    char tx_name[16];
 } subghz_svc_t;
 
 void subghz_svc_init(subghz_svc_t *s, const subghz_svc_io_t *io);
@@ -129,5 +149,15 @@ stark_err_t subghz_svc_scan(subghz_svc_t *s);
 stark_err_t subghz_svc_capture(subghz_svc_t *s, subghz_mod_t mod, uint32_t hz, subghz_sym_t *buf,
                                size_t cap);
 void subghz_svc_capture_finish(subghz_svc_t *s);
+/*
+ * The replay requests (stark_subghz.h says what they mean). subghz_svc_tx_check() changes
+ * nothing but the log; subghz_svc_tx() on SUBGHZ_TX_OK leaves one request pending, and the next
+ * step carries it out (checks it again, transmits once, idles the radio). A refusal is logged
+ * through io.log_tx. subghz_svc_stop() drops a pending request.
+ */
+subghz_tx_verdict_t subghz_svc_tx_check(subghz_svc_t *s, const subghz_raw_t *raw, const char *name,
+                                        subghz_tx_info_t *info);
+subghz_tx_verdict_t subghz_svc_tx(subghz_svc_t *s, const subghz_raw_t *raw, const char *name,
+                                  uint32_t hash, subghz_tx_info_t *info);
 void subghz_svc_stop(subghz_svc_t *s);
 void subghz_svc_status(const subghz_svc_t *s, stark_subghz_status_t *out);

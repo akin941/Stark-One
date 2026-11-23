@@ -152,10 +152,28 @@ void stark_subghz_transport_rx_stop(void)
     s_rx_on = false;
 }
 
+/*
+ * Like production it refuses a stale lease and anything stark_subghz_tx_ok() refuses, so the
+ * test image cannot send what the policy would not. The fake chip records the symbols only while
+ * it is in TX (a transfer that put it there), so a symbol that reaches GDO0 without STX is
+ * refused. The on-air time is waited out, so the service holds its lock as long as hardware would.
+ */
 stark_err_t stark_subghz_transport_tx(const subghz_sym_t *s, size_t n, uint32_t timeout_ms)
 {
-    (void)s;
-    (void)n;
-    (void)timeout_ms;
-    return STARK_ERR_NOT_SUPPORTED; /* like production: no transmit path before STARK-0605 */
+    if (!s_open || !stark_module_lease_valid(&s_lease)) {
+        return STARK_ERR_STATE;
+    }
+    if (!stark_subghz_tx_ok(s, n, timeout_ms)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    follow_pokes();
+    if (!fake_cc1101_gdo0_put(s, n)) {
+        return STARK_ERR_STATE;
+    }
+    uint32_t total_us = 0;
+    for (size_t i = 0; i < n; i++) {
+        total_us += (uint32_t)(s[i] < 0 ? -s[i] : s[i]);
+    }
+    vTaskDelay(pdMS_TO_TICKS((total_us + 999u) / 1000u));
+    return STARK_OK;
 }

@@ -328,7 +328,7 @@ static void test_strobes(void)
     TEST_ASSERT_EQUAL(STARK_ERR_STATE, cc1101_strobe(&s_d, CC1101_SRX));
 }
 
-static void test_transmit_is_not_available_in_this_task(void)
+static void test_stx_is_never_a_generic_strobe(void)
 {
     TEST_ASSERT_EQUAL(STARK_OK, cc1101_configure(&s_d, CC1101_PRESET_OOK_TX, 433920000u, 4800));
     unsigned before = s_xfers;
@@ -340,6 +340,138 @@ static void test_transmit_is_not_available_in_this_task(void)
         TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, cc1101_strobe(&s_d, other[i]));
     }
     TEST_ASSERT_EQUAL(before, s_xfers);
+}
+
+/* ---- cc1101_tx_start (STARK-0605): the one way into TX ---------------------------------- */
+
+static void write_burst_direct(uint8_t addr, const uint8_t *v, size_t n)
+{
+    uint8_t tx[9];
+    uint8_t rx[9];
+    tx[0] = (uint8_t)(addr | CC1101_HDR_BURST);
+    memcpy(tx + 1, v, n);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_cc1101_xfer(tx, rx, 1 + n));
+}
+
+static void configure_tx(uint32_t hz)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_configure(&s_d, CC1101_PRESET_OOK_TX, hz, 4800));
+}
+
+static void test_tx_start_reads_the_chip_back_and_enters_tx(void)
+{
+    configure_tx(433920000u);
+    unsigned before = s_xfers;
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tx_start(&s_d, 433920000u));
+    TEST_ASSERT_EQUAL(4u, s_xfers - before); /* FREQ read, PATABLE read, STX, MARCSTATE */
+    const fake_cc1101_stats_t *st = fake_cc1101_stats();
+    TEST_ASSERT_EQUAL_HEX8(0x13, st->marcstate);
+    TEST_ASSERT_EQUAL(1, st->tx_strobes);
+    TEST_ASSERT_EQUAL_HEX8(0x2D, st->reg[CC1101_IOCFG0]); /* serial data in on GDO0 */
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_idle(&s_d));
+    TEST_ASSERT_EQUAL_HEX8(0x01, fake_cc1101_stats()->marcstate);
+    /* both band edges are transmittable */
+    configure_tx(433050000u);
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tx_start(&s_d, 433050000u));
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_idle(&s_d));
+    configure_tx(434790000u);
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tx_start(&s_d, 434790000u));
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_idle(&s_d));
+    TEST_ASSERT_EQUAL(0, fake_cc1101_stats()->out_of_band);
+}
+
+static void test_tx_start_refuses_before_any_transfer(void)
+{
+    configure_tx(433920000u);
+    unsigned before = s_xfers;
+    static const uint32_t edge[] = {433049999u, 434790001u, 0, 868000000u, 0xFFFFFFFFu};
+    for (size_t i = 0; i < sizeof edge / sizeof edge[0]; i++) {
+        TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, cc1101_tx_start(&s_d, edge[i]));
+    }
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, cc1101_tx_start(&s_d, 433930000u)); /* not what was set */
+    TEST_ASSERT_EQUAL(before, s_xfers);
+    TEST_ASSERT_EQUAL(0, fake_cc1101_stats()->tx_strobes);
+    /* a receive profile is not a transmit profile */
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_configure(&s_d, CC1101_PRESET_OOK_RX, 433920000u, 4800));
+    before = s_xfers;
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, cc1101_tx_start(&s_d, 433920000u));
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_configure(&s_d, CC1101_PRESET_FSK2_RX, 433920000u, 4800));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, cc1101_tx_start(&s_d, 433920000u));
+    /* nothing configured, or reset since */
+    configure_tx(433920000u);
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_reset(&s_d));
+    before = s_xfers;
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, cc1101_tx_start(&s_d, 433920000u));
+    TEST_ASSERT_EQUAL(before, s_xfers);
+    TEST_ASSERT_EQUAL(0, fake_cc1101_stats()->tx_strobes);
+}
+
+static void test_tx_start_does_not_transmit_on_a_chip_that_is_not_as_written(void)
+{
+    /* the frequency words differ (the chip was retuned out of the band behind our back) */
+    configure_tx(433920000u);
+    static const uint8_t k_433_0[3] = {0x10, 0xA7, 0x61}; /* 433.00 MHz: outside the band */
+    write_burst_direct(CC1101_FREQ2, k_433_0, 3);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, cc1101_tx_start(&s_d, 433920000u));
+    TEST_ASSERT_EQUAL(0, fake_cc1101_stats()->tx_strobes);
+    TEST_ASSERT_EQUAL_HEX8(0x01, fake_cc1101_stats()->marcstate);
+    /* a flipped bit in the read-back of the frequency */
+    configure_tx(433920000u);
+    s_corrupt_readback = true;
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, cc1101_tx_start(&s_d, 433920000u));
+    s_corrupt_readback = false;
+    TEST_ASSERT_EQUAL(0, fake_cc1101_stats()->tx_strobes);
+    /* the power table is no longer the capped one: one byte at a time */
+    for (unsigned i = 0; i < CC1101_PATABLE_SIZE; i++) {
+        configure_tx(433920000u);
+        uint8_t pa[CC1101_PATABLE_SIZE];
+        memcpy(pa, cc1101_patable(), sizeof pa);
+        pa[i] = (uint8_t)(i == 1u ? 0x61u : 0xC6u); /* the power-on default, or one step over */
+        write_burst_direct(CC1101_PATABLE, pa, sizeof pa);
+        TEST_ASSERT_EQUAL_MESSAGE(STARK_ERR_IO, cc1101_tx_start(&s_d, 433920000u),
+                                  "PATABLE differs");
+        TEST_ASSERT_EQUAL(0, fake_cc1101_stats()->tx_strobes);
+    }
+    configure_tx(433920000u); /* and the written table is accepted again */
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tx_start(&s_d, 433920000u));
+}
+
+static void test_tx_start_is_bounded_and_fails_at_every_transfer(void)
+{
+    configure_tx(433920000u);
+    unsigned before = s_xfers;
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_tx_start(&s_d, 433920000u));
+    unsigned total = s_xfers - before;
+    TEST_ASSERT_EQUAL(4u, total);
+    for (unsigned at = 1; at <= total; at++) {
+        fake_cc1101_reset();
+        configure_tx(433920000u);
+        uint32_t strobes = fake_cc1101_stats()->tx_strobes;
+        s_xfers = 0;
+        s_fail_from = at;
+        TEST_ASSERT_EQUAL(STARK_ERR_IO, cc1101_tx_start(&s_d, 433920000u));
+        TEST_ASSERT_EQUAL(at, s_xfers);
+        /* STX was sent only when the transfers before it all worked */
+        TEST_ASSERT_EQUAL(at > 3u ? strobes + 1u : strobes, fake_cc1101_stats()->tx_strobes + 0u);
+        s_fail_from = 0;
+        TEST_ASSERT_EQUAL(STARK_OK, cc1101_idle(&s_d));
+        TEST_ASSERT_EQUAL_HEX8(0x01, fake_cc1101_stats()->marcstate);
+    }
+    /* STX that never takes: a bounded wait, then a timeout */
+    fake_cc1101_reset();
+    configure_tx(433920000u);
+    s_now = 5000;
+    fake_cc1101_fault(FAKE_CC1101_STUCK, -1);
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, cc1101_tx_start(&s_d, 433920000u));
+    TEST_ASSERT_TRUE(s_now - 5000u <= 2u * CC1101_TX_TIMEOUT_MS);
+    TEST_ASSERT_EQUAL(1, fake_cc1101_stats()->tx_strobes);
+    fake_cc1101_fault(FAKE_CC1101_NONE, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, cc1101_idle(&s_d));
+    /* a chip that stopped answering */
+    configure_tx(433920000u);
+    fake_cc1101_fault(FAKE_CC1101_NO_ANSWER, -1);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, cc1101_tx_start(&s_d, 433920000u));
+    fake_cc1101_fault(FAKE_CC1101_NONE, 0);
 }
 
 static void test_rssi_and_marcstate(void)
@@ -465,7 +597,11 @@ int main(void)
     RUN_TEST(test_configure_survives_a_fault_at_every_step_and_recovers);
     RUN_TEST(test_configure_under_the_fake_faults);
     RUN_TEST(test_strobes);
-    RUN_TEST(test_transmit_is_not_available_in_this_task);
+    RUN_TEST(test_stx_is_never_a_generic_strobe);
+    RUN_TEST(test_tx_start_reads_the_chip_back_and_enters_tx);
+    RUN_TEST(test_tx_start_refuses_before_any_transfer);
+    RUN_TEST(test_tx_start_does_not_transmit_on_a_chip_that_is_not_as_written);
+    RUN_TEST(test_tx_start_is_bounded_and_fails_at_every_transfer);
     RUN_TEST(test_rssi_and_marcstate);
     RUN_TEST(test_tune_rx_retunes_and_leaves_the_chip_receiving);
     RUN_TEST(test_tune_rx_refuses_before_any_transfer);

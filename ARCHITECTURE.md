@@ -309,7 +309,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 4 | `STARK_SYS_IR` | `stark_ir` (STARK-0303) | `STARK_IR_EVT_RX` / `_TX_DONE` / `_TX_FAILED` |
 | 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
 | 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
-| 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602), `_CAPTURE` / `_CAPTURE_DONE` (STARK-0603); `_TX_DONE` / `_TX_FAILED` / `_TX_REFUSED` arrive with STARK-0605 |
+| 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602), `_CAPTURE` / `_CAPTURE_DONE` (STARK-0603), `_TX_DONE` (6) / `_TX_FAILED` (7) / `_TX_REFUSED` (8) (STARK-0605) |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -919,15 +919,17 @@ index 0 is the OOK "off" level, index 1 the cap `CC1101_PA_CAP`. The driver runs
 injected `xfer`, clock and delay; every wait ends at a deadline and after at most 16 polls,
 so a chip that never answers gives `STARK_ERR_TIMEOUT`. `cc1101_detect()` reads `PARTNUM`
 0x00 and `VERSION` 0x14 or 0x04 and returns what answered either way. `cc1101_strobe()`
-refuses `STX` until STARK-0605 and `SRX` before a configuration; `cc1101_configure()` writes
+refuses `STX` always (the one way into TX is `cc1101_tx_start()`, STARK-0605, below) and `SRX`
+before a configuration; `cc1101_configure()` writes
 the three frequency registers as one burst, so no half-updated word is ever on the chip, and
 reads them back.
 
 `stark_subghz_transport` is the only Sub-GHz code that touches SPI or RMT: `xfer` through
 `stark_module_spi` on the claimed lease, and GDO2 → symbols through an RMT receive channel
 written like `stark_ir`'s. Pin numbers come from the lease, never from this component.
-`tx` returns `STARK_ERR_NOT_SUPPORTED` until STARK-0605: nothing can reach GDO0. The
-emulator test image substitutes the component (fourth substitution, ADR-0022 §3) with one
+`tx` (STARK-0605) puts a symbol list on GDO0 and enforces the transmit limits itself
+(`stark_subghz_tx_ok()`: 1–2048 symbols, each 1 µs–1 s, at most 2 s in all, a timeout of at most
+the signal plus 100 ms), whoever asks. The emulator test image substitutes the component (fourth substitution, ADR-0022 §3) with one
 built on `test/fake/fake_cc1101.c`; like production it refuses a stale lease. The component
 is class L3 in `check_layers.py`, not L1: it uses `stark_module`'s lease and SPI device,
 which sit at L3.
@@ -946,7 +948,7 @@ rejected module is identified again after 2 s, then 4 s, then every 8 s while th
 rejection repeats, and a repeat is not logged again. Logs: `subghz: no module` (once, at the start), `subghz: cc1101 version 0x14`,
 `subghz: not a cc1101 (partnum 0x.. version 0x..)`, `subghz: module lost`, `subghz: module
 not usable: <error>`. Nothing is allocated after init, and the chip is left in IDLE until an
-app asks it to listen (below). It never transmits.
+app asks it to listen or to send one confirmed capture (below).
 
 **RSSI meter and band scan (STARK-0602).** `subghz_rssi.c` (public header, pure) converts the
 chip's RSSI byte (dBm = (raw ≥ 128 ? (raw − 256) / 2 : raw / 2) − 74, carried as twice the dBm),
@@ -1018,6 +1020,49 @@ decodes its kind, bits, repeats, hex and `short/long µs`. Every row is selectab
 `subghzapp: decode 4 bursts, 4 decoded, 0 unknown`, `subghzapp: ppm short=400 long=1200 bits=24
 hex=5a3cc3 x4` (Manchester `manchester t=500 long=1000 …`, one line per distinct decode).
 
+**Gated replay (STARK-0605, ADR-0022 §6 and its STARK-0605 addendum).** A saved capture can be sent
+once, after a confirmation, and only inside limits that are constants in `subghz_txpolicy.c` (pure,
+injected clock, 100 % line coverage) — there is no setter, no Kconfig option and no UI path past
+them: tune 433.05–434.79 MHz; `PATABLE` `{0x00, 0x60, 0…}`; at most 2048 symbols and 2 s of
+signal; at most 360 s on air in any rolling 3600 s and, after a transmission of *d*, an off-time of
+9 *d*; one transmission per confirmation. The source is a capture parsed from a saved `rf` file and
+nothing else: there is no encoder, no editing, no decoded bits to send, no repeat, loop, sweep or
+queue. The checks run four times. (1) The app asks `stark_subghz_tx_check()` when Replay is chosen
+and shows the file, frequency, duration, symbols and the duty left; a refusal is an alert. (2) The
+dialog's OK calls `stark_subghz_tx_start(raw, name, hash)`, which checks again and refuses unless the
+symbols still hash to what was shown (`subghz_raw_hash`), so what is sent is what was confirmed.
+(3) The service task checks a third time when it carries the request out; the numbers (span,
+count) are recomputed from the symbols each time, never taken from the caller. (4) `cc1101_tx_start()`
+re-checks the band from the frequency registers *read back from the chip* and the power table
+from `PATABLE` read back (`STARK_ERR_IO` on any difference, so a bit flipped or a chip retuned since
+the configuration never reaches STX), and `stark_subghz_transport_tx()` enforces the symbol, duration
+and timeout limits itself. Refusal order: no module, busy, band, length, duration, budget, off-time,
+then file (not OOK, or not a valid capture).
+
+One request is one attempt: the pending request is consumed before the radio is touched, so no
+failure retries it; `stark_subghz_stop()`, any other request or a lost module drops one that has not
+started. The attempt is `OOK_TX` profile (the file's rate), the chip read-back, STX, the symbols on
+GDO0 with a timeout, then SIDLE and the receive profile back on every outcome; a chip that cannot be
+shown to be IDLE again is dropped like any failed module (re-identified with a reset). OOK sends no
+carrier while GDO0 is low (`PATABLE[0]` = 0, and the RMT channel ends low and is deleted), so even a
+bus that dies mid-send leaves nothing on air once the symbols end. Every attempt that reached the
+radio is charged in full (planned ms rounded up; its end is the later of the planned and the real
+end), success or failure; refusals are not charged. The ledger holds 192 entries (180 × 2 s fill
+the budget), exact up to that many transmissions an hour and conservative beyond it (the two oldest
+merge, charged the sum for as long as the later lives); an entry leaves the window exactly 3600 s
+after it ended. The ledger is RAM; a boot starts with the longest off-time (18 s) already running,
+so a reboot never reopens more than a fresh window and the 10 % bound holds across reboots; it
+outlives a lost and returned module (it lives in the service, not the module). Time is a wrapping
+`uint32` ms clock: every comparison is a difference and the policy forgets finished waits and old
+entries each round. A transmission holds the service mutex for its whole length (at most 2.1 s), so
+the app swallows keys while one runs and `stop()` simply waits; the buffer therefore cannot be freed
+under it. Logs: `subghz: tx rf_0001.rf 433920000 Hz 192 sym 202 ms`, `subghz: tx failed rf_0001.rf:
+<error>`, `subghz: tx refused: <band|length|duration|budget|offtime|file|no module|busy>`,
+`subghzapp: confirm …`, `subghzapp: tx cancelled`, `subghzapp: tx confirmed rf_0001.rf`,
+`subghzapp: sent rf_0001.rf` (to the console and the log file). The production RMT path (an RMT
+transmit channel with a streaming simple encoder, created per transmission on GDO0) is exercised
+only on hardware at V1; the host and the test image run the same service and policy over the fake.
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -1027,7 +1072,7 @@ hex=5a3cc3 x4` (Manchester `manchester t=500 long=1000 …`, one line per distin
 | `stark_ir` | V0.3 | Codec core, RX and gated TX implemented (§6.9d, STARK-0301…0304); the IR app (Lab category, receive + save, STARK-0305); browse/replay per STARK-0306 |
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
-| `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); gated replay planned (ADR-0022, TASKS STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
+| `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); the fixed transmit policy and the gated replay of a saved capture implemented (§6.9g, STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
@@ -1079,7 +1124,7 @@ asserts on the **presence and ordering** of that line, never on the number in it
 | `stark_ir` | 3 | 3 kB (static) | IR captures: symbols → timings → decode → ring → event (STARK-0303), core 0 |
 | `stark_storage` | 2 | 4 kB (static) | Card mount/probe/retry (STARK-0201), core 0. The only caller of the storage medium |
 | `stark_module` | 2 | 2.5 kB (static) | Module slot polling (STARK-0502), core 0. The only caller of the module transport |
-| `stark_subghz` | 2 | 4 kB (static) | Sub-GHz module service and receive-only measurements (STARK-0601, 0602), core 0. The only caller of the Sub-GHz transport |
+| `stark_subghz` | 2 | 4 kB (static) | Sub-GHz module service, measurements, capture and the gated replay (STARK-0601…0605), core 0. The only caller of the Sub-GHz transport |
 | `esp_timer` (input) | high | – | 5 ms key sample → publish events. Never blocks. |
 | `esp_timer` (led/buzzer) | high | – | Heartbeat blink, tone sequence steps. |
 | IDLE/main | – | – | Standard IDF. |

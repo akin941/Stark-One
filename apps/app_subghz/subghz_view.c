@@ -35,6 +35,7 @@ static size_t s_stop_row = NO_ROW;
 static size_t s_save_row = NO_ROW;
 static size_t s_restart_row = NO_ROW;
 static size_t s_decode_row = NO_ROW;
+static size_t s_replay_row = NO_ROW;
 static sgapp_mode_t s_mode;
 static char s_file_name[16];
 static subghz_raw_t s_file;
@@ -307,7 +308,13 @@ static void saved_rows(void)
 
 static void file_rows(void)
 {
-    s_decode_row = row("Decode", true); /* first: a file view has nothing else to select */
+    s_decode_row = row("Decode", true); /* first: Decode and Replay are all a file view selects */
+    s_replay_row = row("Replay", !sgsend_busy());
+    if (sgsend_busy()) {
+        value_text(s_replay_row, "sending...");
+    } else if (sgsend_note()[0] != '\0') {
+        value_text(s_replay_row, sgsend_note());
+    }
     value_text(row("File", false), s_file_name);
     value_mhz(row("Frequency", false), s_file.freq_hz);
     value_text(row("Modulation", false), s_file.mod == SUBGHZ_MOD_OOK ? "OOK" : "2-FSK");
@@ -384,6 +391,7 @@ const ui_menu_item_t *sgview_items(sgapp_mode_t mode, size_t *count)
     s_count = 0;
     s_again_row = s_start_row = s_stop_row = s_save_row = s_restart_row = NO_ROW;
     s_decode_row = NO_ROW;
+    s_replay_row = NO_ROW;
     s_mode = mode;
     if (!s_ready) {
         bool lost = s_seen_ready;
@@ -455,6 +463,11 @@ bool sgview_is_stop_row(size_t index)
 bool sgview_is_save_row(size_t index)
 {
     return index == s_save_row;
+}
+
+bool sgview_is_replay_row(size_t index)
+{
+    return index == s_replay_row;
 }
 
 bool sgview_is_restart_row(size_t index)

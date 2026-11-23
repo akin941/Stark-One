@@ -227,7 +227,10 @@ onboard on its own pins; the PN532 is a bus device at 0x24 with no EEPROM of its
   must default to **receive-only**. The firmware's fixed limits (ADR-0022 §5–6):
   433.05–434.79 MHz only, `PATABLE` 0x60 (about 0 dBm conducted), at most 360 s of
   transmission per rolling hour plus an off-time of 9× each transmission, ≤ 2 s and
-  ≤ 2048 symbols per transmission.
+  ≤ 2048 symbols per transmission, one transmission per confirmation (`subghz_txpolicy.c`,
+  STARK-0605). The data line (GDO0) is driven only during a transmission and ends low, which in
+  OOK means no carrier; the first transmission after a boot waits out an 18 s off-time. Power and on-air time are measured on a spectrum analyser at V1
+  (docs/bringup/v1-subghz.md).
 * IR emission is unregulated but line-of-sight; IR TX is limited to our own devices.
 * NFC operates at 13.56 MHz with a compliant reader module; no custom antenna design
   before V1 hardware.

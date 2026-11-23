@@ -689,13 +689,14 @@ set(SUBGHZ_CORE_SOURCES
     ${STARK_COMPONENTS}/stark_subghz/subghz_rssi.c
     ${STARK_COMPONENTS}/stark_subghz/subghz_raw.c
     ${STARK_COMPONENTS}/stark_subghz/subghz_decode.c
+    ${STARK_COMPONENTS}/stark_subghz/subghz_txpolicy.c
     ${STARK_COMPONENTS}/stark_subghz/subghz_svc.c
 )
 set(FAKE_CC1101 ${CMAKE_CURRENT_SOURCE_DIR}/../fake/fake_cc1101.c)
 set(SUBGHZ_INCLUDES ${STARK_COMPONENTS}/stark_subghz ${STARK_COMPONENTS}/stark_subghz/include
     ${STARK_COMPONENTS}/stark_subghz_transport/include ${MODULE_INCLUDES})
 foreach(sg_test cc1101_regs cc1101_drv fake_cc1101 subghz_service subghz_rssi subghz_measure
-        subghz_raw subghz_capture subghz_decode)
+        subghz_raw subghz_capture subghz_decode subghz_txpolicy subghz_tx)
     add_executable(run_${sg_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${sg_test}.c
         ${SUBGHZ_CORE_SOURCES} ${FAKE_CC1101}
         ${STARK_COMPONENTS}/stark_module/module_desc.c
@@ -742,16 +743,22 @@ add_library(subghz_decode_nocov OBJECT ${STARK_COMPONENTS}/stark_subghz/subghz_d
 target_include_directories(subghz_decode_nocov PRIVATE ${STARK_COMPONENTS}/stark_subghz/include
     ${STARK_COMPONENTS}/stark_subghz_transport/include ${MODULE_INCLUDES})
 target_compile_options(subghz_decode_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
+add_library(subghz_txpolicy_nocov OBJECT ${STARK_COMPONENTS}/stark_subghz/subghz_txpolicy.c)
+target_include_directories(subghz_txpolicy_nocov PRIVATE ${STARK_COMPONENTS}/stark_subghz/include
+    ${STARK_COMPONENTS}/stark_subghz_transport/include ${MODULE_INCLUDES})
+target_compile_options(subghz_txpolicy_nocov PRIVATE ${OUR_WARNING_FLAGS} ${OUR_SANITIZER_FLAGS})
 add_executable(run_ui_subghz_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_subghz.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_subghz/app_subghz.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_subghz/subghz_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_subghz/subghz_files.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_subghz/subghz_send.c
     ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_subghz.c
     ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_storage.c
     $<TARGET_OBJECTS:subghz_rssi_nocov>
     $<TARGET_OBJECTS:subghz_raw_nocov>
     $<TARGET_OBJECTS:subghz_decode_nocov>
+    $<TARGET_OBJECTS:subghz_txpolicy_nocov>
     $<TARGET_OBJECTS:storage_core_nocov>
     ${UI_PORT_SOURCES}
 )

@@ -469,8 +469,8 @@ static void test_the_saved_captures(void)
     TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: opened rf_0003.rf (16 sym) hash 0x"));
     TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: hist 400x7 1200x8 12400x1"));
     TEST_ASSERT_FALSE(ui_port_subghz_receiving()); /* reading a file never touches the radio */
-    pin("file_view", UINT64_C(0x7c44f68816634ccc));
-    press(STARK_KEY_OK); /* its one selectable row, Decode (read-only: test_the_analysis_*) */
+    pin("file_view", UINT64_C(0x77f1e695642851da));
+    press(STARK_KEY_OK); /* its first selectable row, Decode (read-only: test_the_analysis_*) */
     press(STARK_KEY_BACK);
     press(STARK_KEY_BACK);
     pin("saved_list_again", UINT64_C(0xacf37c967d0d6769)); /* back in the list, the same rows */
@@ -745,6 +745,238 @@ static void test_the_analysis_rows_and_text(void)
     press(STARK_KEY_BACK);
 }
 
+/* ---- replay (STARK-0605) ------------------------------------------------------------------- */
+
+/* Home -> Saved -> the newest file, and its view is up (Decode and Replay are its two rows). */
+static void open_file_view(void)
+{
+    ui_port_subghz_set_ready(true);
+    mount_card();
+    add_capture_file("rf_0001.rf", SUBGHZ_MOD_OOK, 433920000u);
+    launch();
+    open_home_row(3);
+    press(STARK_KEY_OK);
+    frame();
+}
+
+/* From a freshly built file view (the selection is on Decode): Replay, then OK. The menu wraps
+ * round its two rows, so this is only right from the top. */
+static void ask_replay(void)
+{
+    press(STARK_KEY_DOWN);
+    press(STARK_KEY_OK);
+}
+
+static void test_replay_asks_first_and_cancel_sends_nothing(void)
+{
+    ui_port_subghz_reset();
+    open_file_view();
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_checks());
+    ask_replay();
+    TEST_ASSERT_EQUAL(1, ui_port_subghz_tx_checks()); /* the policy was asked, nothing was sent */
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+    TEST_ASSERT_TRUE(ui_port_log_contains(
+        "subghzapp: confirm rf_0001.rf: 433.920 MHz, 25 ms, 16 symbols. Duty left 360 s. Own "
+        "devices only."));
+    TEST_ASSERT_TRUE(ui_port_log_contains("dialog: open \"Send rf_0001.rf?\""));
+    pin("replay_dialog", UINT64_C(0x7837a251ad365590));
+    press(STARK_KEY_DOWN); /* any other key: consumed, and sends nothing */
+    press(STARK_KEY_LEFT);
+    press(STARK_KEY_RIGHT);
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+    press(STARK_KEY_BACK);
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: tx cancelled"));
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+    TEST_ASSERT_FALSE(ui_port_subghz_receiving());
+    pin("replay_cancelled", UINT64_C(0xc1580eed7901dafa));
+    /* and the dialog's default is cancel: asking again and leaving the view sends nothing */
+    press(STARK_KEY_OK);
+    press(STARK_KEY_BACK);
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+}
+
+static void test_one_ok_one_transmission_and_keys_are_swallowed_while_it_runs(void)
+{
+    ui_port_subghz_reset();
+    open_file_view();
+    ask_replay();
+    press(STARK_KEY_OK); /* the dialog's OK */
+    TEST_ASSERT_EQUAL(1, ui_port_subghz_tx_starts());
+    TEST_ASSERT_EQUAL_HEX32(subghz_raw_hash(k_frame, 16), ui_port_subghz_tx_hash());
+    TEST_ASSERT_EQUAL_STRING("rf_0001.rf", ui_port_subghz_tx_name());
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: tx confirmed rf_0001.rf"));
+    TEST_ASSERT_TRUE(sgsend_busy());
+    frame();
+    /* while it runs no key does anything: it can neither be repeated nor stopped by the UI */
+    unsigned stops = ui_port_subghz_stops();
+    press(STARK_KEY_OK);
+    press(STARK_KEY_DOWN);
+    press(STARK_KEY_OK);
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_LEFT);
+    TEST_ASSERT_EQUAL(1, ui_port_subghz_tx_starts());
+    TEST_ASSERT_EQUAL(stops, ui_port_subghz_stops());
+    TEST_ASSERT_EQUAL(1, ui_port_subghz_tx_checks());
+    pin("replay_sending", UINT64_C(0xde48b18247e378a4));
+
+    ui_port_subghz_tx_finish(STARK_SUBGHZ_EVT_TX_DONE);
+    frame();
+    TEST_ASSERT_FALSE(sgsend_busy());
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: sent rf_0001.rf"));
+    TEST_ASSERT_EQUAL(stops + 1, ui_port_subghz_stops()); /* the result is read: back to idle */
+    TEST_ASSERT_FALSE(ui_port_subghz_receiving());
+    TEST_ASSERT_EQUAL_STRING("sent", sgsend_note());
+    pin("replay_sent", UINT64_C(0x729e39c08eae97c4));
+    TEST_ASSERT_EQUAL(1, ui_port_subghz_tx_starts());
+    frame();
+    press(STARK_KEY_BACK); /* keys work again: the list, then the rest */
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+}
+
+static void test_a_failed_and_a_refused_transmission_are_reported(void)
+{
+    ui_port_subghz_reset();
+    open_file_view();
+    ask_replay();
+    press(STARK_KEY_OK);
+    ui_port_subghz_tx_finish(STARK_SUBGHZ_EVT_TX_FAILED);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: send failed: rf_0001.rf"));
+    TEST_ASSERT_EQUAL_STRING("failed", sgsend_note());
+    pin("replay_failed", UINT64_C(0xfac944fe75e8546c));
+    TEST_ASSERT_FALSE(sgsend_busy());
+    ask_replay(); /* the user may ask again: a new confirmation, never an automatic retry */
+    TEST_ASSERT_EQUAL(1, ui_port_subghz_tx_starts());
+    press(STARK_KEY_OK);
+    TEST_ASSERT_EQUAL(2, ui_port_subghz_tx_starts());
+    ui_port_subghz_tx_finish(STARK_SUBGHZ_EVT_TX_REFUSED);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("subghzapp: send refused: rf_0001.rf"));
+    TEST_ASSERT_EQUAL_STRING("refused", sgsend_note());
+    TEST_ASSERT_FALSE(sgsend_busy());
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+}
+
+static void test_every_refusal_is_explained_and_sends_nothing(void)
+{
+    static const struct {
+        subghz_tx_verdict_t v;
+        uint32_t wait_ms;
+        const char *text;
+    } k_cases[] = {
+        {SUBGHZ_TX_REFUSE_BAND, 0, "Outside 433.05-434.79 MHz."},
+        {SUBGHZ_TX_REFUSE_LENGTH, 0, "No symbols, or more than 2048."},
+        {SUBGHZ_TX_REFUSE_DURATION, 0, "Longer than 2 s."},
+        {SUBGHZ_TX_REFUSE_BUDGET, 0, "Duty budget used up: 360 s in any hour."},
+        {SUBGHZ_TX_REFUSE_OFFTIME, 1818, "Off-time: wait 2 s."},
+        {SUBGHZ_TX_REFUSE_OFFTIME, 18000, "Off-time: wait 18 s."},
+        {SUBGHZ_TX_REFUSE_OFFTIME, 1, "Off-time: wait 1 s."},
+        {SUBGHZ_TX_REFUSE_FILE, 0, "This file cannot be sent."},
+        {SUBGHZ_TX_REFUSE_NO_MODULE, 0, "The radio is not ready."},
+        {SUBGHZ_TX_REFUSE_BUSY, 0, "Already sending."},
+        {SUBGHZ_TX_OK, 0, "Not sent."},
+        {SUBGHZ_TX_VERDICT_COUNT, 0, "Not sent."},
+    };
+    char text[64];
+    for (size_t i = 0; i < sizeof k_cases / sizeof k_cases[0]; i++) {
+        sgsend_refusal_text(k_cases[i].v, k_cases[i].wait_ms, text, sizeof text);
+        TEST_ASSERT_EQUAL_STRING(k_cases[i].text, text);
+    }
+
+    ui_port_subghz_reset();
+    open_file_view();
+    ui_port_subghz_tx_policy(SUBGHZ_TX_REFUSE_OFFTIME, 360000, 1818);
+    ask_replay(); /* refused when the dialog would open: an alert says why, nothing else happens */
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+    TEST_ASSERT_TRUE(ui_port_log_contains("dialog: open \"Not sent\""));
+    pin("replay_refused_offtime", UINT64_C(0xf4ddf2ef5297431b));
+    press(STARK_KEY_OK); /* dismiss */
+    TEST_ASSERT_EQUAL_STRING("refused", sgsend_note());
+    pin("replay_refused_row", UINT64_C(0x60ec7d64406f9598));
+    ui_port_subghz_tx_policy(SUBGHZ_TX_REFUSE_BUDGET, 0, 0);
+    ask_replay();
+    pin("replay_refused_budget", UINT64_C(0xcab5e92cbfa0e87f));
+    press(STARK_KEY_BACK); /* dismiss */
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+
+    /* the budget nearly used up shows what is left, and still asks */
+    ui_port_subghz_tx_policy(SUBGHZ_TX_OK, 1500, 0);
+    ask_replay();
+    TEST_ASSERT_TRUE(ui_port_log_contains("25 ms, 16 symbols. Duty left 1 s."));
+    press(STARK_KEY_BACK);
+
+    /* the symbols change between the confirmation's being shown and its OK: an alert, no send */
+    ui_port_subghz_tx_policy(SUBGHZ_TX_OK, 360000, 0);
+    press(STARK_KEY_OK); /* the selection is still on Replay (a cancelled dialog changes nothing) */
+    sgfile_symbols()[3] = 1210;
+    press(STARK_KEY_OK);
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+    TEST_ASSERT_FALSE(sgsend_busy());
+    pin("replay_refused_file", UINT64_C(0x1359737722a2de55));
+    press(STARK_KEY_OK);
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+}
+
+static void test_leaving_the_app_or_losing_the_module_while_sending(void)
+{
+    ui_port_subghz_reset();
+    open_file_view();
+    ask_replay();
+    press(STARK_KEY_OK);
+    TEST_ASSERT_TRUE(sgsend_busy());
+    unsigned stops = ui_port_subghz_stops();
+    TEST_ASSERT_EQUAL(STARK_OK, stark_ui_pop_to_root());  /* BACK held: home from anywhere */
+    TEST_ASSERT_EQUAL(stops + 1, ui_port_subghz_stops()); /* the service is told to stop */
+    TEST_ASSERT_FALSE(sgsend_busy());
+    TEST_ASSERT_NULL(sgfile_symbols());
+
+    ui_port_subghz_reset();
+    open_file_view();
+    ask_replay();
+    press(STARK_KEY_OK);
+    TEST_ASSERT_TRUE(sgsend_busy());
+    ui_port_subghz_set_ready(false); /* the module goes: nothing is in flight any more */
+    frame();
+    TEST_ASSERT_FALSE(sgsend_busy());
+    pin("replay_module_lost", UINT64_C(0xd92189a11140edfa));
+    press(STARK_KEY_BACK);
+}
+
+static void test_replay_is_offered_only_for_a_saved_file(void)
+{
+    ui_port_subghz_reset();
+    ui_port_subghz_set_ready(true);
+    mount_card();
+    launch();
+    start_capture();
+    ui_port_subghz_capture_feed(k_frame, 16);
+    ui_port_subghz_capture_end();
+    frame();
+    /* a capture that was just made has no Replay row, saved or not: only a file read back has */
+    for (size_t i = 0; i < 12; i++) {
+        TEST_ASSERT_FALSE(sgview_is_replay_row(i));
+    }
+    press(STARK_KEY_OK); /* Save */
+    frame();
+    for (size_t i = 0; i < 12; i++) {
+        TEST_ASSERT_FALSE(sgview_is_replay_row(i));
+    }
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_checks());
+    press(STARK_KEY_BACK);
+    press(STARK_KEY_BACK);
+    TEST_ASSERT_EQUAL(0, ui_port_subghz_tx_starts());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -764,5 +996,11 @@ int main(void)
     RUN_TEST(test_the_three_kinds_and_what_does_not_fit);
     RUN_TEST(test_the_analysis_of_a_saved_file);
     RUN_TEST(test_the_analysis_rows_and_text);
+    RUN_TEST(test_replay_asks_first_and_cancel_sends_nothing);
+    RUN_TEST(test_one_ok_one_transmission_and_keys_are_swallowed_while_it_runs);
+    RUN_TEST(test_a_failed_and_a_refused_transmission_are_reported);
+    RUN_TEST(test_every_refusal_is_explained_and_sends_nothing);
+    RUN_TEST(test_leaving_the_app_or_losing_the_module_while_sending);
+    RUN_TEST(test_replay_is_offered_only_for_a_saved_file);
     return UNITY_END();
 }

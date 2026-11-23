@@ -980,5 +980,46 @@ host-only (`test/fake/fake_subghz_decode_vectors.h`, separate from the scene cat
 image carries), so the image's flash and heap do not change for them. The decoders add no
 transmit path of any kind: nothing in the analysis can reach `tx()`.
 
+**Addendum (STARK-0605).** The replay spec left these open; each is the conservative reading,
+recorded so it is not taken silently. (1) **The duty window is RAM and does not persist, and a boot
+may not reopen more than a fresh window.** §6 says it "starts empty at boot". It also starts with
+the longest possible off-time already running (9 × 2 s = 18 s from the start of the service), as
+if a maximal transmission had just ended. A reboot therefore cannot dodge the off-time rule, and
+because the off-time alone caps the duty at 10 % (a 2 s send is followed by 18 s of silence, boot
+included), power-cycling between transmissions cannot exceed the cap either; the 360 s budget and
+the off-time agree at 10 %, so the window being RAM costs nothing. NVS stays rejected (flash wear,
+and nothing transmits unattended). The ledger lives in the service, not the module: unplugging
+and replugging the radio does not start a fresh window. (2) **Accounting.** A transmission is
+charged its signal rounded up to a millisecond (at least 1); an attempt that reached the radio is
+charged in full whether it succeeded, failed or timed out, because how long a carrier was up is
+unknown after a failure; its end is the later of the planned end and the real end, and the off-time
+runs from there. A refusal, at the request or on the transmit path, is not charged. A transmission
+belongs to the window until 3600 s after it ended (the edge is exact: at 3 599 999 ms it counts, at
+3 600 000 it does not), and the budget is exhausted exactly at 360 000 ms charged. (3) **The ledger
+is 192 entries** (8 B each, 1.5 kB of static RAM; 180 × 2 s fill the budget) and is exact up to
+192 transmissions an hour; with more (only short ones can) the two oldest merge, charged their sum
+for as long as the later lives, so the window can only ever look fuller than it is. (4) **Only OOK
+files are sent.** The one transmit profile is `OOK_TX`; a 2-FSK capture is refused as `file`. The
+file's own rate is used, its frequency is rechecked (the parser already refuses out-of-band files),
+and no field of a file can change the power, the length or the count. (5) **Four checks.** The
+dialog's check, the request's, the service task's own on the transmit path, and a read-back from
+the chip (the frequency registers and `PATABLE`) before `STX`; `cc1101_strobe()` still refuses
+`STX`, so `cc1101_tx_start()` is the only way into TX. The transport also enforces 1–2048 symbols,
+2 s and its own timeout, so a caller that skipped the policy still cannot exceed the limits. The
+request carries the fingerprint of the symbols that were shown, and a request whose symbols hash
+differently is refused as `file`. (6) **A confirmation buys one attempt.** The request is consumed
+before the radio is touched; nothing retries a failure; `stop()`, any other request and a lost
+module drop a request that has not started. (7) **The service mutex is held for the whole
+transmission** (at most 2.1 s) rather than released around the transport call: the capture buffer
+belongs to the app and is freed on exit, so letting `stop()` run while symbols are read from it
+would be a use after free. The cost is that a key handled during a transmission would block the UI
+task for up to 2.1 s, so the app swallows every key while one runs and the UI only waits when the
+app is closed. (8) **The fail-safe is the line.** OOK sends no carrier while GDO0 is low; the RMT
+channel ends low and is deleted after every transmission; if the chip cannot be shown to be IDLE
+afterwards the module is dropped and reset when it answers again. The RMT path itself is exercised
+only at V1, like the receive path. (9) **What the confirmation says**: the file, the frequency,
+the duration, the symbol count, the duty budget left and "Own devices only". A refusal is an alert
+with its reason (and, for the off-time, how long to wait) and is logged by the service.
+
 **Revisit trigger:** a radio model in esp-emu, the V1 board's antenna and matching, a
 regulatory change for 433 MHz SRD, or a need for another band.
