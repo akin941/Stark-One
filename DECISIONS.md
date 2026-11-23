@@ -950,5 +950,16 @@ STARK_CAP_SUBGHZ`. `stark_subghz` publishes `STARK_SYS_SUBGHZ` (id 7). Captures 
 and deferred physical evidence. `docs/bringup/v1-subghz.md` (STARK-0606) is written now
 and filled in at V1.
 
+**Addendum (STARK-0603).** Four readings of §4 and the capture spec, recorded so they are not
+taken silently: (1) the "2 s" of a capture is the **span of the kept signal** (the sum of the
+symbol durations), not wall-clock time, so waiting for a remote costs nothing and a transmission
+file can never exceed the limit of §6; (2) the `rf` parser **also refuses a frequency outside
+433.05–434.79 MHz** — a file is our own capture, and the transmit policy of STARK-0605 still
+checks the band itself; (3) the file is **streamed**, written through a cursor-driven formatter and
+read by a byte-fed parser with a 160-byte line buffer, so neither side holds a 19 kB text;
+(4) the 8 kB symbol buffer belongs to the app, which allocates it from the heap when a capture
+starts or a file is opened and frees it when the app stops (the service borrows it while a
+capture runs), instead of 8 kB of static RAM for the life of the firmware.
+
 **Revisit trigger:** a radio model in esp-emu, the V1 board's antenna and matching, a
 regulatory change for 433 MHz SRD, or a need for another band.

@@ -13,6 +13,10 @@ static stark_subghz_status_t s_st;
 static unsigned s_meters, s_scans, s_stops;
 static uint32_t s_hz;
 static stark_err_t s_refuse;
+static subghz_cap_t s_cap;
+static unsigned s_cap_starts, s_cap_finishes;
+static subghz_mod_t s_cap_mod;
+static uint32_t s_cap_hz;
 
 static void publish(int32_t what)
 {
@@ -29,6 +33,45 @@ void ui_port_subghz_reset(void)
     s_meters = s_scans = s_stops = 0;
     s_hz = 0;
     s_refuse = STARK_OK;
+    memset(&s_cap, 0, sizeof s_cap);
+    s_cap_starts = s_cap_finishes = 0;
+    s_cap_mod = SUBGHZ_MOD_OOK;
+    s_cap_hz = 0;
+}
+
+void ui_port_subghz_capture_feed(const subghz_sym_t *s, size_t n)
+{
+    subghz_cap_feed(&s_cap, s, n);
+    s_st.symbols = s_cap.n;
+    s_st.span_us = s_cap.total_us;
+    publish(STARK_SUBGHZ_EVT_CAPTURE);
+}
+
+void ui_port_subghz_capture_end(void)
+{
+    s_rx = false;
+    s_st.capture_done = true;
+    publish(STARK_SUBGHZ_EVT_CAPTURE_DONE);
+}
+
+unsigned ui_port_subghz_capture_starts(void)
+{
+    return s_cap_starts;
+}
+
+unsigned ui_port_subghz_capture_finishes(void)
+{
+    return s_cap_finishes;
+}
+
+subghz_mod_t ui_port_subghz_capture_mod(void)
+{
+    return s_cap_mod;
+}
+
+uint32_t ui_port_subghz_capture_hz(void)
+{
+    return s_cap_hz;
 }
 
 void ui_port_subghz_set_ready(bool ready)
@@ -126,6 +169,30 @@ stark_err_t stark_subghz_scan_start(void)
     s_rx = true;
     s_scans++;
     return STARK_OK;
+}
+
+stark_err_t stark_subghz_capture_start(subghz_mod_t mod, uint32_t hz, subghz_sym_t *buf, size_t cap)
+{
+    if (!s_ready || s_refuse != STARK_OK) {
+        return s_ready ? s_refuse : STARK_ERR_STATE;
+    }
+    if (hz < SUBGHZ_BAND_MIN_HZ || hz > SUBGHZ_BAND_MAX_HZ || buf == NULL || cap == 0) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    memset(&s_st, 0, sizeof s_st);
+    s_st.mode = STARK_SUBGHZ_CAPTURE;
+    s_st.hz = hz;
+    subghz_cap_init(&s_cap, buf, cap);
+    s_cap_mod = mod;
+    s_cap_hz = hz;
+    s_rx = true;
+    s_cap_starts++;
+    return STARK_OK;
+}
+
+void stark_subghz_capture_finish(void)
+{
+    s_cap_finishes++; /* the test ends the capture when it wants: the real service answers later */
 }
 
 void stark_subghz_stop(void)

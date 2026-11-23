@@ -6,17 +6,18 @@ idf_component_register(
         "cc1101_regs.c"
         "cc1101_drv.c"
         "subghz_rssi.c"
+        "subghz_raw.c"
         "subghz_svc.c"
         "stark_subghz.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
         stark_err
+        stark_subghz_transport
     PRIV_REQUIRES
         stark_event
         stark_log
         stark_module
-        stark_subghz_transport
         esp_timer
         freertos
 )

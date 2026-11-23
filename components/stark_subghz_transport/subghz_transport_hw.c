@@ -159,6 +159,12 @@ size_t stark_subghz_transport_rx_take(subghz_sym_t *out, size_t max, uint32_t ti
     if (s_rx_on) {
         (void)rmt_receive(s_rx, s_rx_buf, sizeof s_rx_buf, &k_rx_cfg); /* re-arm */
     }
+    /* NOTE: a frame ends at the idle threshold, whose low time the RMT does not report; the
+     * gap is part of the signal, and without it the next frame's first high would merge
+     * into this one's last (subghz_cap_feed) */
+    if (n > 0 && n < max && out[n - 1] > 0) {
+        out[n++] = -(subghz_sym_t)(IDLE_NS / 1000u);
+    }
     return n;
 }
 

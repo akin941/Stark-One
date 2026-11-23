@@ -28,7 +28,12 @@ void stark_subghz_transport_close(void);
 /* One chip-select-framed SPI transfer; STARK_ERR_STATE when closed or the lease is stale. */
 stark_err_t stark_subghz_transport_xfer(const uint8_t *tx, uint8_t *rx, size_t len);
 
-/* GDO2 → symbols. rx_take waits up to timeout_ms and returns how many it wrote (0: none). */
+/*
+ * GDO2 → symbols. rx_take waits up to timeout_ms and returns how many it wrote (0: none),
+ * at most 128 per call. Symbols arrive in frames that end at an idle gap; a frame that ends
+ * high is followed by the gap as a 20 ms low, so consecutive frames never merge. rx_stop
+ * is safe whether or not the receiver runs.
+ */
 stark_err_t stark_subghz_transport_rx_start(void);
 size_t stark_subghz_transport_rx_take(subghz_sym_t *out, size_t max, uint32_t timeout_ms);
 void stark_subghz_transport_rx_stop(void);

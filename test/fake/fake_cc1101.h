@@ -56,9 +56,14 @@ stark_err_t fake_cc1101_xfer(const uint8_t *tx, uint8_t *rx, size_t len);
 
 /* ---- GDO lines ------------------------------------------------------------ */
 
-/* A scene GDO2 plays once the chip is in RX; fake_cc1101_gdo2_take() consumes it. */
+/*
+ * A scene GDO2 plays once each time the chip enters RX. The fake keeps the pointer, not a
+ * copy (STARK-0603: the catalogue lives in flash), so the caller keeps the symbols alive.
+ * fake_cc1101_gdo2_take() hands the scene out in pieces of at most `max` (0 when not in RX
+ * or nothing is left), as a receiver's frames arrive.
+ */
 void fake_cc1101_scene(const subghz_sym_t *s, size_t n);
-size_t fake_cc1101_gdo2_take(subghz_sym_t *out, size_t max); /* 0 unless in RX with a scene */
+size_t fake_cc1101_gdo2_take(subghz_sym_t *out, size_t max);
 /* GDO0 while in TX is recorded (up to FAKE_CC1101_SCENE_MAX); false unless in TX. */
 bool fake_cc1101_gdo0_put(const subghz_sym_t *s, size_t n);
 size_t fake_cc1101_gdo0_recorded(const subghz_sym_t **out);
