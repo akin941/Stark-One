@@ -59,6 +59,28 @@ stark_err_t stark_hal_gpio_config_output(int pin, bool initial);
 bool stark_hal_gpio_read(int pin);
 void stark_hal_gpio_write(int pin, bool level);
 
+/* ---- Lab pads (STARK-0701, ADR-0023 §3) ---------------------------------------
+ *
+ * Pad calls for the lab transport (stark_lab_transport). Like the calls above they
+ * check range only (STARK_ERR_INVALID_ARG outside 0-48); which pins a lab tool may
+ * touch is stark_board's decision (stark_board_pin_class()), made by the callers.
+ */
+typedef enum { STARK_HAL_PULL_NONE, STARK_HAL_PULL_UP, STARK_HAL_PULL_DOWN } stark_hal_pull_t;
+
+/* Input with the input buffer on, interrupts off and the chosen internal pull (about 45 kOhm). */
+stark_err_t stark_hal_gpio_config_in(int pin, stark_hal_pull_t pull);
+
+/*
+ * Output at the weakest drive strength (GPIO_DRIVE_CAP_0, about 5 mA), no pull, the input
+ * buffer left on so stark_hal_gpio_read() reads the pad back. The level is set before the
+ * output is enabled. STARK_ERR_IO, with the pad released, when the drive strength cannot be
+ * confirmed.
+ */
+stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial);
+
+/* The pad is released: input, no pull, interrupts off. */
+stark_err_t stark_hal_gpio_hiz(int pin);
+
 /* ---- PWM (LEDC) --------------------------------------------------------
  *
  * Channel allocation is caller-specified, not hardcoded here — but V0 has

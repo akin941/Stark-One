@@ -5195,6 +5195,78 @@ hi-Z on the board.
 
 ---
 
+**As built.** Differences from the plan and the readings the spec left open, each the smallest
+sound choice (ADR-0023's STARK-0701 addendum records them):
+
+* **The probes ran, and two of the four are "no".** esp-emu 0.44.0 (production image, a throwaway
+  probe task; every row in docs/VALIDATION.md §2): the output pad **reads back**, a self-driven pad
+  **raises its GPIO interrupt** (20 of 20 edges), the I²C sweep over 0x08 to 0x77 finds exactly
+  0x50; **pull-down reads do not work** (every unconnected input reads high whatever the pull) and
+  **LEDC does not reach a pad** (a pad on LEDC reads low at every duty). The built-in EEPROM at
+  0x50 also **accepts writes**, which corrects the earlier "reads zeros": STARK-0704's refusal is
+  firmware's alone. No acceptance criterion depends on a "no": the pad-state probe and PWM-to-pad
+  measurement are host and test-image evidence, and STARK-0702 and 0703 are told so (ADR-0023
+  addendum). The probe code was never committed.
+* **Board API.** `stark_board_lab_pins()` copies into a caller buffer (`out`, `max`) instead of
+  returning a pointer into a table built on first use, and each function has a map-taking form
+  (`stark_board_pin_class_of()`, `stark_board_lab_pins_of()`) for the host tests. The names are
+  board-neutral (`MOD0_CS`, `MOD0_IRQ0`, `MOD0_IRQ1`), not `SUBGHZ_CS`. A line the map does not
+  wire, or a number outside 0 to 48, is never in the table.
+* **The service is split like `stark_subghz`.** `lab_pins.c` (pure, 100 % lines) holds every
+  decision over an injected I/O table; `stark_lab.c` (target) adds the mutex, the log, the event
+  and `esp_rom_delay_us()` (a busy wait: 1 ms for the read-back and 2 ms per pull of the state
+  probe, 4 ms at most in one call). `STARK_SYS_LAB` (8) and `STARK_LAB_EVT_PINS` (1) are in
+  `stark_lab.h`; the other event arguments arrive with their tasks. No `Kconfig.stark`: there is
+  no option. `stark_lab_state()`, `read` and `input` also go to hi-Z on failure, not only `write`.
+* **The transport's guard reads the module table**, so a slot pin that is withdrawn is refused by
+  the transport too, not only a number the board never offered (AC 1 says "any call, from the
+  service or the transport"). The layer edge `stark_lab_transport -> stark_module` therefore exists
+  now. `pad_hiz` is the one call allowed on any classified pin, because withdrawal must release a
+  pin that has just stopped being offered. The offer rule and the guard are `static inline` in
+  `stark_lab_transport.h`, shared by the hardware and the test transport like
+  `stark_subghz_tx_ok()`. The pull constants are `STARK_LAB_PAD_*` (`STARK_LAB_PULL_*` is the
+  service's enum).
+* **Hot-plug is checked live and refreshed by the root.** Every call asks the module table, so a
+  pin is never used between the module's arrival and the refresh; `main/module_bridge.c` calls
+  `stark_lab_refresh()` on `STARK_SYS_MODULE`, so the hi-Z and the log happen with no app open. The
+  service logs `lab: pin <n> withdrawn (slot <s>)` for every pin that leaves the offer, held or
+  not, and `lab: pins <list>` whenever the offer changes: the test image has no app yet, so this is
+  what `storage/v07-pins` asserts. A failed drive (contention or a transport error) also clears
+  the arm.
+* **HAL.** `stark_hal_gpio_config_in`, `config_out_weak` and `hiz` as specified, plus the pad
+  tracking ESP-IDF needs (it warns `gpio: conflict found` on every repeated output configuration of
+  a reserved pad and LEDC refuses one): a driven pad that is driven again only has its level set,
+  and any other configuration of it resets the pin first. The host fake records mode, pull and
+  drive for the tests (`hal_host_pad()`); `stark_hal_host_control.h` now includes `stark_hal.h`.
+* **No fifth-substitution pokes.** The test transport is `lab_transport_fake.c` over
+  `test/fake/fake_lab.c` (pads, an external source per pad with a square wave on an injected
+  clock, up to four wires, `PAD_STUCK_LOW/HIGH` and `CONFIG_ERROR` faults with a count); nothing
+  in the firmware drives a pad before the GPIO app, so the `emu_lab_*` pokes arrive with STARK-0702.
+  `check_emu_image.py` allows exactly five substitutions (`MAX_SUBSTITUTIONS`), with a negative
+  test for a sixth name and one for a sixth component.
+* **Host tests.** `test_board_pins` (8), `test_fake_lab` (11), `test_lab_pins` (24: every number
+  from -1 to 64 against every call with slot 0 empty and fitted, the offer in each module state and
+  with a lease, acquire and busy, the arm, contention, every failure into hi-Z, the state probe at
+  every step, withdrawal with an output high), `test_lab_service` (9: the same sweep at the
+  production transport over the fake HAL, which stands for "the service" half of AC 1 that is
+  target-only), `test_hal` (+2). `stark_board.c`, `lab_pins.c`, `lab_transport_hal.c` and
+  `fake_lab.c` are at 100 % lines; ASan and UBSan clean. `test_board.c` changed: its map gained
+  the two lab pins, and a test that put a second slot on pin 38 uses 3.
+* **Emulator.** `v07-lab-boot` (production image): `lab: pins 38 39`, no withdrawn, contention or
+  `gpio: conflict` line, heap above the gate. `storage/v07-pins` (test image): `lab: pins 38 39 40
+  41 42`, then a module in slot 0 (`emu_mod_slot0 = 32`) logs `lab: pin 40`, `41` and `42 withdrawn
+  (slot 0)` and `lab: pins 38 39`, and removing it logs the five again. Pre-existing scenarios pass
+  unchanged.
+* **`gpio-centralized` is unchanged, and was already failing.** `scripts/check.sh` reports
+  `components/stark_module/stark_module_spi.c` (it includes `driver/spi_master.h`, STARK-0503) on the
+  plan commit as well; this task adds no file to that list. Left alone: it is not this task's.
+* **Evidence and cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM
+  and flash per component against the 1.5 kB and 3 kB budgets, and the IRAM finding for STARK-0703
+  (the default IRAM is full; ISR code overflows into DIRAM, so an IRAM ISR costs heap, not an error).
+* **Not here.** Anything physical, the GPIO app, PWM, edge capture, I²C, SPI and UART.
+
+---
+
 ## STARK-0702 — The GPIO app: read, write, toggle, pulse, pull, PWM out
 
 **Goal.** A Lab app that reads, drives, pulses and PWMs the offered pins safely, and leaves

@@ -115,6 +115,45 @@ void test_stark_hal_pwm_set_duty_pct_clamps_above_100(void)
     TEST_ASSERT_EQUAL_UINT8(100, hal_host_pwm_last_set_duty()->pct);
 }
 
+/* ---- Lab pads (STARK-0701) ---------------------------------------------- */
+
+void test_stark_hal_pad_calls_record_mode_pull_and_drive(void)
+{
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_NONE, hal_host_pad(38)->mode);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_config_in(38, STARK_HAL_PULL_UP));
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_IN, hal_host_pad(38)->mode);
+    TEST_ASSERT_EQUAL(STARK_HAL_PULL_UP, hal_host_pad(38)->pull);
+    TEST_ASSERT_TRUE(stark_hal_gpio_read(38)); /* nothing external: the pull-up */
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_config_in(38, STARK_HAL_PULL_DOWN));
+    TEST_ASSERT_FALSE(stark_hal_gpio_read(38));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_config_out_weak(38, true));
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_OUT, hal_host_pad(38)->mode);
+    TEST_ASSERT_TRUE(hal_host_pad(38)->weak);
+    TEST_ASSERT_TRUE(hal_host_pad(38)->level);
+    TEST_ASSERT_TRUE(stark_hal_gpio_read(38)); /* read back */
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_hiz(38));
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_IN, hal_host_pad(38)->mode);
+    TEST_ASSERT_EQUAL(STARK_HAL_PULL_NONE, hal_host_pad(38)->pull);
+    TEST_ASSERT_FALSE(stark_hal_gpio_read(38)); /* floating reads low */
+    TEST_ASSERT_EQUAL_UINT(4, hal_host_pad_calls());
+    hal_host_gpio_reset();
+    TEST_ASSERT_EQUAL_UINT(0, hal_host_pad_calls());
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_NONE, hal_host_pad(38)->mode);
+}
+
+void test_stark_hal_pad_calls_reject_out_of_range_pins(void)
+{
+    const int bad[] = {-1, 49, 64};
+    for (size_t i = 0; i < 3; i++) {
+        TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                          stark_hal_gpio_config_in(bad[i], STARK_HAL_PULL_UP));
+        TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_hal_gpio_config_out_weak(bad[i], true));
+        TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_hal_gpio_hiz(bad[i]));
+        TEST_ASSERT_NULL(hal_host_pad(bad[i]));
+    }
+    TEST_ASSERT_EQUAL_UINT(0, hal_host_pad_calls());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -129,5 +168,7 @@ int main(void)
     RUN_TEST(test_stark_hal_pwm_set_freq_records_arguments);
     RUN_TEST(test_stark_hal_pwm_set_duty_pct_records_arguments);
     RUN_TEST(test_stark_hal_pwm_set_duty_pct_clamps_above_100);
+    RUN_TEST(test_stark_hal_pad_calls_record_mode_pull_and_drive);
+    RUN_TEST(test_stark_hal_pad_calls_reject_out_of_range_pins);
     return UNITY_END();
 }

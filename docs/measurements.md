@@ -292,6 +292,25 @@ Software evidence only: no CC1101, antenna or SPI signal exists before the V1 pr
 (ROADMAP V1 exit 12, `docs/bringup/v1-subghz.md`). The production RMT receive and transmit
 paths for GDO2 and GDO0 are built but not exercised by any test.
 
+### V0.7 lab tools (software evidence, ADR-0023)
+
+| Date | Task | What | Value | Where |
+| --- | --- | --- | --- | --- |
+| 2026-11-24 | STARK-0701 | Production boot heap, first `diag: heap=` (STARK-0606 240 732 B) — **gate ≥ 200 kB, V0.7 total cost ≤ 16 kB** | 241 132 B (+400 B). Static RAM grew by 432 B (`.bss` 65 880 → 66 312 B); the heap figure still rose because the 16 kB IRAM is full and the linker's overflow into DIRAM shifted by 344 B (image segments 2 and 4), so it is a layout effect and not a saving. Cost against the budget: 432 B | `v0-boot`, `v07-lab-boot` |
+| 2026-11-24 | STARK-0701 | Test image boot heap (STARK-0606 237 812 B) | 236 340 B (−1 472 B: the lab's 413 B plus the pad model's static array of 49 pads, about 1.2 kB, in the test-only `fake_lab.c`; production does not link it) | `storage/v07-pins` |
+| 2026-11-24 | STARK-0701 | Firmware binary (STARK-0606 483 216 B) | 486 528 B (+3 312 B) | `build/stark-one.bin` |
+| 2026-11-24 | STARK-0701 | Static RAM: `stark_lab` / `stark_lab_transport` — **budget ≤ 1.5 kB together**; `stark_hal` (+8 B: the pad tracking mask) | 413 B / 1 B (414 B) | `idf.py size-components` |
+| 2026-11-24 | STARK-0701 | Flash (code + rodata): `stark_lab` / `stark_lab_transport` — **budget ≤ 3 kB together**; also `stark_board` +451 B (the pin classes), `stark_hal` +427 B (the three pad calls), `main` +60 B | 1 132 B / 345 B (1 477 B) | `idf.py size-components` |
+| 2026-11-24 | STARK-0701 | FreeRTOS tasks added — **ADR-0023: none** | 0 (the service runs on its caller's task; the mutex is a static object) | `stark_lab.c` |
+| 2026-11-24 | STARK-0701 | IRAM: 16 384 of 16 384 B used before and after this task (0 B free) | Not a cost of this task, but a fact for STARK-0703: IDF places IRAM code that does not fit in the instruction region of DIRAM, so the edge-capture ISR will cost heap (about its own size) and not fail the link | `idf.py size` |
+| 2026-11-24 | STARK-0701 | Host line coverage: `stark_board.c`, `lab_pins.c`, `lab_transport_hal.c`, `fake_lab.c` | 100 % each (459 of 459 lines with the transport header) | `test_host.sh --coverage` |
+| 2026-11-24 | STARK-0701 | Host suite | 74 test programs (70 before); the new ones run `test_board_pins` 8, `test_fake_lab` 11, `test_lab_pins` 24, `test_lab_service` 9 tests, and `test_hal` gained 2, under ASan and UBSan | `test_host.sh` |
+| 2026-11-24 | STARK-0701 | Emulator wall time (docker, three to four scenarios at once) | `v07-lab-boot` 55 s alone; `storage/v07-pins` (12 s of virtual time) 147 s | `test_emu.sh` |
+| 2026-11-24 | STARK-0701 | Root heap, first vs last `stark_diag` line over each 60 s soak — **gate ≤ 1 kB** | v01 243 332 → 243 368 B (Δ 36 B); v02 228 748 → 228 780 B (Δ 32 B); v03, v04, v05, v06 228 748 → 228 792 B (Δ 44 B) | `soak/v01…v06-soak` |
+| 2026-11-24 | STARK-0701 | Event drops over the six soaks — **gate 0** | 0 | `test_emu.py` drops gate |
+| 2026-11-24 | STARK-0701 | Scenarios, whole set: production image 21 (every `test/emu/*.toml`, including `v07-lab-boot`), test image 27 (every `test/emu/storage/*.toml`, including `v07-pins`), soaks v01 to v06 | all pass; the longest, `soak/v06-soak`, took 717 s of wall time with four emulators running at once | `test_emu.sh` |
+| 2026-11-24 | STARK-0701 | esp-emu 0.44.0 probes (production image, throwaway task, not committed) | Output read-back, self-driven GPIO interrupt and the 0x08–0x77 I²C sweep work; pull-down reads and LEDC on a pad do not; the EEPROM at 0x50 accepts writes. Every row in docs/VALIDATION.md §2 | `docs/VALIDATION.md` |
+
 ## Hardware (gated, V1 prototype)
 
 To be filled in at the V1 prototype milestone (ROADMAP.md "V1 prototype"), with the

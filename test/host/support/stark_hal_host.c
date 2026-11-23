@@ -80,8 +80,58 @@ void stark_hal_gpio_write(int pin, bool level)
     g_gpio_state[pin].level = level;
 }
 
+/* ---- Lab pads (STARK-0701) -------------------------------------------------- */
+
+static hal_host_pad_t g_pads[MAX_GPIO];
+static unsigned g_pad_calls;
+
+stark_err_t stark_hal_gpio_config_in(int pin, stark_hal_pull_t pull)
+{
+    if (pin < 0 || pin >= MAX_GPIO) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    g_pad_calls++;
+    g_pads[pin] = (hal_host_pad_t){.mode = HAL_HOST_PAD_IN, .pull = pull};
+    g_gpio_state[pin].configured = true;
+    g_gpio_state[pin].is_output = false;
+    g_gpio_state[pin].pullup = pull == STARK_HAL_PULL_UP;
+    g_gpio_state[pin].level = pull == STARK_HAL_PULL_UP; /* floating reads low */
+    return STARK_OK;
+}
+
+stark_err_t stark_hal_gpio_hiz(int pin)
+{
+    return stark_hal_gpio_config_in(pin, STARK_HAL_PULL_NONE);
+}
+
+stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial)
+{
+    if (pin < 0 || pin >= MAX_GPIO) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    g_pad_calls++;
+    g_pads[pin] = (hal_host_pad_t){.mode = HAL_HOST_PAD_OUT, .weak = true, .level = initial};
+    g_gpio_state[pin].configured = true;
+    g_gpio_state[pin].is_output = true;
+    g_gpio_state[pin].pullup = false;
+    g_gpio_state[pin].level = initial;
+    return STARK_OK;
+}
+
+const hal_host_pad_t *hal_host_pad(int pin)
+{
+    return (pin < 0 || pin >= MAX_GPIO) ? NULL : &g_pads[pin];
+}
+
+unsigned hal_host_pad_calls(void)
+{
+    return g_pad_calls;
+}
+
 void hal_host_gpio_reset(void)
 {
+    memset(g_pads, 0, sizeof(g_pads));
+    g_pad_calls = 0;
     memset(g_gpio_state, 0, sizeof(g_gpio_state));
 }
 

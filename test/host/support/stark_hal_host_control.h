@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "stark_hal.h"
 
 /* ---- Time control -------------------------------------------------- */
 
@@ -23,6 +24,23 @@ void hal_host_set_now_us(uint64_t now_us);
 
 /* Clears all fake GPIO state (for test isolation between cases). */
 void hal_host_gpio_reset(void);
+
+/* ---- Lab pad inspection (STARK-0701) ---------------------------------------
+ * What the pad calls of stark_hal.h last did to a pin; mode is NONE until one has. */
+typedef enum { HAL_HOST_PAD_NONE, HAL_HOST_PAD_IN, HAL_HOST_PAD_OUT } hal_host_pad_mode_t;
+
+typedef struct {
+    hal_host_pad_mode_t mode;
+    stark_hal_pull_t pull; /* IN */
+    bool weak;             /* OUT: the weakest drive strength was set */
+    bool level;            /* OUT: the level it was set to */
+} hal_host_pad_t;
+
+/* NULL for a pin outside 0-48. */
+const hal_host_pad_t *hal_host_pad(int pin);
+
+/* How many pad calls (config_in, config_out_weak, hiz) reached the fake since the reset. */
+unsigned hal_host_pad_calls(void);
 
 /* ---- PWM inspection ---------------------------------------------------
  * Each struct records the arguments of the most recent matching call;

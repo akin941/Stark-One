@@ -25,6 +25,8 @@ static stark_board_pins_t good_map(void)
         .i2c_scl = 2,
         .ir_tx = 47,
         .ir_rx = 48,
+        .lab_uart_tx = 38,
+        .lab_uart_rx = 39,
         .tft_spi_hz = 20000000,
         .module = {{.cs = 40, .irq0 = 41, .irq1 = 42, .en = -1, .eeprom_addr = 0x50},
                    {.cs = -1, .irq0 = -1, .irq1 = -1, .en = -1, .eeprom_addr = 0x51}},
@@ -51,7 +53,7 @@ void test_stark_board_validate_checks_module_slots(void)
     p.module[1].en = 30; /* reserved: flash/PSRAM */
     TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, stark_board_validate(&p));
     p = good_map();
-    p.module[1].cs = 38; /* a second wired slot is legal when the pin is free */
+    p.module[1].cs = 3; /* a second wired slot is legal when the pin is free */
     TEST_ASSERT_EQUAL(STARK_OK, stark_board_validate(&p));
 }
 

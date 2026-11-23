@@ -1,0 +1,31 @@
+# STARK-0701 on the test image, whose stark_lab_transport is the test-only pad model
+# (ADR-0023 §2) and whose module bus is the fake 24C02. The offer follows slot 0 through
+# production code: with the slot empty (no ID) the lab offers 38 to 42; a module appearing
+# (catalogue entry 32) withdraws the three slot lines, each logged; the module leaving offers
+# them again. No app holds a pin yet (STARK-0702), so no pad is driven here: the host tests own
+# the hi-Z and arm rules. Integration evidence for the offer and the hot-plug log only.
+name = "emu-v07-pins"
+image = "storage"
+end_ms = 12000
+heap_min = 200000
+pokes = [
+    { at_ms = 4000, var = "emu_mod_slot0", value = 32 },  # a module appears in slot 0
+    { at_ms = 8000, var = "emu_mod_slot0", value = 0 },   # and leaves again
+]
+expect = [
+    "module: slot 0 no id",
+    "lab: pins 38 39 40 41 42",
+    "lab: pin 40 withdrawn (slot 0)",
+    "lab: pin 41 withdrawn (slot 0)",
+    "lab: pin 42 withdrawn (slot 0)",
+]
+# After the lines above: the offer without the slot's pins, then with them again.
+expect_re = [
+    "lab: pins 38 39$",
+    "lab: pins 38 39 40 41 42$",
+]
+forbid = ["lab init failed", "contention", "panic"]
+# Withdrawn once each: a second line for a pin would mean the offer flapped.
+forbid_between = [
+    { after = "lab: pin 42 withdrawn", before = "lab: pins 38 39 40 41 42", text = "lab: pin 40 withdrawn" },
+]

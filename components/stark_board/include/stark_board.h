@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include "stark_err.h"
 
@@ -35,6 +36,7 @@ typedef struct {
     int sd_cs;            /* -1 when absent */
     int i2c_sda, i2c_scl; /* -1 when absent */
     int ir_tx, ir_rx; /* RMT TX -> IR LED driver, RMT RX <- 38 kHz demodulator; -1 when absent */
+    int lab_uart_tx, lab_uart_rx; /* the lab UART pins, the lab's always-offered pins (§2.4); -1 */
     uint32_t tft_spi_hz;
     stark_board_module_slot_t module[STARK_BOARD_MODULE_SLOTS];
 } stark_board_pins_t;
@@ -86,3 +88,44 @@ stark_err_t stark_board_heartbeat_start(void);
  * host-testable.
  */
 stark_err_t stark_board_validate(const stark_board_pins_t *pins);
+
+/* ---- Pin safety (STARK-0701, ADR-0023 §3, HARDWARE.md §2.4) ------------------
+ *
+ * Which GPIOs a lab tool may touch. The classification is derived from the pin
+ * map (the lab UART pins and each module slot's CS and IRQ lines); no number is
+ * written a second time. Pure: host-testable.
+ */
+typedef enum {
+    STARK_PIN_RESERVED, /* never offered, in no mode, not even to read */
+    STARK_PIN_LAB,      /* LAB_UART_TX / LAB_UART_RX: always offered */
+    STARK_PIN_SLOT /* a module slot's MOD_CS, MOD_IRQ0, MOD_IRQ1: only while the slot is empty */
+} stark_pin_class_t;
+
+/* The lab can name at most the two UART pins and three lines of each slot. */
+#define STARK_BOARD_LAB_PINS_MAX (2 + 3 * STARK_BOARD_MODULE_SLOTS)
+
+typedef struct {
+    int gpio;
+    const char *name; /* "LAB_UART_TX", "MOD0_CS", ... */
+    stark_pin_class_t cls;
+    int slot; /* the module slot for STARK_PIN_SLOT, else -1 */
+} stark_board_lab_pin_t;
+
+/*
+ * The class of a GPIO number in a pin map. STARK_PIN_RESERVED for every number the
+ * map does not offer, including every number below 0 or above 48. For
+ * STARK_PIN_SLOT, *slot (when not NULL) is the module slot; otherwise -1.
+ */
+stark_pin_class_t stark_board_pin_class_of(const stark_board_pins_t *pins, int gpio, int *slot);
+
+/*
+ * The offer table of a pin map in the order lab_uart_tx, lab_uart_rx, then each slot's
+ * cs, irq0, irq1 (lines the board does not wire are omitted). Copies at most max entries
+ * and returns how many exist (at most STARK_BOARD_LAB_PINS_MAX).
+ */
+size_t stark_board_lab_pins_of(const stark_board_pins_t *pins, stark_board_lab_pin_t *out,
+                               size_t max);
+
+/* The same for the active board's map (stark_board_pins()). */
+stark_pin_class_t stark_board_pin_class(int gpio, int *slot);
+size_t stark_board_lab_pins(stark_board_lab_pin_t *out, size_t max);

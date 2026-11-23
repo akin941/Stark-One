@@ -8,8 +8,9 @@
 #               SHA-256-verified esp-emulator (scripts/test_emu.sh,
 #               test/emu/*.toml): free, local, no account, no quota. Mandatory.
 #   esp-emulator-storage — the emulator storage test image (ADR-0018): the
-#               same firmware with only stark_storage_medium replaced by
-#               internal-flash FAT; check_emu_image.py proves that against the
+#               same firmware with only stark_storage_medium (internal-flash
+#               FAT) and four hardware transports (NFC, module bus, Sub-GHz,
+#               lab) replaced by test-only fakes; check_emu_image.py proves that against the
 #               production build, then test/emu/storage/*.toml run. Mandatory.
 #   esp-emulator-soak — the 60 s soaks (test/emu/soak/): V0.1 on the production
 #               image, V0.2 to V0.6 (STARK-0207, 0307, 0405, 0505, 0606; V0.3/V0.4
@@ -220,7 +221,7 @@ jobs:
             exit 1
           fi
 
-      - name: check_emu_image.py (only the three allowed substitutions differ)
+      - name: check_emu_image.py (only the five allowed substitutions differ)
         run: python3 scripts/check_emu_image.py
 
       - name: scripts/test_emu.sh --image storage
