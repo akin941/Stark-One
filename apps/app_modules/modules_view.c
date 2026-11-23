@@ -15,8 +15,9 @@ static const struct {
     uint32_t bit;
     const char *name;
 } k_caps[] = {
-    {STARK_CAP_IR_TX, "IR TX"},      {STARK_CAP_IR_RX, "IR RX"},       {STARK_CAP_NFC, "NFC"},
-    {STARK_CAP_MOD_SPI, "SPI line"}, {STARK_CAP_MOD_IRQ, "IRQ lines"},
+    {STARK_CAP_IR_TX, "IR TX"},       {STARK_CAP_IR_RX, "IR RX"},
+    {STARK_CAP_NFC, "NFC"},           {STARK_CAP_MOD_SPI, "SPI line"},
+    {STARK_CAP_MOD_IRQ, "IRQ lines"}, {STARK_CAP_SUBGHZ, "Sub-GHz"},
 };
 
 static stark_module_entry_t s_list[STARK_MODULE_ENTRIES];

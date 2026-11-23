@@ -2,10 +2,12 @@
 #
 # esp-emu models no SD card, so storage scenarios (test/emu/storage/*.toml)
 # run this image instead of the production one. It builds the repository's
-# own main, every app and every component — with exactly three substitutions
+# own main, every app and every component — with exactly four substitutions
 # from ./components: stark_storage_medium (a FAT volume on an internal flash
 # partition instead of a microSD), stark_nfc_transport and stark_module_transport
-# (the test-only fakes in test/fake instead of the I2C bus).
+# (the test-only fakes in test/fake instead of the I2C bus) and
+# stark_subghz_transport (the test-only fake CC1101 instead of the module SPI
+# bus and GDO pins).
 # scripts/check_emu_image.py proves in CI that nothing else differs.
 cmake_minimum_required(VERSION 3.22.1)
 
@@ -16,6 +18,7 @@ file(GLOB stark_apps LIST_DIRECTORIES true "${STARK_ROOT}/apps/app_*")
 list(FILTER stark_components EXCLUDE REGEX "/stark_storage_medium$") # substitution 1 (ADR-0018)
 list(FILTER stark_components EXCLUDE REGEX "/stark_nfc_transport$")  # substitution 2 (ADR-0020)
 list(FILTER stark_components EXCLUDE REGEX "/stark_module_transport$")  # substitution 3 (ADR-0021)
+list(FILTER stark_components EXCLUDE REGEX "/stark_subghz_transport$")  # substitution 4 (ADR-0022)
 set(EXTRA_COMPONENT_DIRS
     ${stark_components}
     ${stark_apps}
@@ -23,6 +26,7 @@ set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/components/stark_storage_medium"
     "${CMAKE_CURRENT_LIST_DIR}/components/stark_nfc_transport"
     "${CMAKE_CURRENT_LIST_DIR}/components/stark_module_transport"
+    "${CMAKE_CURRENT_LIST_DIR}/components/stark_subghz_transport"
 )
 # The production defaults, unchanged; the partition table is found next to
 # this file (partitions.csv = production table + the test FAT partition).
@@ -38,5 +42,6 @@ fatfs_create_spiflash_image(emufat "${CMAKE_CURRENT_LIST_DIR}/seed" FLASH_IN_PRO
 
 set(STARK_EXTRA_STRICT_DIRS "${CMAKE_CURRENT_LIST_DIR}/components/stark_storage_medium"
     "${CMAKE_CURRENT_LIST_DIR}/components/stark_nfc_transport"
-    "${CMAKE_CURRENT_LIST_DIR}/components/stark_module_transport")
+    "${CMAKE_CURRENT_LIST_DIR}/components/stark_module_transport"
+    "${CMAKE_CURRENT_LIST_DIR}/components/stark_subghz_transport")
 include(${STARK_ROOT}/cmake/stark_flags.cmake)

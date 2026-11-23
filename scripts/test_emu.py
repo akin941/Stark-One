@@ -120,7 +120,9 @@ def inject_line():
 POKE_VARS = ("emu_medium_present", "emu_medium_formatted",  # the test medium's switches
              "emu_nfc_tag", "emu_nfc_fault",  # the fake PN532 transport's (ADR-0020 §3)
              "emu_mod_slot0", "emu_mod_slot1", "emu_mod_fault",  # fake 24C02's (ADR-0021 §6)
-             "emu_mod_traffic")  # test-only SPI traffic on a claimed slot (STARK-0503)
+             "emu_mod_traffic",  # test-only SPI traffic on a claimed slot (STARK-0503)
+             "emu_sg_chip", "emu_sg_carrier_khz", "emu_sg_level", "emu_sg_own_rx",
+             "emu_sg_fault")  # the fake CC1101's (ADR-0022 §3)
 
 
 def control_shell(port, command):

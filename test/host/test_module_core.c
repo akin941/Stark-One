@@ -128,13 +128,48 @@ static void test_confirm_without_any_module(void)
 static void test_wiring_and_unknown_bits_never_effective(void)
 {
     TEST_ASSERT_FALSE(module_core_confirm(&s_c, STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ, true));
-    TEST_ASSERT_FALSE(module_core_confirm(&s_c, 0x80000020u, true));
+    TEST_ASSERT_FALSE(module_core_confirm(&s_c, 0x80000040u, true)); /* a bit no firmware knows */
     TEST_ASSERT_EQUAL_HEX32(0, module_core_caps(&s_c));
-    fit(A0, FAKE_MODULE_UNKNOWN_BITS);
+    fit(A0, FAKE_MODULE_UNKNOWN_BIT_6);
     ticks(2);
     TEST_ASSERT_EQUAL(STARK_MODULE_KNOWN, entry(0).state);
-    TEST_ASSERT_EQUAL_HEX32(0x80000020u | STARK_CAP_MOD_IRQ, entry(0).declared);
+    TEST_ASSERT_EQUAL_HEX32(0x80000040u | STARK_CAP_MOD_IRQ, entry(0).declared);
     TEST_ASSERT_EQUAL_HEX32(0, module_core_caps(&s_c));
+}
+
+/* STARK-0601: bit 5 is STARK_CAP_SUBGHZ. A descriptor alone never sets it, and a
+ * radio without its chip select is an unsupported combination (ADR-0022 §2). */
+static void test_subghz_declared_is_not_effective(void)
+{
+    fit(A0, FAKE_MODULE_CC1101_MODULE);
+    ticks(2);
+    TEST_ASSERT_EQUAL(STARK_MODULE_KNOWN, entry(0).state);
+    TEST_ASSERT_EQUAL_HEX32(STARK_CAP_SUBGHZ | STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ,
+                            entry(0).declared);
+    TEST_ASSERT_EQUAL_HEX32(0, module_core_caps(&s_c));
+    TEST_ASSERT_EQUAL_HEX32(0, entry(0).confirmed);
+    TEST_ASSERT_TRUE(module_core_confirm(&s_c, STARK_CAP_SUBGHZ, true)); /* the driver's word */
+    TEST_ASSERT_EQUAL_HEX32(STARK_CAP_SUBGHZ, module_core_caps(&s_c));
+    TEST_ASSERT_EQUAL_HEX32(STARK_CAP_SUBGHZ, entry(0).confirmed);
+}
+
+static void test_subghz_without_both_wires_is_unsupported(void)
+{
+    fit(A0, FAKE_MODULE_UNKNOWN_BITS); /* 0x80000020 | MOD_IRQ: a radio with no chip select */
+    ticks(2);
+    TEST_ASSERT_EQUAL(STARK_MODULE_GENERIC, entry(0).state);
+    TEST_ASSERT_TRUE(entry(0).unsupported);
+}
+
+static void test_subghz_is_exclusive(void)
+{
+    module_core_confirm(&s_c, STARK_CAP_SUBGHZ | STARK_CAP_IR_TX, true);
+    fit(A0, FAKE_MODULE_CC1101_MODULE);
+    fit(A1, FAKE_MODULE_CC1101_MODULE);
+    ticks(2);
+    TEST_ASSERT_EQUAL(STARK_MODULE_CONFLICT, entry(0).state);
+    TEST_ASSERT_EQUAL(STARK_MODULE_CONFLICT, entry(1).state);
+    TEST_ASSERT_EQUAL_HEX32(STARK_CAP_IR_TX, module_core_caps(&s_c));
 }
 
 static void test_removal_debounced(void)
@@ -391,6 +426,9 @@ int main(void)
     RUN_TEST(test_declared_is_not_effective);
     RUN_TEST(test_confirm_without_any_module);
     RUN_TEST(test_wiring_and_unknown_bits_never_effective);
+    RUN_TEST(test_subghz_declared_is_not_effective);
+    RUN_TEST(test_subghz_without_both_wires_is_unsupported);
+    RUN_TEST(test_subghz_is_exclusive);
     RUN_TEST(test_removal_debounced);
     RUN_TEST(test_replacement);
     RUN_TEST(test_every_catalogue_entry);

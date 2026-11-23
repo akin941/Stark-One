@@ -89,7 +89,12 @@ bool module_desc_caps_supported(uint32_t caps)
     if ((caps & (STARK_CAP_IR_TX | STARK_CAP_IR_RX)) != 0) {
         return false;
     }
-    return (caps & STARK_CAP_NFC) == 0 || (caps & STARK_CAP_MOD_SPI) == 0;
+    if ((caps & STARK_CAP_NFC) != 0 && (caps & STARK_CAP_MOD_SPI) != 0) {
+        return false;
+    }
+    /* A radio on a slot needs its chip select and both data lines (ADR-0022 §2). */
+    const uint32_t wiring = STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ;
+    return (caps & STARK_CAP_SUBGHZ) == 0 || (caps & wiring) == wiring;
 }
 
 const char *module_desc_result_str(module_desc_result_t r)

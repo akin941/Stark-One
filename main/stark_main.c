@@ -12,6 +12,7 @@
 #include "stark_module.h"
 #include "stark_ir.h"
 #include "stark_nfc.h"
+#include "stark_subghz.h"
 #include "stark_settings.h"
 #include "stark_storage.h"
 #include "settings_apply.h"
@@ -183,4 +184,11 @@ void app_main(void)
         STARK_LOGE("boot", "module init failed: %s", stark_err_str(err));
     }
     module_bridge_start();
+
+    /* Not boot-critical: without a radio module the task only says so once
+     * (STARK-0601). After the module service, whose claims it needs. */
+    err = stark_subghz_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "subghz init failed: %s", stark_err_str(err));
+    }
 }

@@ -28,6 +28,21 @@ these 32 bytes and has no way to write a chip. Programming happens off the devic
 | `bad field` | A reserved byte, the ID or the name breaks its rule | Generic entry, no capabilities |
 | `truncated` | Fewer than 32 bytes were read | Treated as a read error |
 
+## Capability bits
+
+| Bit | Name | Meaning | Who confirms it |
+| --- | --- | --- | --- |
+| 0, 1 | `IR_TX`, `IR_RX` | Onboard IR; a slot descriptor declaring either is an unsupported combination | `stark_ir` |
+| 2 | `NFC` | A PN532-class reader answers on the shared I²C bus; exclusive; not with `MOD_SPI` | `stark_nfc` |
+| 3 | `MOD_SPI` | The module uses `MOD_CS` on the shared SPI2 bus | (wiring: never effective) |
+| 4 | `MOD_IRQ` | The module uses `MOD_IRQ0` and `MOD_IRQ1` | (wiring: never effective) |
+| 5 | `SUBGHZ` | A CC1101-class radio answers on a claimed slot; exclusive; needs both `MOD_SPI` and `MOD_IRQ`, otherwise an unsupported combination | `stark_subghz`, after reading `PARTNUM` 0x00 and `VERSION` 0x14 or 0x04 |
+
+A CC1101 module declares `0x00000038` (`SUBGHZ | MOD_SPI | MOD_IRQ`). Bit 5 was an unknown
+bit before STARK-0601 (ADR-0022 §2): an older descriptor that sets it without both wiring
+bits is now an unsupported combination (generic entry), the one that sets all three is
+supported. The layout of format v1 does not change.
+
 ## What a descriptor is not
 
 A descriptor is device metadata. It declares what a module says it is. It is not proof of

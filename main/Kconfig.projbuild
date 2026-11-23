@@ -16,6 +16,7 @@ menu "STARK"
     rsource "../components/stark_nfc/Kconfig.stark"
     rsource "../components/stark_storage/Kconfig.stark"
     rsource "../components/stark_storage_medium/Kconfig.stark"
+    rsource "../components/stark_subghz/Kconfig.stark"
     rsource "../components/stark_ui/Kconfig.stark"
 
 endmenu

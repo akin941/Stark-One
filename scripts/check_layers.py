@@ -45,6 +45,11 @@ LAYERS = {
     "stark_ir": 3,  # L2 codec core + L3 RMT port (STARK-0301…0304)
     "stark_nfc": 3,  # L2 NFC core + L3 PN532 task (STARK-0401…0405)
     "stark_module": 3,  # L2 descriptor and discovery core + L3 task (STARK-0501…0505)
+    # L2 register, driver and service cores + L3 task (STARK-0601…0605, ADR-0022)
+    "stark_subghz": 3,
+    # The CC1101's SPI and GDO port. A port, but it uses stark_module's lease and SPI
+    # device, so it is classed with its consumer rather than below stark_module.
+    "stark_subghz_transport": 3,
     "stark_ui": 4,
     "stark_app": 4,
 }
@@ -61,6 +66,10 @@ SIDEWAYS = {
     ("stark_ir", "stark_event"),  # capture / transmit events (STARK-0303)
     ("stark_nfc", "stark_event"),  # tag / module events (STARK-0403)
     ("stark_module", "stark_event"),  # table and capability changes (STARK-0502)
+    ("stark_subghz", "stark_event"),  # module events (STARK-0601)
+    ("stark_subghz", "stark_module"),  # claims the slot that declares a radio (STARK-0601)
+    ("stark_subghz", "stark_subghz_transport"),  # the chip's wires (STARK-0601)
+    ("stark_subghz_transport", "stark_module"),  # the claimed lease and SPI device (STARK-0601)
 }
 
 PURE = {"stark_err", "stark_gfx"}

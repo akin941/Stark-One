@@ -5,9 +5,9 @@
 #include <stdio.h>
 #include <string.h>
 
-/* An exclusive capability can have only one provider on the bus (the PN532
- * has one fixed address). */
-#define CAPS_EXCLUSIVE STARK_CAP_NFC
+/* An exclusive capability can have only one provider: the PN532 has one fixed
+ * address, and slot 0 is the only slot that wires a radio's lines. */
+#define CAPS_EXCLUSIVE (STARK_CAP_NFC | STARK_CAP_SUBGHZ)
 /* These say how a slot is wired; they enable a claim, never an app. */
 #define CAPS_WIRING    (STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ)
 

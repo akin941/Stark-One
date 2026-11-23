@@ -190,6 +190,25 @@ claimed** here.
 | 2 | Unknown/absent EEPROM gives a generic entry, never a boot failure | `v05-empty-bus` (production: slot 0 `generic (bad magic)`, slot 1 `no id`); every corrupt catalogue entry in `test_module_core.c` | Open: checks 3, 4 |
 | 3 | Two modules share SPI without corrupting the display | **Not met in software: it is a V1 gate.** Software half: two wired slots in `test_module_claim.c`; `storage/v05-spi-traffic` (one stand-in driver, 7 177 transfers alongside rendering, `overruns=0`, stale lease on removal) | Open: checks 12–15 |
 
+### V0.6 Sub-GHz module (software evidence, ADR-0022)
+
+| Date | Task | What | Value | Where |
+| --- | --- | --- | --- | --- |
+| 2026-11-23 | STARK-0601 | Production boot heap (`diag: heap=`), V0.5 250 344 B — **gate ≥ 200 kB** | 245 976 B (−4 368 B) | `v0-boot`, `v06-subghz-absent` |
+| 2026-11-23 | STARK-0601 | Test image boot heap (V0.5 246 160 B in `storage/v05-soak`'s first line) | 225 392 B (−20 768 B: the service, plus 16 800 B of static scene and recording buffers in the test-only `fake_cc1101.c`; production does not link them) | `storage/v06-detect` |
+| 2026-11-23 | STARK-0601 | Firmware binary, V0.5 456 656 B | 461 152 B (+4 496 B) | `build/stark-one.bin` |
+| 2026-11-23 | STARK-0601 | Static RAM: `stark_subghz` (task stack 4 096 B) / `stark_subghz_transport` — **budget ≤ 5 kB together** | 4 313 B / 21 B | `idf.py size-components` |
+| 2026-11-23 | STARK-0601 | Flash: `stark_subghz` (code 2 455 B + rodata 296 B) / `stark_subghz_transport` — **budget ≤ 8 kB together** | 2 751 B / 223 B | `idf.py size-components` |
+| 2026-11-23 | STARK-0601 | Root heap, first vs last `stark_diag` line over each 60 s soak — **gate ≤ 1 kB** | v01 248 176 → 248 212 B (Δ 36 B); v02 217 800 → 217 832 B (Δ 32 B); v03, v04, v05 217 800 → 217 844 B (Δ 44 B) | `soak/v01…v05-soak` |
+| 2026-11-23 | STARK-0601 | Event drops over the five soaks — **gate 0** | 0 | `test_emu.py` drops gate |
+| 2026-11-23 | STARK-0601 | Host line coverage: `cc1101_regs.c`, `cc1101_drv.c`, `subghz_svc.c`, and `module_core.c` / `module_desc.c` with the new bit | 100 % each | `test_host.sh --coverage` |
+| 2026-11-23 | STARK-0601 | Host suite | 62 test programs; the four new ones (`cc1101_regs`, `cc1101_drv`, `fake_cc1101`, `subghz_service`) run 9, 15, 13 and 20 tests under ASan and UBSan | `test_host.sh` |
+| 2026-11-23 | STARK-0601 | Module catalogue (`gen_module_vectors.py`) | 33 entries: entry 32 the CC1101 module, entry 33 an unknown-bit-6 vector; entry 10 `unknown_bits` is now an unsupported combination | host suite |
+
+Software evidence only: no CC1101, antenna or SPI signal exists before the V1 prototype
+(ROADMAP V1 exit 12, `docs/bringup/v1-subghz.md` from STARK-0606). The production RMT receive
+path for GDO2 is built but not exercised by any test.
+
 ## Hardware (gated, V1 prototype)
 
 To be filled in at the V1 prototype milestone (ROADMAP.md "V1 prototype"), with the

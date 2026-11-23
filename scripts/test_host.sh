@@ -86,6 +86,7 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
             --filter "$PROJECT_ROOT/components/stark_ir/" \
             --filter "$PROJECT_ROOT/components/stark_nfc/" \
             --filter "$PROJECT_ROOT/components/stark_module/" \
+            --filter "$PROJECT_ROOT/components/stark_subghz/" \
             --filter "$PROJECT_ROOT/components/stark_storage/log_rotate" \
             --filter "$PROJECT_ROOT/components/stark_storage/storage_log" \
             --filter "$PROJECT_ROOT/components/stark_buzzer/buzzer_volume" \

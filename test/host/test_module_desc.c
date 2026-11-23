@@ -94,7 +94,12 @@ static void test_caps_rules_and_strings(void)
     TEST_ASSERT_TRUE(module_desc_caps_supported(0));
     TEST_ASSERT_TRUE(module_desc_caps_supported(STARK_CAP_NFC));
     TEST_ASSERT_TRUE(module_desc_caps_supported(STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ));
-    TEST_ASSERT_TRUE(module_desc_caps_supported(0xFFFFFFE0u)); /* unknown bits are not refused */
+    TEST_ASSERT_TRUE(module_desc_caps_supported(0xFFFFFFD8u)); /* unknown bits are not refused */
+    TEST_ASSERT_TRUE(
+        module_desc_caps_supported(STARK_CAP_SUBGHZ | STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ));
+    TEST_ASSERT_FALSE(module_desc_caps_supported(STARK_CAP_SUBGHZ));
+    TEST_ASSERT_FALSE(module_desc_caps_supported(STARK_CAP_SUBGHZ | STARK_CAP_MOD_SPI));
+    TEST_ASSERT_FALSE(module_desc_caps_supported(STARK_CAP_SUBGHZ | STARK_CAP_MOD_IRQ));
     TEST_ASSERT_FALSE(module_desc_caps_supported(STARK_CAP_IR_TX));
     TEST_ASSERT_FALSE(module_desc_caps_supported(STARK_CAP_IR_RX));
     TEST_ASSERT_FALSE(module_desc_caps_supported(STARK_CAP_NFC | STARK_CAP_MOD_SPI));
