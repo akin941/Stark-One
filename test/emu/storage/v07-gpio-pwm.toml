@@ -8,77 +8,78 @@
 # armed); a pad-model fault (emu_lab_fault = 3, CONFIG_ERROR) turns the next pulse into an alert and hi-Z.
 name = "emu-v07-gpio-pwm"
 image = "storage"
-end_ms = 17590
+end_ms = 17810
 heap_min = 200000
 presses = [
-    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 7)
-    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 7)
-    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 7)
-    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 7)
-    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 7)
-    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 7)
-    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 7)
-    { key = "OK", at_ms = 1940, hold_ms = 60 },  # open the app
-    { key = "OK", at_ms = 2340, hold_ms = 60 },  # open pin 38
-    { key = "RIGHT", at_ms = 2740, hold_ms = 60 },  # Mode: Input, Output, PWM (1 of 3)
-    { key = "RIGHT", at_ms = 3040, hold_ms = 60 },  # Mode: Input, Output, PWM (2 of 3)
-    { key = "RIGHT", at_ms = 3340, hold_ms = 60 },  # Mode: Input, Output, PWM (3 of 3)
-    { key = "DOWN", at_ms = 3640, hold_ms = 60 },  # Freq, Duty (1 of 2)
-    { key = "DOWN", at_ms = 3940, hold_ms = 60 },  # Freq, Duty (2 of 2)
-    { key = "LEFT", at_ms = 4240, hold_ms = 60 },  # Duty 50 % down to 25 % (1 of 25)
-    { key = "LEFT", at_ms = 4370, hold_ms = 60 },  # Duty 50 % down to 25 % (2 of 25)
-    { key = "LEFT", at_ms = 4500, hold_ms = 60 },  # Duty 50 % down to 25 % (3 of 25)
-    { key = "LEFT", at_ms = 4630, hold_ms = 60 },  # Duty 50 % down to 25 % (4 of 25)
-    { key = "LEFT", at_ms = 4760, hold_ms = 60 },  # Duty 50 % down to 25 % (5 of 25)
-    { key = "LEFT", at_ms = 4890, hold_ms = 60 },  # Duty 50 % down to 25 % (6 of 25)
-    { key = "LEFT", at_ms = 5020, hold_ms = 60 },  # Duty 50 % down to 25 % (7 of 25)
-    { key = "LEFT", at_ms = 5150, hold_ms = 60 },  # Duty 50 % down to 25 % (8 of 25)
-    { key = "LEFT", at_ms = 5280, hold_ms = 60 },  # Duty 50 % down to 25 % (9 of 25)
-    { key = "LEFT", at_ms = 5410, hold_ms = 60 },  # Duty 50 % down to 25 % (10 of 25)
-    { key = "LEFT", at_ms = 5540, hold_ms = 60 },  # Duty 50 % down to 25 % (11 of 25)
-    { key = "LEFT", at_ms = 5670, hold_ms = 60 },  # Duty 50 % down to 25 % (12 of 25)
-    { key = "LEFT", at_ms = 5800, hold_ms = 60 },  # Duty 50 % down to 25 % (13 of 25)
-    { key = "LEFT", at_ms = 5930, hold_ms = 60 },  # Duty 50 % down to 25 % (14 of 25)
-    { key = "LEFT", at_ms = 6060, hold_ms = 60 },  # Duty 50 % down to 25 % (15 of 25)
-    { key = "LEFT", at_ms = 6190, hold_ms = 60 },  # Duty 50 % down to 25 % (16 of 25)
-    { key = "LEFT", at_ms = 6320, hold_ms = 60 },  # Duty 50 % down to 25 % (17 of 25)
-    { key = "LEFT", at_ms = 6450, hold_ms = 60 },  # Duty 50 % down to 25 % (18 of 25)
-    { key = "LEFT", at_ms = 6580, hold_ms = 60 },  # Duty 50 % down to 25 % (19 of 25)
-    { key = "LEFT", at_ms = 6710, hold_ms = 60 },  # Duty 50 % down to 25 % (20 of 25)
-    { key = "LEFT", at_ms = 6840, hold_ms = 60 },  # Duty 50 % down to 25 % (21 of 25)
-    { key = "LEFT", at_ms = 6970, hold_ms = 60 },  # Duty 50 % down to 25 % (22 of 25)
-    { key = "LEFT", at_ms = 7100, hold_ms = 60 },  # Duty 50 % down to 25 % (23 of 25)
-    { key = "LEFT", at_ms = 7230, hold_ms = 60 },  # Duty 50 % down to 25 % (24 of 25)
-    { key = "LEFT", at_ms = 7360, hold_ms = 60 },  # Duty 50 % down to 25 % (25 of 25)
-    { key = "DOWN", at_ms = 7490, hold_ms = 60 },  # Start
-    { key = "OK", at_ms = 7790, hold_ms = 60 },  # Start: the confirmation opens
-    { key = "OK", at_ms = 8290, hold_ms = 60 },  # confirm: armed, 1 kHz at 25 % on pad 38
-    { key = "OK", at_ms = 9490, hold_ms = 60 },  # Stop (no confirmation)
-    { key = "UP", at_ms = 9990, hold_ms = 60 },  # Mode (1 of 3)
-    { key = "UP", at_ms = 10290, hold_ms = 60 },  # Mode (2 of 3)
-    { key = "UP", at_ms = 10590, hold_ms = 60 },  # Mode (3 of 3)
-    { key = "RIGHT", at_ms = 10890, hold_ms = 60 },  # Mode: Pulse
-    { key = "DOWN", at_ms = 11190, hold_ms = 60 },  # Level, Width, Pulse (1 of 3)
-    { key = "DOWN", at_ms = 11490, hold_ms = 60 },  # Level, Width, Pulse (2 of 3)
-    { key = "DOWN", at_ms = 11790, hold_ms = 60 },  # Level, Width, Pulse (3 of 3)
-    { key = "OK", at_ms = 12090, hold_ms = 60 },  # one pulse, 100 us low (armed, no dialog)
-    { key = "UP", at_ms = 12790, hold_ms = 60 },  # Width
-    { key = "RIGHT", at_ms = 13090, hold_ms = 60 },  # 1 ms
-    { key = "DOWN", at_ms = 13390, hold_ms = 60 },  # Pulse
-    { key = "OK", at_ms = 13690, hold_ms = 60 },  # one pulse, 1 ms low
-    { key = "OK", at_ms = 14490, hold_ms = 60 },  # a pulse into a transport fault -> the alert, hi-Z
-    { key = "OK", at_ms = 15190, hold_ms = 60 },  # close the alert
-    { key = "BACK", at_ms = 15790, hold_ms = 60 },  # release pin 38
-    { key = "BACK", at_ms = 16290, hold_ms = 60 },  # leave the app
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 8)
+    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 8)
+    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 8)
+    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 8)
+    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 8)
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 8)
+    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 8)
+    { key = "DOWN", at_ms = 1940, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (8 of 8)
+    { key = "OK", at_ms = 2160, hold_ms = 60 },  # open the app
+    { key = "OK", at_ms = 2560, hold_ms = 60 },  # open pin 38
+    { key = "RIGHT", at_ms = 2960, hold_ms = 60 },  # Mode: Input, Output, PWM (1 of 3)
+    { key = "RIGHT", at_ms = 3260, hold_ms = 60 },  # Mode: Input, Output, PWM (2 of 3)
+    { key = "RIGHT", at_ms = 3560, hold_ms = 60 },  # Mode: Input, Output, PWM (3 of 3)
+    { key = "DOWN", at_ms = 3860, hold_ms = 60 },  # Freq, Duty (1 of 2)
+    { key = "DOWN", at_ms = 4160, hold_ms = 60 },  # Freq, Duty (2 of 2)
+    { key = "LEFT", at_ms = 4460, hold_ms = 60 },  # Duty 50 % down to 25 % (1 of 25)
+    { key = "LEFT", at_ms = 4590, hold_ms = 60 },  # Duty 50 % down to 25 % (2 of 25)
+    { key = "LEFT", at_ms = 4720, hold_ms = 60 },  # Duty 50 % down to 25 % (3 of 25)
+    { key = "LEFT", at_ms = 4850, hold_ms = 60 },  # Duty 50 % down to 25 % (4 of 25)
+    { key = "LEFT", at_ms = 4980, hold_ms = 60 },  # Duty 50 % down to 25 % (5 of 25)
+    { key = "LEFT", at_ms = 5110, hold_ms = 60 },  # Duty 50 % down to 25 % (6 of 25)
+    { key = "LEFT", at_ms = 5240, hold_ms = 60 },  # Duty 50 % down to 25 % (7 of 25)
+    { key = "LEFT", at_ms = 5370, hold_ms = 60 },  # Duty 50 % down to 25 % (8 of 25)
+    { key = "LEFT", at_ms = 5500, hold_ms = 60 },  # Duty 50 % down to 25 % (9 of 25)
+    { key = "LEFT", at_ms = 5630, hold_ms = 60 },  # Duty 50 % down to 25 % (10 of 25)
+    { key = "LEFT", at_ms = 5760, hold_ms = 60 },  # Duty 50 % down to 25 % (11 of 25)
+    { key = "LEFT", at_ms = 5890, hold_ms = 60 },  # Duty 50 % down to 25 % (12 of 25)
+    { key = "LEFT", at_ms = 6020, hold_ms = 60 },  # Duty 50 % down to 25 % (13 of 25)
+    { key = "LEFT", at_ms = 6150, hold_ms = 60 },  # Duty 50 % down to 25 % (14 of 25)
+    { key = "LEFT", at_ms = 6280, hold_ms = 60 },  # Duty 50 % down to 25 % (15 of 25)
+    { key = "LEFT", at_ms = 6410, hold_ms = 60 },  # Duty 50 % down to 25 % (16 of 25)
+    { key = "LEFT", at_ms = 6540, hold_ms = 60 },  # Duty 50 % down to 25 % (17 of 25)
+    { key = "LEFT", at_ms = 6670, hold_ms = 60 },  # Duty 50 % down to 25 % (18 of 25)
+    { key = "LEFT", at_ms = 6800, hold_ms = 60 },  # Duty 50 % down to 25 % (19 of 25)
+    { key = "LEFT", at_ms = 6930, hold_ms = 60 },  # Duty 50 % down to 25 % (20 of 25)
+    { key = "LEFT", at_ms = 7060, hold_ms = 60 },  # Duty 50 % down to 25 % (21 of 25)
+    { key = "LEFT", at_ms = 7190, hold_ms = 60 },  # Duty 50 % down to 25 % (22 of 25)
+    { key = "LEFT", at_ms = 7320, hold_ms = 60 },  # Duty 50 % down to 25 % (23 of 25)
+    { key = "LEFT", at_ms = 7450, hold_ms = 60 },  # Duty 50 % down to 25 % (24 of 25)
+    { key = "LEFT", at_ms = 7580, hold_ms = 60 },  # Duty 50 % down to 25 % (25 of 25)
+    { key = "DOWN", at_ms = 7710, hold_ms = 60 },  # Start
+    { key = "OK", at_ms = 8010, hold_ms = 60 },  # Start: the confirmation opens
+    { key = "OK", at_ms = 8510, hold_ms = 60 },  # confirm: armed, 1 kHz at 25 % on pad 38
+    { key = "OK", at_ms = 9710, hold_ms = 60 },  # Stop (no confirmation)
+    { key = "UP", at_ms = 10210, hold_ms = 60 },  # Mode (1 of 3)
+    { key = "UP", at_ms = 10510, hold_ms = 60 },  # Mode (2 of 3)
+    { key = "UP", at_ms = 10810, hold_ms = 60 },  # Mode (3 of 3)
+    { key = "RIGHT", at_ms = 11110, hold_ms = 60 },  # Mode: Pulse
+    { key = "DOWN", at_ms = 11410, hold_ms = 60 },  # Level, Width, Pulse (1 of 3)
+    { key = "DOWN", at_ms = 11710, hold_ms = 60 },  # Level, Width, Pulse (2 of 3)
+    { key = "DOWN", at_ms = 12010, hold_ms = 60 },  # Level, Width, Pulse (3 of 3)
+    { key = "OK", at_ms = 12310, hold_ms = 60 },  # one pulse, 100 us low (armed, no dialog)
+    { key = "UP", at_ms = 13010, hold_ms = 60 },  # Width
+    { key = "RIGHT", at_ms = 13310, hold_ms = 60 },  # 1 ms
+    { key = "DOWN", at_ms = 13610, hold_ms = 60 },  # Pulse
+    { key = "OK", at_ms = 13910, hold_ms = 60 },  # one pulse, 1 ms low
+    { key = "OK", at_ms = 14710, hold_ms = 60 },  # a pulse into a transport fault -> the alert, hi-Z
+    { key = "OK", at_ms = 15410, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 16010, hold_ms = 60 },  # release pin 38
+    { key = "BACK", at_ms = 16510, hold_ms = 60 },  # leave the app
 ]
 pokes = [
     { at_ms = 400, var = "emu_lab_wire", value = 2471 },  # pad 38's output is the source of pad 39 (38 * 64 + 39)
-    { at_ms = 14390, var = "emu_lab_fault", value = 3 },  # the pad model fails its next configuration
-    { at_ms = 15690, var = "emu_lab_fault", value = 0 },  # the fault is cleared
+    { at_ms = 14610, var = "emu_lab_fault", value = 3 },  # the pad model fails its next configuration
+    { at_ms = 15910, var = "emu_lab_fault", value = 0 },  # the fault is cleared
 ]
 expect = [
     "lab: pins 38 39 40 41 42",
-    'menu: sel=11 "GPIO"',
+    'menu: sel=12 "GPIO"',
     "app: start gpio",
     "gpioapp: open pin 38 LAB_UART_TX",
     'dialog: open "Drive pin 38?"',

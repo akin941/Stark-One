@@ -349,7 +349,7 @@ receiving is never claimed below V1.
 V0.7 completion means **software / lab-protocol verified**: a pad driven, a wire measured or a
 real peripheral answering is never claimed below V1 (ROADMAP V1 exit 13). Landed so far:
 STARK-0701 (pin safety and the lab seam), STARK-0702 (the GPIO app), STARK-0703 (frequency and duty
-measurement), STARK-0704 (the I²C scanner), STARK-0705 (the UART tool) and STARK-0706 (the SPI probe); the self-test follows in STARK-0707.
+measurement), STARK-0704 (the I²C scanner), STARK-0705 (the UART tool), STARK-0706 (the SPI probe) and STARK-0707 (the self-test and the report); the exit task follows in STARK-0708.
 
 **What runs where (STARK-0701).**
 * **Host:** the board's pin classes for every number from -1 to 64 and the offer table derived
@@ -505,6 +505,37 @@ measurement), STARK-0704 (the I²C scanner), STARK-0705 (the UART tool) and STAR
   staying intact while the probe uses the shared bus (no display corruption, a logic-analyser capture of the chip selects), a real
   flash's JEDEC ID, the refusal on a real Sub-GHz module, and how a breakout's own pull-ups and levels behave (ADR-0023, 0706
   addendum).
+
+**What runs where (STARK-0707).**
+* **Host:** the runner (`test_selftest_core`: ordering, the 10 s deadline and its edge, an unknown return value, registration
+  limits, a check that overruns, a run that never returned, evidence limits, the summary arithmetic, clearing a row silently); the
+  ten checks against a model of the machine that is broken one call at a time (`test_selftest_checks`: a stuck bit in every one of
+  the 13 RAM passes and at the first and last byte, a heap swept across its 128 kB floor, another task taking memory meanwhile, a
+  flash size mismatch, an unknown size code, a digest mismatch between the two passes, a read error, an image header that is not
+  one in 16 segment counts and every malformed way, NVS unreadable, every wrong setting, a card failing at each step of the
+  4 kB file and a file left behind, a module that declares and does not ACK, an empty slot that ACKs, a bus fault, a drop count of
+  1, a stack of 255 B against 256 B), the SHA-256 against the FIPS vectors and every block boundary, the report formatter
+  (`test_selftest_report`: every section and row, a log tail of exactly 4 kB, the 16 kB cap with its marker at every length, every
+  control character in every field and in the tail, a sink that fails at every point) and the export (`test_selftest_export`: the
+  next free name, no report after 9 999, no card, a card failing at **every write** of the report and at open, close, listing and
+  read-back, none of which leaves a file, the transient buffers always given back); the app's rows and walk (`test_selftest_views`:
+  any key order, the 30 s limit and the clock's wrap, the release of the last key not answering the next question, BACK ending
+  the walk) and the real app on the UI port over the real runner and service (`test_ui_selftest`: Run all and the walk with the
+  real log lines, an attested answer that is never a pass, BACK on each question, a failing check in the summary, OK on a row,
+  the export with and without a card, a second Run all clearing the first, an empty or short table, a worker that cannot start,
+  leaving mid-walk; 16 frames pinned after inspection). `selftest_core.c`, `selftest_report.c`, `selftest_svc.c`, `selftest_checks.c`,
+  `selftest_export.c`, `selftest_sha256.c`, `selftest_views.c` and `log_ring.c` run at 100 % lines.
+* **Emulator, production image:** `v07-selftest-prod`: Run all on the real services with no card (storage `skip`, `no card`), the
+  injected keys, three answers `attested`, `6 pass  3 attested  0 fail  1 skip`, heap before and after equal. The flash check's size
+  comparison and its hashing run against esp-emu's flash (16 MB, header agreeing), so it shows the check's logic, not the chip's.
+* **Emulator, test image:** `storage/v07-selftest` (a card: `7 pass  3 attested  0 fail  0 skip`, `report_0001.txt` and
+  `report_0002.txt` written and read back) and `storage/v07-selftest-faults` (`storage fail removed`, `module bus fail probe 0x50
+  failed: Timeout`, the walk ended by BACK). The card failing in the middle of the write cannot be timed by a poke, so that is
+  host-only.
+* **Not proven anywhere before V1:** a person seeing the colour bars and the grey ramp, hearing three tones and seeing the status LED
+  blink once a second (the attested checks are the operator's by design), RAM and flash checked on silicon (a real chip size, a real
+  image's digest, the cache and flash timing under the two passes), and a report written to and read from a real card (ADR-0023,
+  0707 addendum).
 
 ---
 

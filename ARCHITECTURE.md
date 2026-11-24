@@ -339,6 +339,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
 | 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602), `_CAPTURE` / `_CAPTURE_DONE` (STARK-0603), `_TX_DONE` (6) / `_TX_FAILED` (7) / `_TX_REFUSED` (8) (STARK-0605) |
 | 8 | `STARK_SYS_LAB` | `stark_lab` (STARK-0701) | `STARK_LAB_EVT_PINS` (the offer changed or a held pin was withdrawn); later `_MEASURE_DONE` (STARK-0703); `_UART_DATA` (4) and `_UART_ERROR` (5), each at most ten times a second while the UART monitor runs (STARK-0705); `_SPI_DONE` (6), published after each SPI probe transaction that reached the bus (STARK-0706); `_SCAN_DONE` (3) stays reserved, the I²C sweep being a synchronous call (STARK-0704) |
+| 9 | `STARK_SYS_SELFTEST` | `stark_diag` (STARK-0707) | `STARK_SELFTEST_EVT_STEP` (1) after each recorded result, `_DONE` (2) once no row is left `not run`; clearing a row publishes nothing |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -704,6 +705,40 @@ the first one and then every `STARK_DIAG_LOG_PERIOD_S` (10), logs `diag: heap=<n
 min=<n> fps=<n.n> drops=<n> overruns=<n>`. The arithmetic and formatting are pure (`diag_core.c`). The
 scenario runners gate `drops=0` on every such line; FPS and overruns are reported, never
 gated in simulation (ADR-0011). Local only.
+
+**The self-test (STARK-0707, ADR-0023 §8 and its 0707 addendum).** `stark_diag.h` gains a check table, a runner and a result
+table; the checks themselves are the composition root's, so `stark_diag` needs no new edge.
+
+```c
+typedef enum { ST_NOT_RUN, ST_PASS, ST_FAIL, ST_SKIP, ST_ATTESTED } stark_selftest_result_t;
+typedef struct { const char *name; bool attested; stark_selftest_result_t (*run)(char *evidence, size_t cap); } stark_selftest_check_t;
+stark_err_t stark_selftest_register(const stark_selftest_check_t *table, size_t n);   /* root, once */
+stark_err_t stark_selftest_run(size_t index);       /* one check, on the caller (the app worker) */
+void        stark_selftest_report(size_t index, stark_selftest_result_t r, const char *evidence);
+size_t      stark_selftest_results(stark_selftest_row_t *out, size_t max);
+void        stark_selftest_set_export(stark_selftest_export_fn fn);                   /* root installs the exporter */
+stark_err_t stark_selftest_export(char *name, size_t cap, size_t *bytes);             /* the app calls it */
+```
+
+* **Files.** `selftest_core.c` (the runner, pure: ordering, a 10 s deadline judged on return, results, the summary, an unknown
+  return value is `fail`, a run that never returned is `app_fault` next time, evidence capped at 48 characters without control
+  characters) and `selftest_report.c` (the cursor formatter, pure: one line at a time into a sink, at most 16 384 bytes with a
+  truncation marker, a log tail of at most 4 096, every control character a `.`) are pure over injected pieces. `selftest_svc.c`
+  is the one instance behind the `stark_selftest_*()` calls, with the log lines (`selftest: ram pass 32768 B`, `selftest: summary 7
+  pass  3 attested  0 fail  0 skip`) and `STARK_SYS_SELFTEST` events; it needs only the log and the event bus, so the host UI port
+  runs it unchanged, and `stark_diag.c` hands it the clock and a mutex. No FreeRTOS task: a check runs on its caller.
+* **The checks** (`main/selftest_checks.c`, pure over the table of calls in `main/selftest_env.h`): RAM, Flash, Settings, Storage,
+  Module bus, Events and stacks, then Buttons, Display, Buzzer and Status LED, which have no `run`: the Self-Test app observes
+  them and reports. The environment table is filled from the real services by `main/selftest_target.c`, called after
+  `stark_diag_init()`. The flash group of the table has a size and a read and nothing else, and `scripts/check.sh`
+  (`selftest-flash-readonly`) refuses any flash, partition, OTA or NVS write or erase call in a self-test file. The 6 kB of
+  scratch the checks and the export need (a 27 kB RAM block at most, a 5.5 kB report) is heap, held only while one runs.
+* **The report** (`main/selftest_export.c`): `logs/report_NNNN.txt`, streamed through the formatter into an atomic card file, read
+  back and compared (length and CRC-32), never partial and never sent anywhere (SECURITY_SCOPE §2). `stark_log_ring_tail()` gives
+  its log tail without consuming the ring the storage service drains.
+* **The app** (`apps/app_selftest`, System, launcher row 3): Run all, a summary row, one row per check with its result, Export
+  report; the walk screen (Buttons, Display, Buzzer, Status LED) is `selftest_views.c`, pure. Only the app, the root and the
+  tests know the check order; the indices the app uses are compared with the root's in `test_selftest_checks`.
 
 ### 6.9b `stark_storage` (L3) and `stark_storage_medium` (L1) — STARK-0201, ADR-0018
 
@@ -1265,9 +1300,9 @@ breakout (`0x0B01`, `0x00000008`).
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); the fixed transmit policy and the gated replay of a saved capture implemented (§6.9g, STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
-| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C scanner implemented (§6.9h, STARK-0704); the UART tool implemented (§6.9h, STARK-0705); the SPI probe implemented (§6.9h, STARK-0706); the self-test is planned (ADR-0023, TASKS STARK-0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
+| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C scanner implemented (§6.9h, STARK-0704); the UART tool implemented (§6.9h, STARK-0705); the SPI probe implemented (§6.9h, STARK-0706); the self-test is implemented in `stark_diag` and the root (§6.9a, STARK-0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
-| `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
+| `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); the self-test runner, report formatter and Self-Test app are implemented (§6.9a, STARK-0707) |
 
 ---
 
@@ -1289,6 +1324,7 @@ app_main()
  ├─ xTaskCreate(stark_ui_task, prio 5, 6 kB stack, core 1)
  │      loop: wait-for-event(≤33 ms) → stark_ui_tick() → render damaged bands
  ├─ stark_diag_init(ui adapter)            – 1 s diagnostics sampler (STARK-0109)
+ ├─ selftest_target_init()                 – registers the ten self-test checks and the report export (STARK-0707)
  ├─ stark_storage_init()                   – storage task; mounts in the background (STARK-0201)
  ├─ stark_ir_init()                        – RMT RX channel + IR task, RX off (STARK-0303)
  ├─ stark_nfc_init()                       – PN532 detection on the I2C bus, field off (STARK-0402)

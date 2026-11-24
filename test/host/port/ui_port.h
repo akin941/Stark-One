@@ -37,6 +37,8 @@ bool ui_port_dump_ppm(const char *path);
 /* ---- buzzer --------------------------------------------------------- */
 int ui_port_buzzer_clicks(void);
 int ui_port_buzzer_rejects(void);
+int ui_port_buzzer_plays(void); /* stark_buzzer_play() calls (STARK-0707: the Buzzer step) */
+int ui_port_buzzer_stops(void);
 
 /* ---- log ------------------------------------------------------------ */
 size_t ui_port_log_count(void);

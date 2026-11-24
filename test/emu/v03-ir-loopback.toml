@@ -6,16 +6,17 @@
 # This proves the firmware's IR software path end to end. It does NOT prove
 # a carrier, an LED, light or a receiver — those are V1 hardware checks.
 name = "emu-v03-ir-loopback"
-end_ms = 14000
+end_ms = 14150
 heap_min = 200000
 rmt_loopback = "0:2"
 presses = [
     { key = "DOWN", at_ms = 300, hold_ms = 60 },
-    { key = "DOWN", at_ms = 450, hold_ms = 60 },   # App Test
-    { key = "OK", at_ms = 650, hold_ms = 60 },
-    { key = "UP", at_ms = 900, hold_ms = 60 },     # wraps to IR self-test
-    { key = "OK", at_ms = 1100, hold_ms = 60 },
-    { key = "OK", at_ms = 1400, hold_ms = 60 },    # confirm
+    { key = "DOWN", at_ms = 450, hold_ms = 60 },   # Self-Test (STARK-0707)
+    { key = "DOWN", at_ms = 600, hold_ms = 60 },   # App Test
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "UP", at_ms = 1050, hold_ms = 60 },     # wraps to IR self-test
+    { key = "OK", at_ms = 1250, hold_ms = 60 },
+    { key = "OK", at_ms = 1550, hold_ms = 60 },    # confirm
 ]
 expect = [
     "ir: init rx=48 tx=47",

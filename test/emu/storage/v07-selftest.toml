@@ -1,0 +1,81 @@
+# STARK-0707 on the test image (ADR-0023 section 8, section 9): the Self-Test app with a card (the
+# test medium is a FAT volume on an internal flash partition). Run all: Storage now passes (a 4 kB
+# file is written, read back and deleted again), so the summary reads 7 pass, 3 attested, 0 fail,
+# 0 skip. Export report then writes logs/report_0001.txt through the root: streamed through the
+# cursor formatter into an atomic card file, read back and compared (length and CRC-32) before the
+# app says it is saved; the size is a count, never a duration, and bounded (under 10 kB here, 16 kB
+# at most). A second export is report_0002.txt (the next free number; an earlier report is never
+# replaced). The report stays on the card: nothing is sent anywhere. The host tests read the file
+# back and check every row, the control characters and the 16 kB bound
+# (test/host/test_selftest_export.c); this shows the real card path in the real firmware. The
+# faults are in v07-selftest-faults. Not silicon: the flash and RAM checks passing shows their
+# logic, and the walk's answers are the injected keys of this scenario.
+name = "emu-v07-selftest"
+image = "storage"
+end_ms = 12500
+heap_min = 200000
+heap_delta_max = 1024
+presses = [
+    { key = "DOWN", at_ms = 1400, hold_ms = 60 },  # Diagnostics
+    { key = "DOWN", at_ms = 1600, hold_ms = 60 },  # Self-Test
+    { key = "OK", at_ms = 1900, hold_ms = 60 },  # open the app (after the heap baseline at 1 s)
+    { key = "OK", at_ms = 2500, hold_ms = 60 },  # Run all: the six automated checks, then the walk
+    { key = "UP", at_ms = 5200, hold_ms = 60 },  # Buttons: UP
+    { key = "DOWN", at_ms = 5450, hold_ms = 60 },  # DOWN
+    { key = "LEFT", at_ms = 5700, hold_ms = 60 },  # LEFT
+    { key = "RIGHT", at_ms = 5950, hold_ms = 60 },  # RIGHT
+    { key = "OK", at_ms = 6200, hold_ms = 60 },  # OK
+    { key = "BACK", at_ms = 6450, hold_ms = 60 },  # BACK
+    { key = "OK", at_ms = 6900, hold_ms = 60 },  # Display: "looks right"
+    { key = "OK", at_ms = 7400, hold_ms = 60 },  # Buzzer: "heard"
+    { key = "OK", at_ms = 7900, hold_ms = 60 },  # Status LED: "blinks"
+    { key = "UP", at_ms = 8400, hold_ms = 60 },  # wraps to the last row: Export report
+    { key = "OK", at_ms = 8800, hold_ms = 60 },  # export: report_0001.txt
+    { key = "OK", at_ms = 9300, hold_ms = 60 },  # close the "Report saved" alert
+    { key = "OK", at_ms = 9700, hold_ms = 60 },  # export again: report_0002.txt
+    { key = "OK", at_ms = 10200, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 10500, hold_ms = 60 },  # leave the app (before the diag line at 11 s)
+]
+expect = [
+    "storage: mounted emu-flashfat",
+    'menu: sel=3 "Self-Test"',
+    "selftestapp: run all",
+    "selftest: ram pass ",
+    "selftest: flash pass ",
+    "selftest: settings pass ",
+    "selftest: storage pass 4096 B written, read back, deleted",
+    "selftest: module bus pass ",
+    "selftest: events and stacks pass ",
+    "selftestapp: walk start",
+    "selftest: buttons pass all 6 keys seen",
+    "selftest: display attested ",
+    "selftest: buzzer attested ",
+    "selftest: status led attested ",
+    "selftest: summary 7 pass  3 attested  0 fail  0 skip",
+    "selftestapp: walk done",
+]
+# in order, after the lines above (a regular expression keeps the size to a count, bounded)
+expect_re = [
+    "selftestapp: export",
+    "selftest: export report_0001\\.txt [1-9][0-9]{2,3} B",
+    'dialog: open "Report saved"',
+    "selftestapp: export",
+    "selftest: export report_0002\\.txt [1-9][0-9]{2,3} B",
+    "app: stop selftest",
+]
+forbid = [
+    "selftest: ram fail",
+    "selftest: flash fail",
+    "selftest: settings fail",
+    "selftest: storage fail",
+    "selftest: storage skip",
+    "selftest: module bus fail",
+    "selftest: events and stacks fail",
+    "selftest: buttons fail",
+    "selftest: display pass",
+    "selftest: buzzer pass",
+    "selftest: status led pass",
+    "selftest: export failed",
+    "selftest: export skipped",
+    "selftestapp: walk ended",
+]

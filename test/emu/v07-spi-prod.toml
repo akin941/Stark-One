@@ -25,7 +25,7 @@ presses = [
 ]
 expect = [
     "lab: pins 38 39",
-    'menu: sel=15 "SPI"',
+    'menu: sel=16 "SPI"',
     "spiapp: home",
     "app: start spi",
     "spiapp: slot 0 refused: generic module",

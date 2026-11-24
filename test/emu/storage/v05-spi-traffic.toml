@@ -21,7 +21,7 @@ expect = [
     "module: slot 0 SPI lab module",
     "module: slot 0 claimed by emu",
     'menu: sel=2 "Diagnostics"',
-    'menu: sel=4 "App Test"',
+    'menu: sel=3 "Self-Test"',  # the second DOWN lands on the row STARK-0707 added (it was App Test)
     'menu: sel=2 "Diagnostics"',
     "module: slot 0 no id",
     "stopped: Invalid state",

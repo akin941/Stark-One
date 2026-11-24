@@ -22,7 +22,7 @@ presses = [
 ]
 expect = [
     "storage: mounted emu-flashfat",
-    'menu: sel=13 "IR"',
+    'menu: sel=14 "IR"',
     "ir: rx on",
     "app: start ir",
     "irapp: save refused: nothing captured",

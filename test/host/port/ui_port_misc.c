@@ -12,6 +12,8 @@ void ui_port_log_clear(void);
 
 static int s_clicks;
 static int s_rejects;
+static int s_plays;
+static int s_stops;
 
 stark_err_t stark_buzzer_init(void)
 {
@@ -29,11 +31,14 @@ stark_err_t stark_buzzer_play(const stark_buzzer_note_t *notes, size_t count)
 {
     (void)notes;
     (void)count;
+    s_plays++;
     return STARK_OK;
 }
 
 void stark_buzzer_stop(void)
-{}
+{
+    s_stops++;
+}
 
 void stark_buzzer_click(void)
 {
@@ -55,12 +60,24 @@ int ui_port_buzzer_rejects(void)
     return s_rejects;
 }
 
+int ui_port_buzzer_plays(void)
+{
+    return s_plays;
+}
+
+int ui_port_buzzer_stops(void)
+{
+    return s_stops;
+}
+
 void ui_port_reset_records(void)
 {
     ui_port_display_reset();
     ui_port_log_clear();
     s_clicks = 0;
     s_rejects = 0;
+    s_plays = 0;
+    s_stops = 0;
 }
 
 void ui_port_key(stark_key_t key, stark_key_action_t action)

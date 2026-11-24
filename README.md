@@ -3,7 +3,7 @@
 A modular, portable embedded electronics & security-lab device.
 
 STARK ONE is an ESP32-S3 based handheld lab tool: a colour TFT UI, a 6-key navigation
-cluster, and a growing set of **lab applications** (GPIO, I²C, SPI, UART, IR, NFC, Sub-GHz)
+cluster, and a growing set of **lab applications** (GPIO, I²C, SPI, UART, IR, NFC, Sub-GHz) and a self-test with a report to the card
 built on a clean, extensible firmware architecture. It is inspired by the class of
 portable multi-tools such as the Flipper Zero, but it is **not a clone**: own firmware
 architecture, own module standard, own PCB, own enclosure.

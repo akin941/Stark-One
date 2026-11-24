@@ -1047,6 +1047,51 @@ target_compile_options(run_ui_diagnostics_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_diagnostics_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_diagnostics_tests PRIVATE unity)
 
+# The self-test (STARK-0707, ADR-0023 section 8): the runner, the report formatter, the root's checks
+# and export over a model of the machine (test/host/support/selftest_env_fake.c), the app's pure
+# rows and walk, and the real app on the UI port over the real service.
+set(SELFTEST_INCLUDES ${STARK_COMPONENTS}/stark_diag ${STARK_COMPONENTS}/stark_diag/include
+    ${STARK_COMPONENTS}/stark_module/include ${STARK_COMPONENTS}/stark_settings
+    ${STARK_COMPONENTS}/stark_settings/include ${STARK_COMPONENTS}/stark_storage/include
+    ${STARK_COMPONENTS}/stark_storage_medium/include ${STARK_COMPONENTS}/stark_input/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../main ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_selftest)
+set(SELFTEST_CORE ${STARK_COMPONENTS}/stark_diag/selftest_core.c)
+set(SELFTEST_REPORT ${STARK_COMPONENTS}/stark_diag/selftest_report.c)
+set(SELFTEST_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../main)
+set(SELFTEST_FAKE ${CMAKE_CURRENT_SOURCE_DIR}/support/selftest_env_fake.c
+    ${STARK_COMPONENTS}/stark_settings/settings_core.c ${STARK_COMPONENTS}/stark_err/stark_err.c)
+function(selftest_test name)
+    add_executable(run_${name}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${name}.c ${ARGN})
+    target_include_directories(run_${name}_tests PRIVATE ${SELFTEST_INCLUDES})
+    target_compile_options(run_${name}_tests PRIVATE ${OUR_C_FLAGS})
+    target_link_options(run_${name}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+    target_link_libraries(run_${name}_tests PRIVATE unity)
+    add_test(NAME stark_${name}_tests COMMAND run_${name}_tests)
+endfunction()
+selftest_test(selftest_core ${SELFTEST_CORE})
+selftest_test(selftest_report ${SELFTEST_REPORT} ${SELFTEST_CORE})
+selftest_test(selftest_checks ${SELFTEST_ROOT}/selftest_checks.c ${SELFTEST_ROOT}/selftest_sha256.c
+    ${SELFTEST_FAKE})
+selftest_test(selftest_export ${SELFTEST_ROOT}/selftest_export.c ${SELFTEST_REPORT} ${SELFTEST_CORE}
+    ${SELFTEST_FAKE})
+selftest_test(selftest_views ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_selftest/selftest_views.c)
+
+add_executable(run_ui_selftest_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_selftest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_selftest/app_selftest.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_selftest/selftest_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_selftest.c
+    ${SELFTEST_CORE}
+    ${STARK_COMPONENTS}/stark_diag/selftest_svc.c
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_selftest_tests BEFORE PRIVATE ${UI_PORT_INCLUDES}
+    ${STARK_COMPONENTS}/stark_diag ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_selftest)
+target_compile_options(run_ui_selftest_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_selftest_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_selftest_tests PRIVATE unity)
+add_test(NAME stark_ui_selftest_tests COMMAND run_ui_selftest_tests)
+
 add_test(NAME stark_host_tests COMMAND run_tests)
 add_test(NAME stark_board_tests COMMAND run_board_tests)
 add_test(NAME stark_hal_tests COMMAND run_hal_tests)

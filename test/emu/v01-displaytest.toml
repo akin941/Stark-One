@@ -4,18 +4,19 @@
 # (test/host/test_ui_displaytest.c); here the point is that the new font
 # tables run on the target without faults.
 name = "emu-v01-displaytest"
-end_ms = 3400
+end_ms = 3600
 heap_min = 200000
 presses = [
     { key = "DOWN", at_ms = 400, hold_ms = 60 },   # About -> Diagnostics
-    { key = "DOWN", at_ms = 600, hold_ms = 60 },   # -> App Test (row 4)
-    { key = "DOWN", at_ms = 800, hold_ms = 60 },   # -> Buzzer Test
-    { key = "DOWN", at_ms = 1000, hold_ms = 60 },  # -> Display Test (row 6)
-    { key = "OK", at_ms = 1200, hold_ms = 60 },
-    { key = "BACK", at_ms = 3000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 600, hold_ms = 60 },   # -> Self-Test (row 3, STARK-0707)
+    { key = "DOWN", at_ms = 800, hold_ms = 60 },   # -> App Test (row 5)
+    { key = "DOWN", at_ms = 1000, hold_ms = 60 },  # -> Buzzer Test
+    { key = "DOWN", at_ms = 1200, hold_ms = 60 },  # -> Display Test (row 7)
+    { key = "OK", at_ms = 1400, hold_ms = 60 },
+    { key = "BACK", at_ms = 3200, hold_ms = 60 },
 ]
 expect = [
-    'menu: sel=6 "Display Test"',
+    'menu: sel=7 "Display Test"',
     "app: start displaytest",
     "displaytest: fps=",
     "app: stop displaytest",

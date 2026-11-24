@@ -1,0 +1,64 @@
+# STARK-0707 on the test image (ADR-0023 section 8, section 9): the checks that can be broken from
+# outside fail, and nothing panics. The card is pulled (emu_medium_present = 0) before Run all: the
+# storage service reports it (`storage: card removed`, and the status bar's alert, which the first
+# OK closes) and a card that was mounted and went away is a fault, not an absent card, so the
+# Storage check says `storage fail removed` instead of skipping. The module bus is made to stop
+# answering (emu_mod_fault = 3: a timeout on every probe, whatever the table says): `module bus
+# fail` with the address that failed. The other four automated checks still pass, so one broken part
+# never hides the rest. The walk follows and is ended by BACK on the display question: `display
+# fail operator: not right`, the walk ends, the buzzer and LED read `not run` and no summary is
+# logged (two rows are still not run). A card that fails part-way through the 4 kB write (each
+# step, and a file left behind) is host-only: the emulator cannot time a removal inside a check of
+# a few milliseconds (test/host/test_selftest_checks.c). So are the other faults (a corrupted RAM
+# word, a flash size or digest mismatch, NVS unreadable, a drop count of 1, a stack of 128 B):
+# nothing in the emulator can inject them.
+name = "emu-v07-selftest-faults"
+image = "storage"
+end_ms = 13000
+heap_min = 200000
+pokes = [
+    { at_ms = 2200, var = "emu_medium_present", value = 0 },  # the card is pulled ...
+    { at_ms = 2200, var = "emu_mod_fault", value = 3 },  # ... and every module probe times out
+]
+presses = [
+    { key = "DOWN", at_ms = 1400, hold_ms = 60 },  # Diagnostics
+    { key = "DOWN", at_ms = 1600, hold_ms = 60 },  # Self-Test
+    { key = "OK", at_ms = 1900, hold_ms = 60 },  # open the app
+    { key = "OK", at_ms = 2900, hold_ms = 60 },  # close the "SD card removed" alert
+    { key = "OK", at_ms = 3400, hold_ms = 60 },  # Run all: the card is gone and the bus times out
+    { key = "UP", at_ms = 7000, hold_ms = 60 },  # Buttons: UP
+    { key = "DOWN", at_ms = 7250, hold_ms = 60 },  # DOWN
+    { key = "LEFT", at_ms = 7500, hold_ms = 60 },  # LEFT
+    { key = "RIGHT", at_ms = 7750, hold_ms = 60 },  # RIGHT
+    { key = "OK", at_ms = 8000, hold_ms = 60 },  # OK
+    { key = "BACK", at_ms = 8250, hold_ms = 60 },  # BACK
+    { key = "BACK", at_ms = 8800, hold_ms = 60 },  # Display: "not right": the walk ends
+    { key = "BACK", at_ms = 9500, hold_ms = 60 },  # leave the app
+]
+expect = [
+    'menu: sel=3 "Self-Test"',
+    "selftestapp: run all",
+    "selftest: ram pass ",
+    "selftest: flash pass ",
+    "selftest: settings pass ",
+    "selftest: storage fail removed",
+    "selftest: module bus fail probe 0x50 failed: Timeout",
+    "selftest: events and stacks pass ",
+    "selftestapp: walk start",
+    "selftest: buttons pass all 6 keys seen",
+    "selftest: display fail operator: not right",
+    "selftestapp: walk ended",
+    "app: stop selftest",
+]
+forbid = [
+    "selftest: ram fail",
+    "selftest: flash fail",
+    "selftest: settings fail",
+    "selftest: storage pass",
+    "selftest: module bus pass",
+    "selftest: events and stacks fail",
+    "selftest: display attested",
+    "selftest: buzzer ",
+    "selftest: status led ",
+    "selftest: summary",
+]

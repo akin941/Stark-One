@@ -14,44 +14,45 @@
 # it ends within a slice, the pin is released, and no result is logged for it.
 name = "emu-v07-measure"
 image = "storage"
-end_ms = 16400
+end_ms = 16620
 heap_min = 200000
 presses = [
-    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 7)
-    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 7)
-    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 7)
-    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 7)
-    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 7)
-    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 7)
-    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 7)
-    { key = "OK", at_ms = 1940, hold_ms = 60 },  # open the app
-    { key = "DOWN", at_ms = 2340, hold_ms = 60 },  # pin 39
-    { key = "OK", at_ms = 2740, hold_ms = 60 },  # open pin 39
-    { key = "RIGHT", at_ms = 3140, hold_ms = 60 },  # Mode: Input
-    { key = "DOWN", at_ms = 3540, hold_ms = 60 },  # Pull, Read, Measure (1 of 3)
-    { key = "DOWN", at_ms = 3840, hold_ms = 60 },  # Pull, Read, Measure (2 of 3)
-    { key = "DOWN", at_ms = 4140, hold_ms = 60 },  # Pull, Read, Measure (3 of 3)
-    { key = "OK", at_ms = 4540, hold_ms = 60 },  # measure: 1 kHz at 25 %
-    { key = "OK", at_ms = 5900, hold_ms = 60 },  # measure: 40 kHz at 50 %
-    { key = "OK", at_ms = 7400, hold_ms = 60 },  # measure: 80 kHz, too fast
-    { key = "OK", at_ms = 8900, hold_ms = 60 },  # measure: a steady high line, a 4 s window
-    { key = "OK", at_ms = 13500, hold_ms = 60 },  # measure again ...
-    { key = "BACK", at_ms = 14600, hold_ms = 60 },  # ... and cut it short: the pin is released
-    { key = "BACK", at_ms = 15200, hold_ms = 60 },  # leave the app
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 8)
+    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 8)
+    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 8)
+    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 8)
+    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 8)
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 8)
+    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 8)
+    { key = "DOWN", at_ms = 1940, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (8 of 8)
+    { key = "OK", at_ms = 2160, hold_ms = 60 },  # open the app
+    { key = "DOWN", at_ms = 2560, hold_ms = 60 },  # pin 39
+    { key = "OK", at_ms = 2960, hold_ms = 60 },  # open pin 39
+    { key = "RIGHT", at_ms = 3360, hold_ms = 60 },  # Mode: Input
+    { key = "DOWN", at_ms = 3760, hold_ms = 60 },  # Pull, Read, Measure (1 of 3)
+    { key = "DOWN", at_ms = 4060, hold_ms = 60 },  # Pull, Read, Measure (2 of 3)
+    { key = "DOWN", at_ms = 4360, hold_ms = 60 },  # Pull, Read, Measure (3 of 3)
+    { key = "OK", at_ms = 4760, hold_ms = 60 },  # measure: 1 kHz at 25 %
+    { key = "OK", at_ms = 6120, hold_ms = 60 },  # measure: 40 kHz at 50 %
+    { key = "OK", at_ms = 7620, hold_ms = 60 },  # measure: 80 kHz, too fast
+    { key = "OK", at_ms = 9120, hold_ms = 60 },  # measure: a steady high line, a 4 s window
+    { key = "OK", at_ms = 13720, hold_ms = 60 },  # measure again ...
+    { key = "BACK", at_ms = 14820, hold_ms = 60 },  # ... and cut it short: the pin is released
+    { key = "BACK", at_ms = 15420, hold_ms = 60 },  # leave the app
 ]
 pokes = [
     { at_ms = 400, var = "emu_lab_ext_pin", value = 39 },  # the external source is on pad 39
     { at_ms = 410, var = "emu_lab_ext_hz", value = 1000 },
     { at_ms = 420, var = "emu_lab_ext_duty", value = 25 },
     { at_ms = 430, var = "emu_lab_ext_mode", value = 3 },  # a square wave
-    { at_ms = 5400, var = "emu_lab_ext_hz", value = 40000 },
-    { at_ms = 5410, var = "emu_lab_ext_duty", value = 50 },
-    { at_ms = 6900, var = "emu_lab_ext_hz", value = 80000 },
-    { at_ms = 8400, var = "emu_lab_ext_mode", value = 1 },  # a steady high line
+    { at_ms = 5620, var = "emu_lab_ext_hz", value = 40000 },
+    { at_ms = 5630, var = "emu_lab_ext_duty", value = 50 },
+    { at_ms = 7120, var = "emu_lab_ext_hz", value = 80000 },
+    { at_ms = 8620, var = "emu_lab_ext_mode", value = 1 },  # a steady high line
 ]
 expect = [
     "lab: pins 38 39 40 41 42",
-    'menu: sel=11 "GPIO"',
+    'menu: sel=12 "GPIO"',
     "app: start gpio",
     "gpioapp: open pin 39 LAB_UART_RX",
     "gpioapp: pin 39 measuring",

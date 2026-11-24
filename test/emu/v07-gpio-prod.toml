@@ -31,7 +31,7 @@ presses = [
 ]
 expect = [
     "lab: pins 38 39",
-    'menu: sel=11 "GPIO"',
+    'menu: sel=12 "GPIO"',
     "gpioapp: home 38 39",
     "app: start gpio",
     "gpioapp: open pin 38 LAB_UART_TX",

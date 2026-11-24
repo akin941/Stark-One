@@ -28,6 +28,13 @@ void stark_log_init(void);
  */
 size_t stark_log_ring_take(char *buf, size_t max, uint32_t *dropped);
 
+/*
+ * A copy of the newest whole lines the capture ring holds (at most max bytes, oldest first), left
+ * in place: the self-test report's log tail (STARK-0707). Empty (0) when the capture is off or
+ * nothing is complete. Any task; a spinlock and a copy of at most max bytes.
+ */
+size_t stark_log_ring_tail(char *buf, size_t max);
+
 /**
  * Sets the log level for a specific tag.
  * @param tag The log tag (e.g. "board", "ui", "input")

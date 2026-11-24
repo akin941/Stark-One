@@ -65,6 +65,17 @@ size_t stark_log_ring_take(char *buf, size_t max, uint32_t *dropped)
     return n;
 }
 
+size_t stark_log_ring_tail(char *buf, size_t max)
+{
+    if (buf == NULL || s_console == NULL) {
+        return 0;
+    }
+    portENTER_CRITICAL(&s_ring_lock);
+    size_t n = log_ring_tail(&s_ring, buf, max);
+    portEXIT_CRITICAL(&s_ring_lock);
+    return n;
+}
+
 void stark_log_set_level(const char *tag, int level)
 {
     esp_log_level_set(tag, level);

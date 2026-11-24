@@ -3,15 +3,16 @@
 # but nothing comes back, so each protocol reports a timeout; nothing
 # panics and IR stays usable (RX is turned off again at the end).
 name = "emu-v03-ir-noloop"
-end_ms = 14000
+end_ms = 14150
 heap_min = 200000
 presses = [
     { key = "DOWN", at_ms = 300, hold_ms = 60 },
-    { key = "DOWN", at_ms = 450, hold_ms = 60 },
-    { key = "OK", at_ms = 650, hold_ms = 60 },
-    { key = "UP", at_ms = 900, hold_ms = 60 },
-    { key = "OK", at_ms = 1100, hold_ms = 60 },
-    { key = "OK", at_ms = 1400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 450, hold_ms = 60 },   # Self-Test (STARK-0707)
+    { key = "DOWN", at_ms = 600, hold_ms = 60 },   # App Test
+    { key = "OK", at_ms = 800, hold_ms = 60 },
+    { key = "UP", at_ms = 1050, hold_ms = 60 },
+    { key = "OK", at_ms = 1250, hold_ms = 60 },
+    { key = "OK", at_ms = 1550, hold_ms = 60 },
 ]
 expect = [
     'dialog: open "Transmit IR test frames?"',

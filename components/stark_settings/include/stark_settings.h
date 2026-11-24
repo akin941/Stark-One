@@ -55,5 +55,15 @@ stark_err_t stark_settings_commit(void);
 /* Every setting back to its default (published as changes), then commit. */
 stark_err_t stark_settings_restore_defaults(void);
 
+/* Where the loaded values came from (STARK-0707, the self-test): the store, defaults because the
+ * store was new, or RAM only because it could not be opened. RAM before init. */
+typedef enum {
+    STARK_SETTINGS_FROM_NVS,
+    STARK_SETTINGS_FROM_DEFAULTS,
+    STARK_SETTINGS_FROM_RAM,
+} stark_settings_source_t;
+
+stark_settings_source_t stark_settings_source(void);
+
 /* NULL for an invalid key. */
 const stark_setting_desc_t *stark_settings_desc(stark_setting_t key);

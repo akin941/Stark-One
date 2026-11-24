@@ -6141,6 +6141,63 @@ RAM-check block is transient. **Physical HIL (V1).** The whole self-test on the 
 with each attested check really observed; flash and RAM on silicon; the report from a real
 card.
 
+**As built (2026-11-24).** Differences from the plan and the readings the spec left open are ADR-0023's 0707 addendum; the short
+version, with the files that carry each point:
+
+* **Layers and files.** `components/stark_diag/{selftest_core.c, selftest_report.c}` are the pure runner and the pure cursor
+  formatter; `selftest_svc.c` (not in the plan's list) is the one instance behind the `stark_selftest_*()` calls with the log lines
+  and the events, host-compilable so the UI port runs it unchanged (`stark_diag.c` only hands it the clock and a mutex);
+  `include/selftest_report.h` is public because the root writes the report. The checks and the export are the root's and **pure over
+  one table of calls** (`main/selftest_env.h`, `selftest_checks.c`, `selftest_export.c`, `selftest_sha256.c`), with the target binding
+  in `main/selftest_target.c` (not in the plan's list: the plan's `selftest_checks.c` could not be both host-tested and bound to the
+  services). `apps/app_selftest/{app_selftest.c, selftest_views.c, selftestapp.h}`; the launcher row and registry line; ARCHITECTURE
+  §6.9a. Additions to existing components: `stark_settings_source()` (a store that could not be opened must fail the settings check)
+  and `stark_log_ring_tail()` / `log_ring_tail()` (the report's log tail, without consuming the ring the storage service drains).
+* **The runner (AC 1, AC 2).** Ten checks in the plan's order; a check with `run == NULL` (Buttons, Display, Buzzer, Status LED) is
+  recorded by the app through `stark_selftest_report()`. A 10 s deadline judged on return, an unknown value `fail`, `app_fault` for a
+  run that never returned, evidence at most 48 characters without control characters, clearing a row silent. **Attested is never
+  `pass`:** the walk's yes is `attested`, its no is `fail` and ends the walk, and `test_selftest_views`, `test_ui_selftest` and the
+  emulator scenarios assert it from every side.
+* **Checks (AC 1, AC 4).** RAM (a block of at most 32 kB, a quarter of the largest free block and never taking free heap under 128 kB,
+  13 patterns including address-in-address, freed in every outcome; the heap floor is swept in `test_selftest_checks` and the
+  emulator's `min=` free heap reads 200 196 B on the production image and 183 324 B on the test image), Flash (chip size against
+  the bootloader header's size nibble, then two read-only SHA-256 passes over the running image, whose length is found by walking the
+  image header; the model has no write or erase to call and `scripts/check.sh` `selftest-flash-readonly` refuses one in the source),
+  Settings (read twice, in range, store not RAM-only), Storage (skip, fail or pass by the card's state; a 4 kB atomic file written,
+  read back and removed), Module bus (the table against address probes both ways, one retry for a stale table, a bus fault not
+  retried), Events and stacks (drops 0, every task at least 256 B free; 12 tasks, least 568 B on both images).
+* **The walk (AC 2).** Buttons observes the six keys on their press in any order and fails after 30 s naming the missing ones;
+  Display shows the bars and the ramp; Buzzer plays three tones (UP again); Status LED asks. OK is yes, BACK is no and ends the walk;
+  an answer needs its press to have arrived in its step, so the release of the key that finished Buttons cannot answer Display.
+* **The report (AC 3).** `logs/report_NNNN.txt` through the formatter into an atomic file, at most 16 384 bytes with a truncation
+  marker and a log tail of at most 4 096, every control character a `.` in every field, read back and compared (length and CRC-32) before
+  the app says it is saved, a file never left behind, nothing sent anywhere. Without a card: `No card`, `selftest: export skipped (no card)`.
+* **Emulator (AC 1, AC 4, AC 5).** Production `v07-selftest-prod`: `6 pass  3 attested  0 fail  1 skip` as logged, heap before and
+  after equal (Δ 0 B). Test image `storage/v07-selftest`: `7 pass  3 attested  0 fail  0 skip`, `report_0001.txt` and `report_0002.txt`
+  written and read back (1 447 B each, a count), heap Δ 96 B; and `storage/v07-selftest-faults` (a second file, so each stays far under
+  20 s): the card pulled mid-session is `storage fail removed` (a mounted card that went away is a fault, an absent one a skip), every
+  module probe timing out is `module bus fail probe 0x50 failed: Timeout`, the other four still pass, BACK on the display question ends
+  the walk. **A card failing in the middle of the 4 kB write cannot be timed by a poke** (the storage service notices a pulled card within
+  150 ms, a check lasts a few milliseconds), so every step of that failure is host-only, as are the corrupted RAM word, the flash size and
+  digest mismatches, NVS unreadable, a drop and a thin stack; the plan listed `emu_medium_present = 0` mid-run as `fail`.
+* **Pre-existing scenarios edited (row indices, the registry line, and one more press where a walk crosses the new row, as STARK-0706
+  did).** Registry `n=17` to `n=18` (`selftest` after `diagnostics`): `v0-boot`, `v01-hello`. Launcher rows (+1 from App Test down):
+  `v01-hello`, `v02-settings-persist`, `v04-nfc-absent`, `v07-gpio-prod`, `v07-i2c-prod`, `v07-measure-prod`, `v07-spi-prod`,
+  `v07-uart-prod`, `soak/v06-soak`, `storage/{v02-eject, v02-log-file, v03-ir-app, v04-nfc-app, v05-hotplug, v06-capture, v06-decode,
+  v06-replay, v06-scan, v07-gpio, v07-gpio-pwm, v07-i2c, v07-i2c-bus, v07-measure, v07-uart, v07-uart-log}` and the walks below. One more DOWN press
+  where a walk from About crosses Self-Test on its way to App Test or beyond (every later press and `end_ms` moved by the spacing):
+  `v0-input-matrix`, `v01-app-lifecycle`, `v01-dialog`, `v01-displaytest`, `v01-navigation`, `v03-ir-loopback`, `v03-ir-noloop`,
+  `storage/{v07-gpio, v07-gpio-pwm, v07-i2c, v07-i2c-bus, v07-measure}`; and in the soaks, `soak/v01-soak` (the walk from Diagnostics to App Test, twice:
+  one more DOWN each, no later press moved) and `soak/v03-soak` (UP from App Test to Storage crosses the row on the way up: one more UP). `v02-no-card` walks every app, so it now opens Self-Test too (DOWN, OK,
+  BACK and `app: start selftest` / `app: stop selftest`, 1.1 s added). `storage/v05-spi-traffic`: its second DOWN now lands on Self-Test,
+  so the expectation reads `sel=3 "Self-Test"` where it read `sel=4 "App Test"`.
+* **Evidence and cost.** In docs/measurements.md "V0.7 lab tools": boot heap 1.34 kB against the 2.5 kB budget (V0.7 total 8.8 kB of
+  16 kB), static RAM about 1.3 kB against 2.5 kB, and **flash 15.2 kB against the 8 kB budget (flagged, 7.2 kB over)**: the checks'
+  messages, the image walk, the SHA-256 and the report formatter are the bulk. The V0.7 binary ceiling was passed at STARK-0705 and
+  STARK-0708 restates it.
+* **Not here.** A person seeing, hearing and watching (the attested checks), the flash and RAM checks on silicon, a report from a real
+  card (ROADMAP V1 exit 13), and the V0.7 exit work (STARK-0708).
+
 ---
 
 ## STARK-0708 — V0.7 exit: soak, measurements, V1 lab-tools checklist, LVGL scoring
