@@ -189,6 +189,30 @@ badly — animations, complex layouts, charts — is the signal to revisit.
 transitions, a chart/waterfall widget, scrollable rich text, or on-screen keyboard —
 raise an ADR to adopt LVGL behind `stark_screen_t`.
 
+**Addendum (2026-11-24, STARK-0708): the V0.7 re-evaluation, scored.** ADR-0023 §11 set the
+trigger for V0.7 and STARK-0708 scores it against the apps actually built (eighteen:
+About, Diagnostics, Self-Test, App Test, Buzzer Test, Display Test, Input Test, Hello, GPIO,
+I2C, IR, NFC, SPI, Sub-GHz, UART, Modules, Settings, Storage). The four triggers above, each against the code and the scenarios:
+
+| Trigger | Built? | Evidence | Scored |
+| --- | --- | --- | --- |
+| Animated transitions | no | No app, dialog or screen change animates anything; `stark_ui` pushes and pops screens and repaints bands. Nothing in V0.1 to V0.7 asked for motion; the live views (RSSI meter, the Measure row, the UART monitor) redraw values, they do not move objects | **false** |
+| A chart or waterfall widget | no | The Sub-GHz meter is a number and a 12-cell text bar and the scan a peak line; the Measure row is a text result; no V0.7 app plots a series. A spectrum or waterfall would be new work that no V0.x task owns | **false** |
+| Scrollable rich text | partly | The UART monitor is scrollable text: a 4 kB ring shown as hex or ASCII rows with UP, DOWN and page keys (`uartview_window` and `uartview_scroll`, pure code with a host test). It is plain fixed-width rows of one font, not styled, wrapped or mixed text, and the in-house menu already scrolls a long list with a bar. Counted as met, as ADR-0023 §11 counted it, because the monitor is the one place the in-house widgets needed a window onto a buffer | **true (conservatively)** |
+| An on-screen keyboard | no | Every input in V0.7 is a fixed list or a nibble picker: the I²C register and bytes, the SPI bytes, the UART send, the pin modes and rates. No app takes free text; file names are generated (`uart_0001.log`, `report_0001.txt`, `rf_0001.rf`) | **false** |
+
+**Outcome: one trigger of four, so fewer than two: keep the in-house UI.** ADR-0005 stays
+provisional (revisit at V2) and no ADR to adopt LVGL is raised. The cost side was measured:
+V0.7 added 88.8 kB of image for five apps and the lab and self-test services without a UI framework
+(docs/measurements.md "V0.7 exit criteria"); the host-testable pure views (`gpio_views`,
+`i2c_views`, `spi_views`, `uart_views`, `selftest_views`) and the pinned frames kept the apps
+cheap to test, which is the property ADR-0005 bought. What would change the answer: **a second
+trigger** — a Sub-GHz spectrum or waterfall view (the scan's data already exists), animated
+transitions asked for by the V1 hardware's larger or touch panel, or an app that needs free text
+(an SSID or file name, in a V2 radio milestone). Any one of those together with the monitor's
+scrolling makes two, and then the next milestone raises the ADR behind `stark_screen_t`
+instead of deciding in a task.
+
 ---
 
 ## ADR-0006 — Concurrency: one UI task, cooperative apps, one event bus
@@ -1052,8 +1076,8 @@ regulatory change for 433 MHz SRD, or a need for another band.
 **Status:** accepted (2026-11-23). The owner delegated the V0.7 product decisions to the
 planner and asked for autonomous progress; every decision below is recorded here rather
 than taken silently. Applies ADR-0017 to V0.7 as ADR-0019 to ADR-0022 applied it to V0.3
-to V0.6. STARK-0701 to STARK-0708 build it; the first (pin safety and the lab seam) has landed, see the
-addendum at the end.
+to V0.6. STARK-0701 to STARK-0708 built it (all landed; the addenda at the end record the readings and
+choices of each, the last restating the V0.7 budgets).
 
 **Context.** ROADMAP V0.7 adds the everyday bench tools: a GPIO app with a safe-pin
 allowlist, frequency and duty measurement without PCNT or MCPWM, an I²C scanner with
@@ -1901,3 +1925,106 @@ the report never leaves the device.
     RAM on silicon (ROADMAP V1 exit 13).
 17. **Cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM and flash against the 0707 budgets. The flash
     budget of 8 kB was exceeded; the binary ceiling of §10 was already passed at STARK-0705 and STARK-0708 restates it.
+
+**Addendum (2026-11-24, STARK-0708): V0.7 exit, the restated budget.** The exit task builds no firmware: it adds the soak, the
+evidence tables, the V1 checklist, the ADR-0005 scoring and a faster CI, and it **restates the V0.7 budgets with what was
+measured**. The owner delegated this decision and it is recorded here, not taken silently. Nothing below moves a safety rule,
+and no gate was loosened: the boot-heap gate stays 200 kB and the V0.7 boot-heap budget stays 16 kB.
+
+1. **What was planned and what was built.** The plan (§10, the TASKS.md V0.7 header) was a V0.7 binary ceiling of +52 kB over the
+   V0.6 close (483 216 B, so at most 535 kB) and per-task budgets whose flash column adds up to 50 kB. Seven tasks reported against
+   their own budgets as they landed; this table puts them side by side (1 kB is 1 024 B in the per-task columns, as the tasks
+   measured it; the image column is `build/stark-one.bin`, and the seven deltas sum to exactly 88 800 B):
+
+   | Task | Boot heap budget / cost | Static RAM budget / actual | Flash budget / actual (as the task recorded it) | Image growth | Verdict |
+   | --- | --- | --- | --- | --- | --- |
+   | 0701 pin safety, the seam | ≤ 1.5 kB / 432 B | ≤ 1.5 kB / 414 B | ≤ 3 kB / 1 477 B | +3 312 B | inside |
+   | 0702 GPIO app | ≤ 1 kB / 1 004 B | `app_gpio` ≤ 2 kB / 786 B | `app_gpio` ≤ 7 kB / 4 378 B | +9 328 B | inside as the budget was worded; the image grew 2.1 kB more than 7 kB because `stark_lab`, the transport, the HAL and the IDF GPIO and LEDC drivers are not in the `app_gpio` row |
+   | 0703 measurement | ≤ 0.5 kB / 352 B | ≤ 0.5 kB / +97 B | ≤ 4 kB / 3 074 B | +4 496 B | inside |
+   | 0704 I²C scanner | ≤ 2 kB / 1 548 B | `app_i2c` ≤ 2 kB / 1 364 B; lab I²C ≤ 1 kB / +128 B | ≤ 10 kB / 8 482 B | +10 752 B | inside |
+   | 0705 UART tool | ≤ 3 kB / 4 572 B | `app_uart` ≤ 2 kB / 1 388 B; lab UART ≤ 1.5 kB / +461 B | ≤ 12 kB / 15 523 B of our code, and 13 759 B of the ESP-IDF UART driver | +38 240 B | **over**: boot heap by 1.5 kB, flash by 3.2 kB of our code, and the driver, which no earlier task linked |
+   | 0706 SPI probe | ≤ 1 kB / 364 B | `app_spi` ≤ 1 kB / 170 B | ≤ 6 kB / 6 470 B | +7 440 B | **over** by 326 B of flash (the reason texts, log lines and the 49-row answer view) |
+   | 0707 self-test | ≤ 2.5 kB / 1 340 B | ≤ 2.5 kB / about 1.3 kB | ≤ 8 kB / 15.2 kB | +15 232 B | **over** by 7.2 kB of flash (the checks' evidence texts, the image walk, the SHA-256 and the report formatter; the budget did not count the walk screen or the export's read-back) |
+   | **V0.7** | **≤ 16 kB / 8 780 B** (231 952 B; gate ≥ 200 kB) | — / +6 368 B (`.bss` and `.data`, 80 495 to 86 863 B) | ≤ 50 kB across the tasks / 54.6 kB of our own code | **≤ +52 kB / +88 800 B** (572 016 B) | **ceiling passed at 0705**; boot heap inside |
+
+2. **Where the 88 800 B went**, measured by component against the V0.6 close (`idf.py size-components` on a build of the V0.6
+   commit taken from a `git archive`, and on this tree; docs/measurements.md "V0.7 exit criteria"). Our new code is about 55.7 kB of
+   flash (`stark_lab` 17 061, `app_uart` 8 224, `main` +5 522 for the self-test checks and the export, `app_i2c` 5 012, `app_gpio`
+   4 963, `app_selftest` 3 937, `app_spi` 3 870, `stark_diag` +2 747, `stark_lab_transport` 2 571, `stark_hal` +1 133,
+   `stark_board` +463, `stark_log` +210). The ESP-IDF code the lab tools link is about 19 kB of archive total (`esp_driver_uart`
+   +10 970, `esp_ringbuf` +5 099 and `esp_hal_uart` +1 068 for the UART driver, `esp_driver_gpio` +1 465 and `esp_driver_ledc` +386 for
+   the pad and PWM calls). The `libesp_stdio.a` row of the same table grows by 12 771 B between the two builds although its object
+   list is unchanged (`stdio_vfs.c.obj` only), so that row is the tool's attribution of linked libc sections and is **not**
+   claimed as the cost of any V0.7 task. Everything else moved by less than 100 B each.
+3. **The restated ceiling: +90 kB over the V0.6 close, at most 573 216 B** (the plan's +52 kB, 535 216 B, no longer holds). It is the
+   measured +88.8 kB rounded up to the next kilobyte, not a target to grow into: the closing task adds no firmware, and every later
+   milestone carries its own ceiling in its own plan. Why it is acceptable: the image is 13.6 % of the 4 MB factory partition
+   (86 % free); the growth is the lab tools themselves plus the ESP-IDF UART driver that the plan assumed would be a thin wrapper
+   (§2 said "the UART driver is installed without an event queue" and sized nothing); and no flash went to anything that is not a
+   V0.7 feature. The two ways to take some back (a UART driver written on the LL layer for about 14 kB, and sharing the lab apps'
+   reason texts) are real work with real risk to safety behaviour that the host and emulator tests now pin, so they are options for
+   a later size task and are not done at an exit. **Rejected:** moving the ceiling silently; shrinking the self-test or the UART
+   tool to fit (the exit criteria are met by them); dropping the UART driver's ring buffer (it is the driver's, not ours).
+4. **Unchanged, and reported against: the boot-heap gate and the 16 kB budget.** Production boot heap is 231 952 B against the
+   240 732 B of the V0.6 close: **8 780 B of the 16 kB spent (55 %), and 31 952 B above the 200 kB gate**. The V0.7 closing figure is
+   therefore ≥ 224 kB as §10 required. No task cost more than 4 572 B (0705, which exceeded its 3 kB budget), and the per-task heap
+   budgets add up to 11.5 kB, inside the 16 kB. The test image's boot heap is 225 032 B (V0.6: 237 812 B). Static RAM grew by 6 368 B,
+   which is where the boot heap went. Transient buffers (the 4 kB edge ring, the UART driver with its 4 kB ring and 2 kB log buffer,
+   the RAM check's 32 kB block, the report) are heap held only while a view runs, and the root heap after leaving every app is within
+   1 kB of before, as the soak measures.
+5. **The one rule that changes.** No per-task budget is re-opened: a task's budget is a plan, and 0705 to 0707 reported their
+   overruns when they landed. From V0.8, **a flash budget in a task spec is read against the image growth as well as the
+   component's own code, and names the ESP-IDF drivers the task will newly link**, so that a ceiling cannot be passed by a
+   dependency nobody counted.
+6. **The soak is longer than the plan's 60 s.** The plan said "60 s, two passes of about 30 s". The full sequence (Self-Test with a
+   walk and an export; GPIO through a confirmed drive, a contention, PWM, a pulse, a measurement and a hot-plug withdrawal; the I²C
+   scan with a confirmed and a refused write; the SPI probe and its refusal; the UART loopback and a log) takes about 60 s a pass at
+   the key spacing the existing scenarios proved (500 ms around a dialog, 150 to 200 ms between navigation keys). Shortening it
+   would have dropped one of the tools from the soak or run it at spacings that do not render reliably, so each pass is about 60 s
+   and the soak ends at 122.5 s of emulated time. The gates are unchanged (`drops=0` on every `stark_diag` line; the first and the
+   last root heap within 1 kB, the last line taken at the launcher 121 s in) and the wall-clock cap is 3 600 s (V0.6's soak: 1 500 s
+   for 62 s). Plan against actual is recorded here; no other soak changed.
+7. **CI: the test-image scenarios run in four shards, the soaks as a matrix.** The `esp-emulator-storage` job ran the 39 scenarios of
+   the test image one after another and took about an hour. It is now `emu-storage-image` (builds the image once, runs
+   `check_emu_image.py` and the shard check, uploads the merged binary and the ELF), `esp-emulator-storage-shard` (a matrix of four,
+   each downloading that image and running its share) and a final job still named `esp-emulator-storage` that succeeds only when
+   the image job and every shard did, so the check name does not change. The partition is `scripts/emu_shards.py`: scenarios
+   ordered by weight (emulated duration plus 20 s of boot) then name, each given to the currently lightest shard, ties to the lowest
+   index. It is deterministic and independent of directory order, and every scenario of `test/emu/storage/*.toml` lands in exactly
+   one shard (`--check`, run by the image job, and by `scripts/test_emu_shards.py` in the lint job for every shard count from 1 to
+   8, with negative tests for a dropped, a doubled and a foreign scenario; one more test ties the matrix in `ci.yml` to the shard
+   count that is tested). Four shards because the longest scenario is 54 s of emulated time (`v06-detect`) and the weights balance
+   to within 14 s (9 to 10 scenarios each, 337 to 351 s of weight). Nothing was dropped or weakened: no scenario changed,
+   `check_emu_image.py` still runs (once, on the image every shard then downloads) and the harness still refuses a scenario on the
+   wrong image. The soaks are `esp-emulator-soak-run`, a matrix with one entry per soak (V0.1 on the production image, V0.2 to V0.7 on
+   the test image), behind a final `esp-emulator-soak` check. On the step name: the step that read "only the three allowed
+   substitutions" was already "five" in this tree (STARK-0701 changed it); the only remaining "three" is the history text of
+   TASKS.md STARK-0502 ("allows exactly three substitutions"), which says what that task allowed at the time and is left as written.
+8. **The plan's V1 check "PWM on `LAB_UART_TX` wired into `LAB_UART_RX`" is restated** (the 0703 addendum left it to this task). It
+   needs two live pins at once, which the one-pin GPIO app cannot give, and there is no second tool. In
+   `docs/bringup/v1-labtools.md` check 17 closes the same loop with two independent references: the device's own PWM at 1 kHz,
+   10 kHz and 40 kHz on a logic analyser (check 12), and a signal generator at the same frequencies and duties read by the device
+   (checks 15 and 16); the two columns must agree within the sum of the tolerances. The UART loopback is not a substitute (it shows
+   bytes, not an edge measurement). A lab header, when the V1 PCB has one, could wire a pin to a pin; the check does not depend on it.
+9. **ADR-0005 is scored** in its own addendum: one trigger of four (the UART monitor's scrollable text, counted conservatively), so
+   the in-house UI stays, and what would change the answer is written down.
+10. **Readings the tasks recorded, in one place** (the earlier addenda and docs/VALIDATION.md §2 hold the detail): on esp-emu 0.44.0
+    an output pad reads back and a self-driven pad raises its interrupt, the I²C sweep finds exactly 0x50, its EEPROM accepts writes (so
+    the write refusal is the firmware's alone), pull-down reads and LEDC on a pad do not work, and the UART1 bridge round-trips through
+    the production driver with no baud timing. Hence the production-image scenarios show the driver and the service, the test image
+    shows the rules over a spec-derived model, the host shows the arithmetic against independent Python references, and **nothing
+    before V1 shows a level on a pad, a waveform, a real baud, a real device or a person watching the panel**
+    (`docs/bringup/v1-labtools.md`, 36 blank checks, ROADMAP V1 exit 13).
+11. **Choices made where the plan was silent, each the smallest sound one:** the soak switches the PN532 off (`emu_nfc_fault = 1`),
+    so the I²C scan lists the known devices and the module's EEPROM and NFC is dimmed and skipped in the launcher walks (every walk's
+    row count was read from the `menu: sel=` lines of a real run, and the soak's `expect` list pins them); the module sequence is
+    slot empty (pins 40 to 42 offered) → the breakout appears while pin 40 is driven (withdrawal) → the I²C refusal and the SPI probe
+    on it → swapped for the CC1101 module (the SPI refusal, `owned by Sub-GHz`) → pulled during the UART section; the SPI `no module`
+    refusal, the I²C dump, the UART bauds and formats, auto-baud and the format-change glitch stay in their own scenarios (the soak
+    is about leaks and drops, not coverage); the second pass uses the same keys as the first; the report number advances
+    (`report_0001.txt`, `report_0002.txt`; `uart_0001.log`, `uart_0002.log`); and the LVGL trigger counts the monitor's scrolling as
+    met, the conservative reading, which still leaves the score below two.
+
+**Revisit trigger (V0.7 exit):** the V1 lab header or a second UART (the GPIO app could then hold two pins and the plan's PWM loop
+could be wired), a size task if the image approaches the partition (the UART driver of point 3), or the first V1 reading of drive
+strength, ISR latency or auto-baud.

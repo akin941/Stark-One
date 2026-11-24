@@ -335,10 +335,15 @@ none.
 | 1 | I²C scanner finds devices at the expected addresses (was: "simulated devices … in a Wokwi scenario") | Host: five fake devices at known addresses found exactly, nothing else, with fault injection (NACK, timeout, stuck bus); test image: the same through the production app and service over the fake; production image: esp-emu's one device, 0x50, found and nothing else | Real I²C devices on the breadboard at their addresses; pull-ups and waveform on a logic analyser |
 | 2 | UART bridge round-trips data at 115200 (was: "in simulation") | Host: the 64-byte pattern round-trips with zero errors at every standard baud and format, and a baud or format mismatch is reported as errors; test image: the same through the fake peer, plus auto-baud; production image: a host-side peer on `--uart1-tcp` (the STARK-0705 probe passed on the S3 model, which has no baud timing: `v07-uart-prod`) | TX wired to RX, and a USB-serial adapter, at 115200 and at the baud limits; level and series-resistor checks |
 | 3 | GPIO app cannot configure a reserved pin (extended to the other tools' guards) | Every GPIO number from -1 to 64 against every call: only the offered pins are accepted, from the core and from the transport; output needs an arm; slot pins withdrawn on hot-plug; I²C writes to module EEPROMs and the SPI probe on a driver-owned slot refused (host and test image) | The offered pins on the board; drive strength, contention and hi-Z on exit measured |
-| 4 | Frequency and duty measurement (added) | The pure measurement core against synthetic, jittered edge sets over 1 Hz to 50 kHz within the ADR-0023 §4 tolerances, with overflow and out-of-range reported; test image: a PWM out wired to a measured pad reads back its frequency and duty | `LAB_UART_TX` PWM wired to `LAB_UART_RX` and to a signal generator: real accuracy and ISR latency |
+| 4 | Frequency and duty measurement (added) | The pure measurement core against synthetic, jittered edge sets over 1 Hz to 50 kHz within the ADR-0023 §4 tolerances, with overflow and out-of-range reported; host: a PWM out wired to a measured pad reads back its frequency and duty (the GPIO app holds one pin, so the test image measures an external source on a pad through the app instead) | A signal generator into a lab pin and the device's own PWM on a logic analyser (the one-pin app cannot wire `LAB_UART_TX` PWM into `LAB_UART_RX`; ADR-0023 0708 addendum): real accuracy and ISR latency |
 | 5 | Self-test and export (added) | Every automated check passes on the host and the test image and fails when its fault is injected (host: all; test image: storage and the module bus); operator-attested checks are recorded `attested`, never `pass`; the report is written, bounded and free of control characters | The same on the breadboard, with each attested check really observed |
 
-**Status:** planned. Nothing in V0.7 is built until STARK-0701 starts.
+**Status: complete (software / lab-protocol-verified), 2026-11-24** — exits 1-5 in software,
+evidence in docs/measurements.md "V0.7 exit criteria"; every physical half is ROADMAP V1
+exit 13 and `docs/bringup/v1-labtools.md` (36 blank checks), none of them claimed. No pad
+has been driven, no wire measured and no real peripheral has answered on real hardware. The
+V0.7 binary ceiling was restated at the exit (ADR-0023, 0708 addendum): the plan's +52 kB
+became +90 kB, with the boot-heap budget (16 kB, gate 200 kB) unchanged.
 
 ---
 
@@ -401,15 +406,19 @@ simulated milestones (ADR-0011):
     an empty slot's 40 to 42) and nothing else reachable; weakest drive strength, pulls,
     hi-Z on exit, contention detection and the current into a known load; PWM out
     (100 Hz to 40 kHz) on a logic analyser; frequency and duty accuracy and the GPIO ISR's
-    real latency from 1 Hz to 50 kHz, with `LAB_UART_TX` wired to `LAB_UART_RX` and against a
-    signal generator; the I²C scan and register read/write against real devices at their
+    real latency from 1 Hz to 50 kHz, against a signal generator and with the device's own
+    PWM read on a logic analyser; the I²C scan and register read/write against real devices at their
     addresses, pull-ups, 100 and 400 kHz waveforms, and the refused writes to the module ID
     EEPROMs; the SPI probe on a SPI breakout slot at 100 kHz to 4 MHz with the panel and SD
     sharing the bus, and its refusal of a Sub-GHz module; UART loopback at 115200 and at the
     baud limits, a USB-serial adapter, auto-baud on a real stream, 3.3 V level and series
     protection, and SD logging of a long stream; the self-test on the breadboard with every
     attested check really observed; flash and RAM checks on silicon. The procedure is
-    `docs/bringup/v1-labtools.md` (written by STARK-0708, blank until V1).
+    `docs/bringup/v1-labtools.md` (36 blank checks, written by STARK-0708). The plan's "PWM on
+    `LAB_UART_TX` wired into `LAB_UART_RX`" needs two live pins at once, which the one-pin GPIO app
+    cannot give; it is restated there as the device's own PWM on a logic analyser and the device's
+    measurement of a signal generator (ADR-0023 0703 and 0708 addenda). A lab header of spare pins
+    stays a V1 hardware requirement.
 
 ---
 

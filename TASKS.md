@@ -5044,7 +5044,7 @@ order comes from `app_catalog_sort()` (categories by the registry, titles by `st
 
 **Budget summary (ADR-0023 §10).** Production boot heap now 240 732 B; the total V0.7
 cost is at most 16 kB (closing figure ≥ 224 kB, gate ≥ 200 kB); binary now 483 216 B,
-ceiling +52 kB; test image boot heap now 237 812 B. Per-task limits are below. No new
+ceiling +52 kB (restated at the exit to +90 kB, ADR-0023 0708 addendum); test image boot heap now 237 812 B. Per-task limits are below. No new
 FreeRTOS task is added by any V0.7 task.
 
 ---
@@ -6260,6 +6260,48 @@ before/after of the earlier soaks (gates unchanged), and blank V1 rows.
 5. ADR-0005 carries the LVGL scoring; ROADMAP V0.7 says "complete (software / lab-protocol-verified)" with V1 exit 13 pointing at the checklist.
 
 **Security.** None new. **Physical HIL.** The whole of `docs/bringup/v1-labtools.md`.
+
+**As built (2026-11-24).** Differences from the plan and the choices the spec left open are ADR-0023's 0708 addendum and ADR-0005's
+addendum; the short version, with the files that carry each point:
+
+* **No firmware changed.** `idf.py build` of this tree is byte-identical in size to STARK-0707's (572 016 B); the task adds
+  `test/emu/soak/v07-soak.toml`, `scripts/emu_shards.py` and `scripts/test_emu_shards.py`, the CI workflow, the V1 checklist and the
+  documents. No scenario, golden or source file of an earlier task changed, **except** the pre-existing files listed at the end.
+* **The soak is two passes of about 60 s, not 30 s** (122.5 s of emulated time, wall cap 3 600 s): the five tools in the order
+  Self-Test (Run all, the walk, an export), GPIO (a confirmed drive, a contention against an injected short, PWM with a wire from pad
+  38 to 39, a pulse, an external source measured on pad 39, pin 40 withdrawn by a module appearing), I²C (the scan, a confirmed
+  write to 0x68, a refused write to the module EEPROM at 0x50), SPI (one confirmed transaction on the breakout, then the refusal
+  once the slot belongs to the Sub-GHz module) and UART (the loopback, then a logged monitor). The PN532 is switched off so NFC is
+  dimmed and skipped by every launcher walk (each walk's press count was read from real `menu: sel=` lines and the `expect` list pins
+  the rows reached: Self-Test 3, GPIO 12, I2C 13, SPI 16, UART 18). The launcher forgets its selection when the module table changes, and a view's home list goes back to its
+  first row after a view closes: both are why the keys count from the top (the existing scenarios do the same). Plan against actual
+  is in the addendum, point 6.
+* **The gates are those of the earlier soaks:** `drops=0` on every `stark_diag` line, first against last root heap within 1 kB, the
+  last line taken at the launcher (121 s in), `heap_min` 200 000. `forbid` pins every refusal and failure that must not appear
+  unprompted: a contention on any pin but 38, a refused I²C read, a write refusal other than the module EEPROM's, a SPI refusal other
+  than the Sub-GHz module's, `lab init failed`, a failed log or export, every self-test failure, `panic`; `forbid_between` pins that
+  nothing is armed, driven, written or sent before its confirmation, that pin 40 is not driven after its withdrawal, and that nothing
+  reaches the SPI slot once it belongs to the Sub-GHz module (anchored on the first occurrence, so pass 1; pass 2 is pinned line by
+  line by `expect`). Results: both passes complete, root heap 217 580 → 217 484 B (Δ 96 B), `drops=0` on all 13 lines, stack peaks
+  and the other figures in docs/measurements.md "V0.7 exit". A first exploratory run found that a UART peer left talking also
+  drove pad 39 in the next pass's measurement (34.86 kHz): the soak now silences the peer after the UART section.
+* **CI.** `.github/workflows/ci.yml`: `emu-storage-image` builds the test image once and uploads it, `esp-emulator-storage-shard` is a
+  matrix of four over `scripts/emu_shards.py`'s deterministic partition (longest first by emulated time plus 20 s of boot, ties to
+  the lowest shard; every scenario in exactly one shard, checked in CI and by `test_emu_shards.py`), `esp-emulator-storage` is the
+  required check that waits for them all, and the soaks are a matrix (`esp-emulator-soak-run`) behind `esp-emulator-soak`. The step
+  name that said "three allowed substitutions" already said "five" (STARK-0701).
+* **Restated budget (ADR-0023, 0708 addendum):** plan +52 kB, actual +88 800 B, new ceiling +90 kB (≤ 573 216 B); the boot-heap gate
+  (200 kB) and budget (16 kB) unchanged and reported: 231 952 B, 8 780 B spent.
+* **LVGL (ADR-0005 addendum):** one trigger of four, the in-house UI stays.
+* **V1.** `docs/bringup/v1-labtools.md`: 36 blank checks. The plan's PWM-into-RX loop is restated as independent references on each
+  side (check 17); the DevKitC GPIO 38 LED caveat, 3.3 V only and series protection, and the lab header as a V1 hardware requirement
+  are in it.
+* **Pre-existing files edited, and why:** `.github/workflows/ci.yml` (the jobs above); `scripts/test_emu.py`: **not edited** (the shard
+  list is passed to `test_emu.sh` as arguments); `ROADMAP.md`, `README.md`, `TESTING.md`, `WOKWI.md`, `ARCHITECTURE.md` (§6.9 row),
+  `docs/VALIDATION.md`, `docs/measurements.md`, `DECISIONS.md` (the two addenda and the ADR-0023 status line), `TASKS.md` (this note).
+  No scenario was edited by this task.
+* **Not here.** Anything physical: every row of `docs/bringup/v1-labtools.md` is blank, and the V0.7 exit criteria are claimed only
+  as software / lab-protocol verified.
 
 ---
 

@@ -7,17 +7,26 @@
 #   esp-emulator — Tier 3: the built firmware runs in Espressif's pinned,
 #               SHA-256-verified esp-emulator (scripts/test_emu.sh,
 #               test/emu/*.toml): free, local, no account, no quota. Mandatory.
-#   esp-emulator-storage — the emulator storage test image (ADR-0018): the
-#               same firmware with only stark_storage_medium (internal-flash
+#   emu-storage-image — builds the emulator storage test image once (ADR-0018):
+#               the same firmware with only stark_storage_medium (internal-flash
 #               FAT) and four hardware transports (NFC, module bus, Sub-GHz,
 #               lab) replaced by test-only fakes; check_emu_image.py proves that against the
-#               production build, then test/emu/storage/*.toml run. Mandatory.
-#   esp-emulator-soak — the 60 s soaks (test/emu/soak/): V0.1 on the production
-#               image, V0.2 to V0.6 (STARK-0207, 0307, 0405, 0505, 0606; V0.3/V0.4
-#               with the RMT loopback, V0.4 with the fake PN532 transport, V0.5
-#               with the fake 24C02, V0.6 with the fake CC1101) on the
-#               storage test image; pull requests
-#               and manual dispatch; mandatory on pull requests.
+#               production build; the image is uploaded for the jobs below.
+#   esp-emulator-storage-shard — test/emu/storage/*.toml on that image, as a matrix of
+#               four shards (STARK-0708). scripts/emu_shards.py partitions the list
+#               deterministically (longest first by emulated duration) and proves every
+#               scenario is in exactly one shard; scripts/test_emu_shards.py checks the same
+#               in the lint job. No scenario is dropped or weakened: the shards together are
+#               the whole set that used to run serially in about an hour.
+#   esp-emulator-storage — the required check: succeeds only when every shard did, so the
+#               name branch protection knows is unchanged.
+#   esp-emulator-soak-run — the soaks (test/emu/soak/), one matrix entry each: V0.1 on the
+#               production image, V0.2 to V0.7 (STARK-0207, 0307, 0405, 0505, 0606, 0708;
+#               V0.3/V0.4 with the RMT loopback, V0.4 with the fake PN532 transport, V0.5
+#               with the fake 24C02, V0.6 with the fake CC1101, V0.7 with the fake lab
+#               transport) on the storage test image; pull requests and manual dispatch.
+#   esp-emulator-soak — the required check for the soaks (pull requests): succeeds only
+#               when every soak entry did.
 #
 # Every job above is free and mandatory. Wokwi is optional and lives in
 # .github/workflows/wokwi.yml (manual dispatch or the `wokwi` PR label); it is
@@ -198,8 +207,8 @@ jobs:
           path: build/emu/
           if-no-files-found: ignore
 
-  esp-emulator-storage:
-    name: esp-emulator-storage
+  emu-storage-image:
+    name: emu-storage-image
     needs: firmware
     runs-on: ubuntu-latest
     steps:
@@ -226,57 +235,128 @@ jobs:
       - name: check_emu_image.py (only the five allowed substitutions differ)
         run: python3 scripts/check_emu_image.py
 
-      - name: scripts/test_emu.sh --image storage
-        run: scripts/test_emu.sh --image storage
+      - name: The scenario shards cover the whole storage set exactly once
+        run: python3 scripts/emu_shards.py --image storage --shards 4 --check
+
+      - name: Upload the test image for the emulator jobs
+        uses: actions/upload-artifact@v7
+        with:
+          name: stark-one-emu-storage-image
+          path: |
+            build/emu-storage/merged-binary.bin
+            build/emu-storage/stark-one-emu-storage.elf
+          retention-days: 3
+          if-no-files-found: error
+
+  esp-emulator-storage-shard:
+    name: esp-emulator-storage-shard (${{ matrix.shard }})
+    needs: emu-storage-image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download the storage test image
+        uses: actions/download-artifact@v8
+        with:
+          name: stark-one-emu-storage-image
+          path: build/emu-storage
+
+      - name: scripts/test_emu.sh --image storage (this shard's scenarios)
+        run: |
+          mapfile -t SCENARIOS < <(python3 scripts/emu_shards.py --image storage --shards 4 --index ${{ matrix.shard }})
+          printf 'shard ${{ matrix.shard }} of 4: %s scenarios\n' "${#SCENARIOS[@]}"
+          scripts/test_emu.sh --image storage "${SCENARIOS[@]}"
 
       - name: Upload storage emulator logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stark-one-emu-storage-logs
+          name: stark-one-emu-storage-logs-${{ matrix.shard }}
           path: build/emu/
           if-no-files-found: ignore
 
-  esp-emulator-soak:
-    name: esp-emulator-soak
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    needs: firmware
+  esp-emulator-storage:
+    name: esp-emulator-storage
+    if: always()
+    needs: [emu-storage-image, esp-emulator-storage-shard]
     runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        run: |
+          echo "image build: ${{ needs.emu-storage-image.result }}, shards: ${{ needs.esp-emulator-storage-shard.result }}"
+          test "${{ needs.emu-storage-image.result }}" = success
+          test "${{ needs.esp-emulator-storage-shard.result }}" = success
+
+  esp-emulator-soak-run:
+    name: esp-emulator-soak-run (${{ matrix.soak }})
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: [firmware, emu-storage-image]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - soak: v01
+            image: production
+          - soak: v02
+            image: storage
+          - soak: v03
+            image: storage
+          - soak: v04
+            image: storage
+          - soak: v05
+            image: storage
+          - soak: v06
+            image: storage
+          - soak: v07
+            image: storage
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Download firmware
+        if: matrix.image == 'production'
         uses: actions/download-artifact@v8
         with:
           name: stark-one-firmware
           path: build
 
-      - name: scripts/test_emu.sh (60 s soak, ROADMAP V0.1 exit 3)
-        run: scripts/test_emu.sh test/emu/soak/v01-soak.toml
+      - name: Download the storage test image
+        if: matrix.image == 'storage'
+        uses: actions/download-artifact@v8
+        with:
+          name: stark-one-emu-storage-image
+          path: build/emu-storage
 
-      - name: Build the emulator storage test image (ADR-0018)
-        run: scripts/build.sh --docker --emu-storage
-
-      - name: scripts/test_emu.sh --image storage (60 s V0.2 soak, STARK-0207)
-        run: scripts/test_emu.sh --image storage test/emu/soak/v02-soak.toml
-
-      - name: scripts/test_emu.sh --image storage (60 s V0.3 IR soak, STARK-0307)
-        run: scripts/test_emu.sh --image storage test/emu/soak/v03-soak.toml
-
-      - name: scripts/test_emu.sh --image storage (60 s V0.4 NFC soak, STARK-0405)
-        run: scripts/test_emu.sh --image storage test/emu/soak/v04-soak.toml
-
-      - name: scripts/test_emu.sh --image storage (60 s V0.5 module soak, STARK-0505)
-        run: scripts/test_emu.sh --image storage test/emu/soak/v05-soak.toml
-
-      - name: scripts/test_emu.sh --image storage (60 s V0.6 Sub-GHz soak, STARK-0606)
-        run: scripts/test_emu.sh --image storage test/emu/soak/v06-soak.toml
+      # ROADMAP V0.1 exit 3 (v01), STARK-0207, 0307, 0405, 0505, 0606, 0708.
+      - name: scripts/test_emu.sh (soak ${{ matrix.soak }})
+        run: |
+          if [ "${{ matrix.image }}" = production ]; then
+            scripts/test_emu.sh test/emu/soak/${{ matrix.soak }}-soak.toml
+          else
+            scripts/test_emu.sh --image storage test/emu/soak/${{ matrix.soak }}-soak.toml
+          fi
 
       - name: Upload soak logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stark-one-emu-soak-logs
+          name: stark-one-emu-soak-logs-${{ matrix.soak }}
           path: build/emu/
           if-no-files-found: ignore
+
+  esp-emulator-soak:
+    name: esp-emulator-soak
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+    needs: esp-emulator-soak-run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every soak passed
+        run: |
+          echo "soaks: ${{ needs.esp-emulator-soak-run.result }}"
+          test "${{ needs.esp-emulator-soak-run.result }}" = success
