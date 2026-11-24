@@ -183,7 +183,12 @@ self-test, a write test and settings), and since STARK-0405 the V0.4 soak
 confirmed writes, two dumps, a module loss and recovery, an IR replay and a write test), since STARK-0505 the V0.5 soak (module churn with the
 inspector open), and since STARK-0606 the V0.6 soak (`test/emu/soak/v06-soak.toml`, with the fake
 CC1101 transport: two passes of meter, scan, capture, save, decode, one confirmed replay and
-one refusal, the module lost and replugged in each).
+one refusal, the module lost and replugged in each), and since STARK-0708 the V0.7 soak (`test/emu/soak/v07-soak.toml`, with the fake lab
+transport: two passes of Self-Test with an export, a confirmed GPIO drive, a contention, PWM, a pulse, a
+measurement and a slot pin withdrawn by a hot-plug, the I²C scan with a confirmed write and a refused
+EEPROM write, the SPI probe and its refusal on the Sub-GHz module, and UART loopback with a log). Each soak is a
+matrix entry of the `esp-emulator-soak-run` job; the test-image scenarios run in four parallel shards
+(`scripts/emu_shards.py`, section 7).
 
 **Planned scenarios by milestone**
 
@@ -229,6 +234,7 @@ that milestone before a scenario depends on them.
 | V0.7 | `storage/v07-selftest.toml` | Test image with a card: Storage passes (a 4 kB file written, read back and deleted), `7 pass  3 attested  0 fail  0 skip`, then Export report twice: `report_0001.txt` and `report_0002.txt`, each read back and compared by the exporter, their size a bounded count. Integration evidence (STARK-0707) |
 | V0.7 | `storage/v07-selftest-faults.toml` | Test image: the card pulled (`storage fail removed`) and every module probe timing out (`module bus fail probe 0x50 failed: Timeout`), the other four automated checks still pass, BACK on the display question records `display fail` and ends the walk (no summary: two rows not run), nothing panics. A card failing part-way through the write is host-only (STARK-0707) |
 | V0.7 | `storage/v07-spi.toml` | Test image with the SPI device model: catalogue entry 34 (`SPI breakout`) in slot 0 and a JEDEC flash; BACK on the confirmation sends nothing, OK makes one transaction (`rx 00 ef 40 18`), a second press asks again, an echo device, then the module swapped for the CC1101 module (`owned by Sub-GHz`: refused with an alert, never claimed, the Sub-GHz detection unaffected) and an empty slot (`no module`). Integration evidence only (STARK-0706) |
+| V0.7 | `soak/v07-soak.toml` (storage image) | Two passes of every V0.7 tool through the real apps over the fake lab transport: Self-Test with an export, GPIO (a confirmed drive, a contention, PWM wired to a pad, a pulse, a measured external source, a slot pin withdrawn by a module appearing), the I²C scan with a confirmed write and a refused module-EEPROM write, the SPI probe and its refusal on the Sub-GHz module, UART loopback and a logged monitor; `drops=0`, root heap delta ≤ 1 kB (STARK-0708). Integration evidence, not a pad, a wire or a device |
 
 ---
 
@@ -308,7 +314,7 @@ lint      (ubuntu-latest, ~30 s)
   ├─ clang-format --check        (scripts/fmt.sh --check)
   ├─ check_layers.py
   ├─ check_pins.py
-  ├─ script unit tests           (emulator harness, check_emu_image, Wokwi gate)
+  ├─ script unit tests           (emulator harness, check_emu_image, shard partition, Wokwi gate)
   └─ gitleaks
 
 host      (ubuntu-latest + macos-latest, ~1 min)
@@ -324,17 +330,25 @@ esp-emulator (needs firmware)
   ├─ scripts/install_esp_emu.sh  (pinned esp-emu, SHA-256 verified)
   └─ scripts/test_emu.sh         (every test/emu/*.toml on the production image)
 
-esp-emulator-storage (needs firmware; ADR-0018)
+emu-storage-image (needs firmware; ADR-0018)
   ├─ scripts/build.sh --docker --emu-storage   (test/emu/storage_image → build/emu-storage)
   ├─ verify its dependencies.lock unchanged
-  ├─ scripts/check_emu_image.py  (differs from production only in stark_storage_medium)
-  └─ scripts/test_emu.sh --image storage       (every test/emu/storage/*.toml)
+  ├─ scripts/check_emu_image.py  (differs from production only in the five substituted transports)
+  ├─ scripts/emu_shards.py --check   (every scenario of the set is in exactly one shard)
+  └─ upload the test image (merged binary + ELF) for the jobs below
 
-esp-emulator-soak (needs firmware; pull requests + manual dispatch)
-  ├─ scripts/test_emu.sh test/emu/soak/v01-soak.toml   (60 s: drops, heap delta)
-  ├─ scripts/build.sh --docker --emu-storage
-  ├─ scripts/test_emu.sh --image storage test/emu/soak/v02-soak.toml   (V0.2, STARK-0207)
-  └─ … v03, v04, v05 and v06-soak.toml   (IR, NFC, module bus, Sub-GHz; STARK-0307 … 0606)
+esp-emulator-storage-shard (matrix of 4; needs emu-storage-image; STARK-0708)
+  └─ scripts/test_emu.sh --image storage <shard's scenarios>   (scripts/emu_shards.py: longest
+     first by emulated time, ties to the lowest shard; together the whole test/emu/storage/*.toml,
+     which used to run serially in about an hour)
+
+esp-emulator-storage (the required check: every shard and the image build succeeded)
+
+esp-emulator-soak-run (matrix, one entry per soak; needs firmware + emu-storage-image; pull requests + manual dispatch)
+  ├─ v01-soak.toml on the production image   (60 s: drops, heap delta)
+  └─ v02 … v07-soak.toml on the test image   (storage, IR, NFC, module bus, Sub-GHz, lab tools; STARK-0207 … 0708)
+
+esp-emulator-soak (the required check on pull requests: every soak entry succeeded)
 
 wokwi.yml — OPTIONAL, never required (ADR-0017): manual dispatch or `wokwi` PR label
   ├─ scripts/wokwi_gate.py       (runtime-relevant change set? else "not applicable")

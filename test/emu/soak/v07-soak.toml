@@ -1,0 +1,519 @@
+# STARK-0708 (ROADMAP V0.7 exit) on the test image, whose stark_lab_transport is the test-only pad, bus, SPI and UART
+# model (ADR-0023 §2): about 120 s of emulated use of every V0.7 tool through the real apps and services, two passes of
+#   Self-Test (Run all, the walk answered with the injected keys, one report exported) -> GPIO (pin 38 an output behind its
+#   confirmation, a toggle against a short injected on the pad = a contention, an alert and hi-Z; PWM behind a new confirmation
+#   with pad 38 wired to pad 39, the model's own check of the wire, a stop, a pulse; pin 39 measuring an external 1 kHz 25 %
+#   source; pin 40 an output when a SPI breakout appears in slot 0 and withdraws it) -> I2C (the scan lists the five
+#   devices and the module's EEPROM, one confirmed write to 0x68, a write to the module EEPROM at 0x50 refused) -> SPI (one
+#   confirmed JEDEC read on the breakout, then the module is swapped for the CC1101 module and the probe refuses the slot:
+#   owned by Sub-GHz) -> UART (the loopback test behind the TX confirmation, then the monitor logging the 1 300-byte scene to
+#   uart_000N.log with its CRC-32) -> the module pulled and the peer silent, ready for the next pass.
+# The plan said 60 s; the full sequence needs about 60 s a pass at the key spacing the existing scenarios proved (ADR-0023,
+# 0708 addendum point 6). The PN532 is switched off (emu_nfc_fault = 1) so the scan lists known devices and NFC is dimmed,
+# which is why the launcher walks skip the dimmed NFC row (every walk was read from real menu: sel= lines). The launcher and a view's list go back to
+# their first row when the module table or the view changes, so the keys count from the top (as in the earlier scenarios).
+# The scenario ends idle at the launcher so stark_diag's last line (~121 s) is taken at the root menu, as the first one was.
+# Gates: drops=0 on every diag line and root heap within 1 kB. The esp-emulator-soak-run job runs it. Integration evidence,
+# not a pad, a wire or a device: nothing here shows a level on a pin (ROADMAP V1 exit 13, docs/bringup/v1-labtools.md).
+name = "emu-v07-soak"
+image = "storage"
+end_ms = 122500
+wall_limit_s = 3600
+heap_min = 200000
+heap_delta_max = 1024
+pokes = [
+    { at_ms = 300, var = "emu_nfc_fault", value = 1 },   # the PN532 is gone: 0x24 NACKs, so the scan lists the known devices
+    { at_ms = 310, var = "emu_lab_spi", value = 1 },   # a JEDEC flash behind the SPI breakout's chip select
+    { at_ms = 320, var = "emu_sg_chip", value = 1 },   # a CC1101 answers once its module is fitted
+    { at_ms = 14100, var = "emu_lab_ext_pin", value = 38 },   # the external source is on pad 38
+    { at_ms = 14200, var = "emu_lab_ext_mode", value = 2 },   # pad 38 is shorted to ground from outside
+    { at_ms = 15800, var = "emu_lab_ext_mode", value = 0 },   # the short is removed
+    { at_ms = 16500, var = "emu_lab_wire", value = 2471 },   # pad 38 into pad 39 (38 * 64 + 39)
+    { at_ms = 20400, var = "emu_lab_wire", value = 0 },   # the wire is removed
+    { at_ms = 23000, var = "emu_lab_ext_pin", value = 39 },   # the external source moves to pad 39
+    { at_ms = 23010, var = "emu_lab_ext_hz", value = 1000 },   # 1 kHz
+    { at_ms = 23020, var = "emu_lab_ext_duty", value = 25 },   # 25 %
+    { at_ms = 23030, var = "emu_lab_ext_mode", value = 3 },   # a square wave
+    { at_ms = 26800, var = "emu_lab_ext_mode", value = 0 },   # the source is off
+    { at_ms = 29800, var = "emu_mod_slot0", value = 34 },   # a SPI breakout appears in slot 0 while pin 40 is an output
+    { at_ms = 45900, var = "emu_mod_slot0", value = 32 },   # the breakout is swapped for the CC1101 module
+    { at_ms = 51500, var = "emu_mod_slot0", value = 0 },   # the module is pulled
+    { at_ms = 51550, var = "emu_lab_uart", value = 1 },   # TX looped to RX
+    { at_ms = 54800, var = "emu_lab_uart", value = 3 },   # the text scene
+    { at_ms = 59900, var = "emu_lab_uart", value = 0 },   # the peer falls silent (a talking peer would also drive pad 39 in the next GPIO measurement)
+    { at_ms = 74050, var = "emu_lab_ext_pin", value = 38 },   # the external source is on pad 38
+    { at_ms = 74150, var = "emu_lab_ext_mode", value = 2 },   # pad 38 is shorted to ground from outside
+    { at_ms = 75750, var = "emu_lab_ext_mode", value = 0 },   # the short is removed
+    { at_ms = 76450, var = "emu_lab_wire", value = 2471 },   # pad 38 into pad 39 (38 * 64 + 39)
+    { at_ms = 80350, var = "emu_lab_wire", value = 0 },   # the wire is removed
+    { at_ms = 82950, var = "emu_lab_ext_pin", value = 39 },   # the external source moves to pad 39
+    { at_ms = 82960, var = "emu_lab_ext_hz", value = 1000 },   # 1 kHz
+    { at_ms = 82970, var = "emu_lab_ext_duty", value = 25 },   # 25 %
+    { at_ms = 82980, var = "emu_lab_ext_mode", value = 3 },   # a square wave
+    { at_ms = 86750, var = "emu_lab_ext_mode", value = 0 },   # the source is off
+    { at_ms = 89750, var = "emu_mod_slot0", value = 34 },   # a SPI breakout appears in slot 0 while pin 40 is an output
+    { at_ms = 105850, var = "emu_mod_slot0", value = 32 },   # the breakout is swapped for the CC1101 module
+    { at_ms = 111450, var = "emu_mod_slot0", value = 0 },   # the module is pulled
+    { at_ms = 111500, var = "emu_lab_uart", value = 1 },   # TX looped to RX
+    { at_ms = 114750, var = "emu_lab_uart", value = 3 },   # the text scene
+    { at_ms = 119850, var = "emu_lab_uart", value = 0 },   # the peer falls silent (a talking peer would also drive pad 39 in the next GPIO measurement)
+]
+presses = [
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },   # Diagnostics
+    { key = "DOWN", at_ms = 1700, hold_ms = 60 },   # Self-Test
+    { key = "OK", at_ms = 2000, hold_ms = 60 },   # open Self-Test
+    { key = "OK", at_ms = 2600, hold_ms = 60 },   # Run all: the six automated checks (storage too: there is a card), then the walk
+    { key = "UP", at_ms = 5300, hold_ms = 60 },   # Buttons: UP
+    { key = "DOWN", at_ms = 5550, hold_ms = 60 },   # Buttons: DOWN
+    { key = "LEFT", at_ms = 5800, hold_ms = 60 },   # Buttons: LEFT
+    { key = "RIGHT", at_ms = 6050, hold_ms = 60 },   # Buttons: RIGHT
+    { key = "OK", at_ms = 6300, hold_ms = 60 },   # Buttons: OK
+    { key = "BACK", at_ms = 6550, hold_ms = 60 },   # Buttons: BACK
+    { key = "OK", at_ms = 7000, hold_ms = 60 },   # Display: looks right
+    { key = "OK", at_ms = 7500, hold_ms = 60 },   # Buzzer: heard
+    { key = "OK", at_ms = 8000, hold_ms = 60 },   # Status LED: blinks
+    { key = "UP", at_ms = 8500, hold_ms = 60 },   # wraps to the last row: Export report
+    { key = "OK", at_ms = 8900, hold_ms = 60 },   # export: report_000N.txt
+    { key = "OK", at_ms = 9400, hold_ms = 60 },   # close the Report saved alert
+    { key = "BACK", at_ms = 9800, hold_ms = 60 },   # leave Self-Test
+    { key = "DOWN", at_ms = 10100, hold_ms = 60 },   # toward GPIO (1 of 6)
+    { key = "DOWN", at_ms = 10300, hold_ms = 60 },   # toward GPIO (2 of 6)
+    { key = "DOWN", at_ms = 10500, hold_ms = 60 },   # toward GPIO (3 of 6)
+    { key = "DOWN", at_ms = 10700, hold_ms = 60 },   # toward GPIO (4 of 6)
+    { key = "DOWN", at_ms = 10900, hold_ms = 60 },   # toward GPIO (5 of 6)
+    { key = "DOWN", at_ms = 11100, hold_ms = 60 },   # toward GPIO (6 of 6)
+    { key = "OK", at_ms = 11500, hold_ms = 60 },   # open GPIO
+    { key = "OK", at_ms = 11900, hold_ms = 60 },   # open pin 38
+    { key = "RIGHT", at_ms = 12300, hold_ms = 60 },   # Mode: Input
+    { key = "RIGHT", at_ms = 12500, hold_ms = 60 },   # Mode: Output
+    { key = "DOWN", at_ms = 12700, hold_ms = 60 },   # Level
+    { key = "DOWN", at_ms = 12900, hold_ms = 60 },   # Drive
+    { key = "OK", at_ms = 13200, hold_ms = 60 },   # Drive: the confirmation opens
+    { key = "OK", at_ms = 13700, hold_ms = 60 },   # confirm: armed, driven low
+    { key = "DOWN", at_ms = 14400, hold_ms = 60 },   # Toggle
+    { key = "OK", at_ms = 14800, hold_ms = 60 },   # toggle high against the short: contention, an alert, hi-Z
+    { key = "OK", at_ms = 15500, hold_ms = 60 },   # close the Contention alert
+    { key = "BACK", at_ms = 16100, hold_ms = 60 },   # release pin 38
+    { key = "OK", at_ms = 16700, hold_ms = 60 },   # open pin 38 again
+    { key = "RIGHT", at_ms = 17100, hold_ms = 60 },   # Mode: Input
+    { key = "RIGHT", at_ms = 17300, hold_ms = 60 },   # Mode: Output
+    { key = "RIGHT", at_ms = 17500, hold_ms = 60 },   # Mode: PWM
+    { key = "DOWN", at_ms = 17800, hold_ms = 60 },   # Freq
+    { key = "DOWN", at_ms = 18000, hold_ms = 60 },   # Duty
+    { key = "DOWN", at_ms = 18200, hold_ms = 60 },   # Start
+    { key = "OK", at_ms = 18500, hold_ms = 60 },   # Start: the confirmation opens
+    { key = "OK", at_ms = 19000, hold_ms = 60 },   # confirm: armed, PWM on pad 38, wired to pad 39
+    { key = "OK", at_ms = 20100, hold_ms = 60 },   # Stop (no confirmation)
+    { key = "UP", at_ms = 20600, hold_ms = 60 },   # Duty
+    { key = "UP", at_ms = 20800, hold_ms = 60 },   # Freq
+    { key = "UP", at_ms = 21000, hold_ms = 60 },   # Mode
+    { key = "RIGHT", at_ms = 21200, hold_ms = 60 },   # Mode: Pulse
+    { key = "DOWN", at_ms = 21400, hold_ms = 60 },   # Level
+    { key = "DOWN", at_ms = 21600, hold_ms = 60 },   # Width
+    { key = "DOWN", at_ms = 21800, hold_ms = 60 },   # Pulse
+    { key = "OK", at_ms = 22100, hold_ms = 60 },   # one pulse (armed, no dialog)
+    { key = "BACK", at_ms = 22900, hold_ms = 60 },   # release pin 38
+    { key = "DOWN", at_ms = 23400, hold_ms = 60 },   # pin 39
+    { key = "OK", at_ms = 23800, hold_ms = 60 },   # open pin 39
+    { key = "RIGHT", at_ms = 24200, hold_ms = 60 },   # Mode: Input
+    { key = "DOWN", at_ms = 24500, hold_ms = 60 },   # Pull
+    { key = "DOWN", at_ms = 24700, hold_ms = 60 },   # Read
+    { key = "DOWN", at_ms = 24900, hold_ms = 60 },   # Measure
+    { key = "OK", at_ms = 25300, hold_ms = 60 },   # measure: 1 kHz at 25 %
+    { key = "BACK", at_ms = 26500, hold_ms = 60 },   # release pin 39
+    { key = "DOWN", at_ms = 27100, hold_ms = 60 },   # pin 40, the first slot line (1 of 2)
+    { key = "DOWN", at_ms = 27300, hold_ms = 60 },   # pin 40, the first slot line (2 of 2)
+    { key = "OK", at_ms = 27500, hold_ms = 60 },   # open pin 40
+    { key = "RIGHT", at_ms = 27900, hold_ms = 60 },   # Mode: Input
+    { key = "RIGHT", at_ms = 28100, hold_ms = 60 },   # Mode: Output
+    { key = "DOWN", at_ms = 28300, hold_ms = 60 },   # Level
+    { key = "DOWN", at_ms = 28500, hold_ms = 60 },   # Drive
+    { key = "OK", at_ms = 28900, hold_ms = 60 },   # Drive: the confirmation opens
+    { key = "OK", at_ms = 29400, hold_ms = 60 },   # confirm: pin 40 driven low
+    { key = "OK", at_ms = 31300, hold_ms = 60 },   # close the Pin withdrawn alert
+    { key = "BACK", at_ms = 31900, hold_ms = 60 },   # leave GPIO
+    { key = "DOWN", at_ms = 32300, hold_ms = 60 },   # I2C
+    { key = "OK", at_ms = 32600, hold_ms = 60 },   # open I2C
+    { key = "OK", at_ms = 32900, hold_ms = 60 },   # Scan
+    { key = "DOWN", at_ms = 33300, hold_ms = 60 },   # toward 0x68 (1 of 4)
+    { key = "DOWN", at_ms = 33450, hold_ms = 60 },   # toward 0x68 (2 of 4)
+    { key = "DOWN", at_ms = 33600, hold_ms = 60 },   # toward 0x68 (3 of 4)
+    { key = "DOWN", at_ms = 33750, hold_ms = 60 },   # toward 0x68 (4 of 4)
+    { key = "OK", at_ms = 34000, hold_ms = 60 },   # open 0x68
+    { key = "DOWN", at_ms = 34200, hold_ms = 60 },   # Dump
+    { key = "DOWN", at_ms = 34350, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 34550, hold_ms = 60 },   # the write editor
+    { key = "DOWN", at_ms = 34750, hold_ms = 60 },   # Register, Nibble, Bytes, Byte 0 (1 of 4)
+    { key = "DOWN", at_ms = 34900, hold_ms = 60 },   # Register, Nibble, Bytes, Byte 0 (2 of 4)
+    { key = "DOWN", at_ms = 35050, hold_ms = 60 },   # Register, Nibble, Bytes, Byte 0 (3 of 4)
+    { key = "DOWN", at_ms = 35200, hold_ms = 60 },   # Register, Nibble, Bytes, Byte 0 (4 of 4)
+    { key = "RIGHT", at_ms = 35350, hold_ms = 60 },   # Byte 0: 0x01
+    { key = "DOWN", at_ms = 35500, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 35800, hold_ms = 60 },   # the confirmation opens
+    { key = "OK", at_ms = 36300, hold_ms = 60 },   # confirm: one write
+    { key = "BACK", at_ms = 36900, hold_ms = 60 },   # to the device
+    { key = "BACK", at_ms = 37150, hold_ms = 60 },   # to the list
+    { key = "UP", at_ms = 37350, hold_ms = 60 },   # 0x50, the module's ID EEPROM
+    { key = "OK", at_ms = 37600, hold_ms = 60 },   # open 0x50
+    { key = "DOWN", at_ms = 37800, hold_ms = 60 },   # Dump
+    { key = "DOWN", at_ms = 37950, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 38150, hold_ms = 60 },   # the write editor
+    { key = "DOWN", at_ms = 38350, hold_ms = 60 },   # Register .. Write (1 of 5)
+    { key = "DOWN", at_ms = 38500, hold_ms = 60 },   # Register .. Write (2 of 5)
+    { key = "DOWN", at_ms = 38650, hold_ms = 60 },   # Register .. Write (3 of 5)
+    { key = "DOWN", at_ms = 38800, hold_ms = 60 },   # Register .. Write (4 of 5)
+    { key = "DOWN", at_ms = 38950, hold_ms = 60 },   # Register .. Write (5 of 5)
+    { key = "OK", at_ms = 39200, hold_ms = 60 },   # refused: module eeprom, an alert
+    { key = "OK", at_ms = 39900, hold_ms = 60 },   # close the alert
+    { key = "BACK", at_ms = 40200, hold_ms = 60 },   # to the device
+    { key = "BACK", at_ms = 40450, hold_ms = 60 },   # to the list
+    { key = "BACK", at_ms = 40700, hold_ms = 60 },   # home
+    { key = "BACK", at_ms = 40950, hold_ms = 60 },   # leave I2C
+    { key = "DOWN", at_ms = 41300, hold_ms = 60 },   # toward SPI (1 of 2; NFC is dimmed)
+    { key = "DOWN", at_ms = 41450, hold_ms = 60 },   # toward SPI (2 of 2; NFC is dimmed)
+    { key = "OK", at_ms = 41750, hold_ms = 60 },   # open SPI
+    { key = "OK", at_ms = 42250, hold_ms = 60 },   # Slot 0: the setup
+    { key = "DOWN", at_ms = 42550, hold_ms = 60 },   # toward Send (1 of 11)
+    { key = "DOWN", at_ms = 42690, hold_ms = 60 },   # toward Send (2 of 11)
+    { key = "DOWN", at_ms = 42830, hold_ms = 60 },   # toward Send (3 of 11)
+    { key = "DOWN", at_ms = 42970, hold_ms = 60 },   # toward Send (4 of 11)
+    { key = "DOWN", at_ms = 43110, hold_ms = 60 },   # toward Send (5 of 11)
+    { key = "DOWN", at_ms = 43250, hold_ms = 60 },   # toward Send (6 of 11)
+    { key = "DOWN", at_ms = 43390, hold_ms = 60 },   # toward Send (7 of 11)
+    { key = "DOWN", at_ms = 43530, hold_ms = 60 },   # toward Send (8 of 11)
+    { key = "DOWN", at_ms = 43670, hold_ms = 60 },   # toward Send (9 of 11)
+    { key = "DOWN", at_ms = 43810, hold_ms = 60 },   # toward Send (10 of 11)
+    { key = "DOWN", at_ms = 43950, hold_ms = 60 },   # toward Send (11 of 11)
+    { key = "OK", at_ms = 44250, hold_ms = 60 },   # Send: the confirmation opens
+    { key = "OK", at_ms = 44750, hold_ms = 60 },   # confirm: one transaction
+    { key = "BACK", at_ms = 45550, hold_ms = 60 },   # setup -> home
+    { key = "OK", at_ms = 49200, hold_ms = 60 },   # Slot 0 now belongs to Sub-GHz: refused, an alert
+    { key = "OK", at_ms = 49800, hold_ms = 60 },   # close the alert
+    { key = "BACK", at_ms = 50300, hold_ms = 60 },   # leave SPI
+    { key = "DOWN", at_ms = 50700, hold_ms = 60 },   # Sub-GHz (the module is the radio's now)
+    { key = "DOWN", at_ms = 50850, hold_ms = 60 },   # UART
+    { key = "OK", at_ms = 51300, hold_ms = 60 },   # open UART
+    { key = "DOWN", at_ms = 51800, hold_ms = 60 },   # Send
+    { key = "DOWN", at_ms = 51950, hold_ms = 60 },   # Loopback test
+    { key = "OK", at_ms = 52100, hold_ms = 60 },   # the view
+    { key = "OK", at_ms = 52600, hold_ms = 60 },   # Run test: the confirmation first
+    { key = "OK", at_ms = 53100, hold_ms = 60 },   # confirm: TX on, the pattern goes out and comes back
+    { key = "BACK", at_ms = 54500, hold_ms = 60 },   # leave the view: the pins are released
+    { key = "DOWN", at_ms = 55000, hold_ms = 60 },   # toward Log (1 of 4; the list starts at the top again)
+    { key = "DOWN", at_ms = 55150, hold_ms = 60 },   # toward Log (2 of 4; the list starts at the top again)
+    { key = "DOWN", at_ms = 55300, hold_ms = 60 },   # toward Log (3 of 4; the list starts at the top again)
+    { key = "DOWN", at_ms = 55450, hold_ms = 60 },   # toward Log (4 of 4; the list starts at the top again)
+    { key = "OK", at_ms = 55650, hold_ms = 60 },   # Log: on
+    { key = "UP", at_ms = 56100, hold_ms = 60 },   # toward Monitor (1 of 4)
+    { key = "UP", at_ms = 56250, hold_ms = 60 },   # toward Monitor (2 of 4)
+    { key = "UP", at_ms = 56400, hold_ms = 60 },   # toward Monitor (3 of 4)
+    { key = "UP", at_ms = 56550, hold_ms = 60 },   # toward Monitor (4 of 4)
+    { key = "OK", at_ms = 56900, hold_ms = 60 },   # Monitor: the scene arrives and is logged
+    { key = "BACK", at_ms = 59100, hold_ms = 60 },   # close it: the log is closed and synced
+    { key = "BACK", at_ms = 59800, hold_ms = 60 },   # leave UART
+    { key = "UP", at_ms = 60300, hold_ms = 60 },   # back up to Self-Test (1 of 10)
+    { key = "UP", at_ms = 60450, hold_ms = 60 },   # back up to Self-Test (2 of 10)
+    { key = "UP", at_ms = 60600, hold_ms = 60 },   # back up to Self-Test (3 of 10)
+    { key = "UP", at_ms = 60750, hold_ms = 60 },   # back up to Self-Test (4 of 10)
+    { key = "UP", at_ms = 60900, hold_ms = 60 },   # back up to Self-Test (5 of 10)
+    { key = "UP", at_ms = 61050, hold_ms = 60 },   # back up to Self-Test (6 of 10)
+    { key = "UP", at_ms = 61200, hold_ms = 60 },   # back up to Self-Test (7 of 10)
+    { key = "UP", at_ms = 61350, hold_ms = 60 },   # back up to Self-Test (8 of 10)
+    { key = "UP", at_ms = 61500, hold_ms = 60 },   # back up to Self-Test (9 of 10)
+    { key = "UP", at_ms = 61650, hold_ms = 60 },   # back up to Self-Test (10 of 10)
+    { key = "OK", at_ms = 61950, hold_ms = 60 },   # open Self-Test
+    { key = "OK", at_ms = 62550, hold_ms = 60 },   # Run all: the six automated checks (storage too: there is a card), then the walk
+    { key = "UP", at_ms = 65250, hold_ms = 60 },   # Buttons: UP
+    { key = "DOWN", at_ms = 65500, hold_ms = 60 },   # Buttons: DOWN
+    { key = "LEFT", at_ms = 65750, hold_ms = 60 },   # Buttons: LEFT
+    { key = "RIGHT", at_ms = 66000, hold_ms = 60 },   # Buttons: RIGHT
+    { key = "OK", at_ms = 66250, hold_ms = 60 },   # Buttons: OK
+    { key = "BACK", at_ms = 66500, hold_ms = 60 },   # Buttons: BACK
+    { key = "OK", at_ms = 66950, hold_ms = 60 },   # Display: looks right
+    { key = "OK", at_ms = 67450, hold_ms = 60 },   # Buzzer: heard
+    { key = "OK", at_ms = 67950, hold_ms = 60 },   # Status LED: blinks
+    { key = "UP", at_ms = 68450, hold_ms = 60 },   # wraps to the last row: Export report
+    { key = "OK", at_ms = 68850, hold_ms = 60 },   # export: report_000N.txt
+    { key = "OK", at_ms = 69350, hold_ms = 60 },   # close the Report saved alert
+    { key = "BACK", at_ms = 69750, hold_ms = 60 },   # leave Self-Test
+    { key = "DOWN", at_ms = 70050, hold_ms = 60 },   # toward GPIO (1 of 6)
+    { key = "DOWN", at_ms = 70250, hold_ms = 60 },   # toward GPIO (2 of 6)
+    { key = "DOWN", at_ms = 70450, hold_ms = 60 },   # toward GPIO (3 of 6)
+    { key = "DOWN", at_ms = 70650, hold_ms = 60 },   # toward GPIO (4 of 6)
+    { key = "DOWN", at_ms = 70850, hold_ms = 60 },   # toward GPIO (5 of 6)
+    { key = "DOWN", at_ms = 71050, hold_ms = 60 },   # toward GPIO (6 of 6)
+    { key = "OK", at_ms = 71450, hold_ms = 60 },   # open GPIO
+    { key = "OK", at_ms = 71850, hold_ms = 60 },   # open pin 38
+    { key = "RIGHT", at_ms = 72250, hold_ms = 60 },   # Mode: Input
+    { key = "RIGHT", at_ms = 72450, hold_ms = 60 },   # Mode: Output
+    { key = "DOWN", at_ms = 72650, hold_ms = 60 },   # Level
+    { key = "DOWN", at_ms = 72850, hold_ms = 60 },   # Drive
+    { key = "OK", at_ms = 73150, hold_ms = 60 },   # Drive: the confirmation opens
+    { key = "OK", at_ms = 73650, hold_ms = 60 },   # confirm: armed, driven low
+    { key = "DOWN", at_ms = 74350, hold_ms = 60 },   # Toggle
+    { key = "OK", at_ms = 74750, hold_ms = 60 },   # toggle high against the short: contention, an alert, hi-Z
+    { key = "OK", at_ms = 75450, hold_ms = 60 },   # close the Contention alert
+    { key = "BACK", at_ms = 76050, hold_ms = 60 },   # release pin 38
+    { key = "OK", at_ms = 76650, hold_ms = 60 },   # open pin 38 again
+    { key = "RIGHT", at_ms = 77050, hold_ms = 60 },   # Mode: Input
+    { key = "RIGHT", at_ms = 77250, hold_ms = 60 },   # Mode: Output
+    { key = "RIGHT", at_ms = 77450, hold_ms = 60 },   # Mode: PWM
+    { key = "DOWN", at_ms = 77750, hold_ms = 60 },   # Freq
+    { key = "DOWN", at_ms = 77950, hold_ms = 60 },   # Duty
+    { key = "DOWN", at_ms = 78150, hold_ms = 60 },   # Start
+    { key = "OK", at_ms = 78450, hold_ms = 60 },   # Start: the confirmation opens
+    { key = "OK", at_ms = 78950, hold_ms = 60 },   # confirm: armed, PWM on pad 38, wired to pad 39
+    { key = "OK", at_ms = 80050, hold_ms = 60 },   # Stop (no confirmation)
+    { key = "UP", at_ms = 80550, hold_ms = 60 },   # Duty
+    { key = "UP", at_ms = 80750, hold_ms = 60 },   # Freq
+    { key = "UP", at_ms = 80950, hold_ms = 60 },   # Mode
+    { key = "RIGHT", at_ms = 81150, hold_ms = 60 },   # Mode: Pulse
+    { key = "DOWN", at_ms = 81350, hold_ms = 60 },   # Level
+    { key = "DOWN", at_ms = 81550, hold_ms = 60 },   # Width
+    { key = "DOWN", at_ms = 81750, hold_ms = 60 },   # Pulse
+    { key = "OK", at_ms = 82050, hold_ms = 60 },   # one pulse (armed, no dialog)
+    { key = "BACK", at_ms = 82850, hold_ms = 60 },   # release pin 38
+    { key = "DOWN", at_ms = 83350, hold_ms = 60 },   # pin 39
+    { key = "OK", at_ms = 83750, hold_ms = 60 },   # open pin 39
+    { key = "RIGHT", at_ms = 84150, hold_ms = 60 },   # Mode: Input
+    { key = "DOWN", at_ms = 84450, hold_ms = 60 },   # Pull
+    { key = "DOWN", at_ms = 84650, hold_ms = 60 },   # Read
+    { key = "DOWN", at_ms = 84850, hold_ms = 60 },   # Measure
+    { key = "OK", at_ms = 85250, hold_ms = 60 },   # measure: 1 kHz at 25 %
+    { key = "BACK", at_ms = 86450, hold_ms = 60 },   # release pin 39
+    { key = "DOWN", at_ms = 87050, hold_ms = 60 },   # pin 40, the first slot line (1 of 2)
+    { key = "DOWN", at_ms = 87250, hold_ms = 60 },   # pin 40, the first slot line (2 of 2)
+    { key = "OK", at_ms = 87450, hold_ms = 60 },   # open pin 40
+    { key = "RIGHT", at_ms = 87850, hold_ms = 60 },   # Mode: Input
+    { key = "RIGHT", at_ms = 88050, hold_ms = 60 },   # Mode: Output
+    { key = "DOWN", at_ms = 88250, hold_ms = 60 },   # Level
+    { key = "DOWN", at_ms = 88450, hold_ms = 60 },   # Drive
+    { key = "OK", at_ms = 88850, hold_ms = 60 },   # Drive: the confirmation opens
+    { key = "OK", at_ms = 89350, hold_ms = 60 },   # confirm: pin 40 driven low
+    { key = "OK", at_ms = 91250, hold_ms = 60 },   # close the Pin withdrawn alert
+    { key = "BACK", at_ms = 91850, hold_ms = 60 },   # leave GPIO
+    { key = "DOWN", at_ms = 92250, hold_ms = 60 },   # I2C
+    { key = "OK", at_ms = 92550, hold_ms = 60 },   # open I2C
+    { key = "OK", at_ms = 92850, hold_ms = 60 },   # Scan
+    { key = "DOWN", at_ms = 93250, hold_ms = 60 },   # toward 0x68 (1 of 4)
+    { key = "DOWN", at_ms = 93400, hold_ms = 60 },   # toward 0x68 (2 of 4)
+    { key = "DOWN", at_ms = 93550, hold_ms = 60 },   # toward 0x68 (3 of 4)
+    { key = "DOWN", at_ms = 93700, hold_ms = 60 },   # toward 0x68 (4 of 4)
+    { key = "OK", at_ms = 93950, hold_ms = 60 },   # open 0x68
+    { key = "DOWN", at_ms = 94150, hold_ms = 60 },   # Dump
+    { key = "DOWN", at_ms = 94300, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 94500, hold_ms = 60 },   # the write editor
+    { key = "DOWN", at_ms = 94700, hold_ms = 60 },   # Register, Nibble, Bytes, Byte 0 (1 of 4)
+    { key = "DOWN", at_ms = 94850, hold_ms = 60 },   # Register, Nibble, Bytes, Byte 0 (2 of 4)
+    { key = "DOWN", at_ms = 95000, hold_ms = 60 },   # Register, Nibble, Bytes, Byte 0 (3 of 4)
+    { key = "DOWN", at_ms = 95150, hold_ms = 60 },   # Register, Nibble, Bytes, Byte 0 (4 of 4)
+    { key = "RIGHT", at_ms = 95300, hold_ms = 60 },   # Byte 0: 0x01
+    { key = "DOWN", at_ms = 95450, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 95750, hold_ms = 60 },   # the confirmation opens
+    { key = "OK", at_ms = 96250, hold_ms = 60 },   # confirm: one write
+    { key = "BACK", at_ms = 96850, hold_ms = 60 },   # to the device
+    { key = "BACK", at_ms = 97100, hold_ms = 60 },   # to the list
+    { key = "UP", at_ms = 97300, hold_ms = 60 },   # 0x50, the module's ID EEPROM
+    { key = "OK", at_ms = 97550, hold_ms = 60 },   # open 0x50
+    { key = "DOWN", at_ms = 97750, hold_ms = 60 },   # Dump
+    { key = "DOWN", at_ms = 97900, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 98100, hold_ms = 60 },   # the write editor
+    { key = "DOWN", at_ms = 98300, hold_ms = 60 },   # Register .. Write (1 of 5)
+    { key = "DOWN", at_ms = 98450, hold_ms = 60 },   # Register .. Write (2 of 5)
+    { key = "DOWN", at_ms = 98600, hold_ms = 60 },   # Register .. Write (3 of 5)
+    { key = "DOWN", at_ms = 98750, hold_ms = 60 },   # Register .. Write (4 of 5)
+    { key = "DOWN", at_ms = 98900, hold_ms = 60 },   # Register .. Write (5 of 5)
+    { key = "OK", at_ms = 99150, hold_ms = 60 },   # refused: module eeprom, an alert
+    { key = "OK", at_ms = 99850, hold_ms = 60 },   # close the alert
+    { key = "BACK", at_ms = 100150, hold_ms = 60 },   # to the device
+    { key = "BACK", at_ms = 100400, hold_ms = 60 },   # to the list
+    { key = "BACK", at_ms = 100650, hold_ms = 60 },   # home
+    { key = "BACK", at_ms = 100900, hold_ms = 60 },   # leave I2C
+    { key = "DOWN", at_ms = 101250, hold_ms = 60 },   # toward SPI (1 of 2; NFC is dimmed)
+    { key = "DOWN", at_ms = 101400, hold_ms = 60 },   # toward SPI (2 of 2; NFC is dimmed)
+    { key = "OK", at_ms = 101700, hold_ms = 60 },   # open SPI
+    { key = "OK", at_ms = 102200, hold_ms = 60 },   # Slot 0: the setup
+    { key = "DOWN", at_ms = 102500, hold_ms = 60 },   # toward Send (1 of 11)
+    { key = "DOWN", at_ms = 102640, hold_ms = 60 },   # toward Send (2 of 11)
+    { key = "DOWN", at_ms = 102780, hold_ms = 60 },   # toward Send (3 of 11)
+    { key = "DOWN", at_ms = 102920, hold_ms = 60 },   # toward Send (4 of 11)
+    { key = "DOWN", at_ms = 103060, hold_ms = 60 },   # toward Send (5 of 11)
+    { key = "DOWN", at_ms = 103200, hold_ms = 60 },   # toward Send (6 of 11)
+    { key = "DOWN", at_ms = 103340, hold_ms = 60 },   # toward Send (7 of 11)
+    { key = "DOWN", at_ms = 103480, hold_ms = 60 },   # toward Send (8 of 11)
+    { key = "DOWN", at_ms = 103620, hold_ms = 60 },   # toward Send (9 of 11)
+    { key = "DOWN", at_ms = 103760, hold_ms = 60 },   # toward Send (10 of 11)
+    { key = "DOWN", at_ms = 103900, hold_ms = 60 },   # toward Send (11 of 11)
+    { key = "OK", at_ms = 104200, hold_ms = 60 },   # Send: the confirmation opens
+    { key = "OK", at_ms = 104700, hold_ms = 60 },   # confirm: one transaction
+    { key = "BACK", at_ms = 105500, hold_ms = 60 },   # setup -> home
+    { key = "OK", at_ms = 109150, hold_ms = 60 },   # Slot 0 now belongs to Sub-GHz: refused, an alert
+    { key = "OK", at_ms = 109750, hold_ms = 60 },   # close the alert
+    { key = "BACK", at_ms = 110250, hold_ms = 60 },   # leave SPI
+    { key = "DOWN", at_ms = 110650, hold_ms = 60 },   # Sub-GHz (the module is the radio's now)
+    { key = "DOWN", at_ms = 110800, hold_ms = 60 },   # UART
+    { key = "OK", at_ms = 111250, hold_ms = 60 },   # open UART
+    { key = "DOWN", at_ms = 111750, hold_ms = 60 },   # Send
+    { key = "DOWN", at_ms = 111900, hold_ms = 60 },   # Loopback test
+    { key = "OK", at_ms = 112050, hold_ms = 60 },   # the view
+    { key = "OK", at_ms = 112550, hold_ms = 60 },   # Run test: the confirmation first
+    { key = "OK", at_ms = 113050, hold_ms = 60 },   # confirm: TX on, the pattern goes out and comes back
+    { key = "BACK", at_ms = 114450, hold_ms = 60 },   # leave the view: the pins are released
+    { key = "DOWN", at_ms = 114950, hold_ms = 60 },   # toward Log (1 of 4; the list starts at the top again)
+    { key = "DOWN", at_ms = 115100, hold_ms = 60 },   # toward Log (2 of 4; the list starts at the top again)
+    { key = "DOWN", at_ms = 115250, hold_ms = 60 },   # toward Log (3 of 4; the list starts at the top again)
+    { key = "DOWN", at_ms = 115400, hold_ms = 60 },   # toward Log (4 of 4; the list starts at the top again)
+    { key = "OK", at_ms = 115600, hold_ms = 60 },   # Log: on
+    { key = "UP", at_ms = 116050, hold_ms = 60 },   # toward Monitor (1 of 4)
+    { key = "UP", at_ms = 116200, hold_ms = 60 },   # toward Monitor (2 of 4)
+    { key = "UP", at_ms = 116350, hold_ms = 60 },   # toward Monitor (3 of 4)
+    { key = "UP", at_ms = 116500, hold_ms = 60 },   # toward Monitor (4 of 4)
+    { key = "OK", at_ms = 116850, hold_ms = 60 },   # Monitor: the scene arrives and is logged
+    { key = "BACK", at_ms = 119050, hold_ms = 60 },   # close it: the log is closed and synced
+    { key = "BACK", at_ms = 119750, hold_ms = 60 },   # leave UART
+]
+expect = [
+    "module: slot 0 no id",
+    "lab: pins 38 39 40 41 42",
+    'menu: sel=3 "Self-Test"',
+    # pass 1
+    "app: start selftest",
+    "selftestapp: run all",
+    "selftest: summary 7 pass  3 attested  0 fail  0 skip",
+    "selftest: export report_0001.txt ",
+    "app: stop selftest",
+    'menu: sel=12 "GPIO"',
+    "app: start gpio",
+    "gpioapp: open pin 38 LAB_UART_TX",
+    'dialog: open "Drive pin 38?"',
+    "lab: armed pin 38",
+    "lab: contention pin 38",
+    'dialog: open "Contention"',
+    "lab: released pin 38",
+    "gpioapp: open pin 38 LAB_UART_TX",
+    'dialog: open "Drive pin 38?"',
+    "lab: armed pin 38",
+    "lab: wire 38 -> 39 edges=4 high=50%",
+    "lab: pwm pin 38 1000 Hz 50 %",
+    "lab: pwm stopped",
+    "lab: pulse pin 38 low 100 us",
+    "gpioapp: open pin 39 LAB_UART_RX",
+    "lab: measure 1000.0 Hz duty 25.0 %",
+    "gpioapp: open pin 40 MOD0_CS",
+    'dialog: open "Drive pin 40?"',
+    "lab: armed pin 40",
+    "lab: pin 40 withdrawn (slot 0)",
+    "lab: pin 41 withdrawn (slot 0)",
+    "lab: pin 42 withdrawn (slot 0)",
+    'dialog: open "Pin withdrawn"',
+    "lab: released all",
+    "app: stop gpio",
+    'menu: sel=13 "I2C"',
+    "app: start i2c",
+    "lab: i2c scan found 0x23 0x3c 0x48 0x50 0x68 0x76",
+    'dialog: open "Write 0x68?"',
+    "lab: i2c write 0x68 reg 0x00 01 ok",
+    "i2capp: open 0x50",
+    "lab: i2c write refused: module eeprom",
+    'dialog: open "Refused"',
+    "app: stop i2c",
+    'menu: sel=16 "SPI"',
+    "app: start spi",
+    'dialog: open "Send SPI?"',
+    "lab: spi slot 0 1 MHz mode 0 tx 9f 00 00 00 rx 00 ef 40 18",
+    "module: slot 0 claimed by subghz",
+    "spiapp: slot 0 refused: owned by Sub-GHz",
+    'dialog: open "No probe"',
+    "app: stop spi",
+    'menu: sel=18 "UART"',
+    "app: start uart",
+    'dialog: open "Drive LAB_UART_TX?"',
+    "lab: uart loop 64/64 ok",
+    "uartapp: log started uart_0001.log",
+    "uartapp: log closed uart_0001.log 1300 bytes crc 0xdd1ba36f",
+    "app: stop uart",
+    'menu: sel=3 "Self-Test"',
+    # pass 2
+    "app: start selftest",
+    "selftestapp: run all",
+    "selftest: summary 7 pass  3 attested  0 fail  0 skip",
+    "selftest: export report_0002.txt ",
+    "app: stop selftest",
+    'menu: sel=12 "GPIO"',
+    "app: start gpio",
+    "gpioapp: open pin 38 LAB_UART_TX",
+    'dialog: open "Drive pin 38?"',
+    "lab: armed pin 38",
+    "lab: contention pin 38",
+    'dialog: open "Contention"',
+    "lab: released pin 38",
+    "gpioapp: open pin 38 LAB_UART_TX",
+    'dialog: open "Drive pin 38?"',
+    "lab: armed pin 38",
+    "lab: wire 38 -> 39 edges=4 high=50%",
+    "lab: pwm pin 38 1000 Hz 50 %",
+    "lab: pwm stopped",
+    "lab: pulse pin 38 low 100 us",
+    "gpioapp: open pin 39 LAB_UART_RX",
+    "lab: measure 1000.0 Hz duty 25.0 %",
+    "gpioapp: open pin 40 MOD0_CS",
+    'dialog: open "Drive pin 40?"',
+    "lab: armed pin 40",
+    "lab: pin 40 withdrawn (slot 0)",
+    "lab: pin 41 withdrawn (slot 0)",
+    "lab: pin 42 withdrawn (slot 0)",
+    'dialog: open "Pin withdrawn"',
+    "lab: released all",
+    "app: stop gpio",
+    'menu: sel=13 "I2C"',
+    "app: start i2c",
+    "lab: i2c scan found 0x23 0x3c 0x48 0x50 0x68 0x76",
+    'dialog: open "Write 0x68?"',
+    "lab: i2c write 0x68 reg 0x00 01 ok",
+    "i2capp: open 0x50",
+    "lab: i2c write refused: module eeprom",
+    'dialog: open "Refused"',
+    "app: stop i2c",
+    'menu: sel=16 "SPI"',
+    "app: start spi",
+    'dialog: open "Send SPI?"',
+    "lab: spi slot 0 1 MHz mode 0 tx 9f 00 00 00 rx 00 ef 40 18",
+    "module: slot 0 claimed by subghz",
+    "spiapp: slot 0 refused: owned by Sub-GHz",
+    'dialog: open "No probe"',
+    "app: stop spi",
+    'menu: sel=18 "UART"',
+    "app: start uart",
+    'dialog: open "Drive LAB_UART_TX?"',
+    "lab: uart loop 64/64 ok",
+    "uartapp: log started uart_0002.log",
+    "uartapp: log closed uart_0002.log 1300 bytes crc 0xdd1ba36f",
+    "app: stop uart",
+]
+# Nothing is driven, pulsed, written or sent before its confirmation, and a refusal leaves nothing behind. (The anchors are
+# the first occurrence in the run, which is pass 1; pass 2 repeats the same keys and its lines are pinned by `expect` above.)
+forbid_between = [
+    { after = "gpioapp: open pin 38", before = 'dialog: open "Drive pin 38?"', text = "lab: armed pin 38" },
+    { after = "gpioapp: open pin 38", before = 'dialog: open "Drive pin 38?"', text = "gpioapp: pin 38 OUT" },
+    { after = "lab: contention pin 38", before = "lab: released all", text = "gpioapp: pin 38 OUT H" },
+    { after = "lab: pin 40 withdrawn (slot 0)", before = "lab: released all", text = "gpioapp: pin 40 OUT" },
+    { after = "lab: released all", before = "app: start i2c", text = "lab: pwm pin" },
+    { after = "lab: released all", before = "app: start i2c", text = "lab: pulse pin" },
+    { after = "i2capp: open 0x68", before = 'dialog: open "Write 0x68?"', text = "lab: i2c write" },
+    { after = "i2capp: open 0x50", before = "app: stop i2c", text = "lab: i2c write 0x50" },
+    { after = "i2capp: open 0x50", before = "app: stop i2c", text = 'dialog: open "Write 0x50?"' },
+    { after = "spiapp: open slot 0", before = 'dialog: open "Send SPI?"', text = "lab: spi slot" },
+    { after = "spiapp: slot 0 refused: owned by Sub-GHz", before = "app: stop spi", text = "lab: spi slot" },
+    { after = "spiapp: slot 0 refused: owned by Sub-GHz", before = "app: stop spi", text = "claimed by spiprobe" },
+]
+forbid = ["lab init failed", "lab: contention pin 39", "lab: contention pin 40", "lab: contention pin 41",
+          "lab: contention pin 42", "lab: i2c read refused", "lab: i2c write refused: nfc reader",
+          "lab: i2c scan bus error", "lab: i2c scan found none", "i2capp: open 0x24", "spiapp: send slot 0 failed",
+          "spiapp: slot 0 refused: no module", "slot 0 busy", "lab: uart failed", "uartapp: not opened",
+          "uartapp: loop not run", "uartapp: log failed", "uartapp: log refused", "stark uart scene",
+          "selftest: ram fail", "selftest: flash fail", "selftest: settings fail", "selftest: storage fail",
+          "selftest: storage skip", "selftest: module bus fail", "selftest: events and stacks fail",
+          "selftest: buttons fail", "selftest: display pass", "selftest: buzzer pass", "selftest: status led pass",
+          "selftest: export failed", "selftest: export skipped", "selftestapp: walk ended", "gpio: conflict",
+          "module not usable", "subghz init failed", "panic", "app: fault"]
+

@@ -151,7 +151,7 @@ Additional circuits live beside the root diagram and are selected by copying or 
 | File | Milestone | Adds |
 | --- | --- | --- |
 | ~~`sim/diagram.storage.json`~~ | V0.2 | Not created (ADR-0018 §8): V0.2 storage is verified on the emulator storage test image instead |
-| `sim/diagram.i2c.json` | V0.7 | I²C peripherals (e.g. `wokwi-ds1307`, `wokwi-mpu6050`) for the scanner app |
+| ~~`sim/diagram.i2c.json`~~ | V0.7 | Not created (ADR-0023 §1): the I²C scanner is verified on the host, on the production image (esp-emu's one device at 0x50) and on the test image's five-device bus model; real devices are V1 exit 13 (`docs/bringup/v1-labtools.md`) |
 | `sim/diagram.logic.json` | any | Root diagram + `wokwi-logic-analyzer` on the SPI lines |
 
 Wokwi's microSD part mounts a FAT filesystem seeded from project files (up to 8 MB). It

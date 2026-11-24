@@ -394,6 +394,85 @@ paths for GDO2 and GDO0 are built but not exercised by any test.
 | 2026-11-24 | STARK-0707 | Root heap, first vs last `stark_diag` line over each 60 s soak — **gate ≤ 1 kB** | v01 234 152 → 234 188 B (Δ 36 B, 1 184 s wall); v02 217 580 → 217 472 B (Δ 108 B, 1 433 s); v03, v04, v05, v06 217 580 → 217 484 B (Δ 96 B). None was wall-capped; drops 0 in all. None of the soaks opens the Self-Test app | `soak/v01…v06-soak` |
 | 2026-11-24 | STARK-0707 | Scenarios, whole set: production image 27 (including `v07-selftest-prod`), test image 39 (including `storage/v07-selftest` and `storage/v07-selftest-faults`) | all pass. In the full test-image run `storage/v06-detect` hit the harness's 600 s wall-clock cap at 30 s of its 54 s of virtual time (host load average 30) and passed alone with the cap raised to 3 000 s (473 s), so it is recorded as wall-capped under load, not a failure. The pre-existing scenarios edited are the registry line, row indices and extra presses where a walk crosses the new launcher row (TASKS.md STARK-0707 lists each) | `test_emu.sh` |
 
+### V0.7 exit (STARK-0708): the soak, the closing figures and the restated budget
+
+Built from `git archive` of the V0.6 close (`1d83657`, firmware identical to STARK-0606) and this tree with the same pinned
+`espressif/idf:v6.1` image; `idf.py size-components` and `idf.py size` on both, so every delta below is between two builds made the
+same way. The exit builds no firmware: the binary is byte-identical in size to STARK-0707's.
+
+| Date | Task | What | Value | Where |
+| --- | --- | --- | --- | --- |
+| 2026-11-24 | STARK-0708 | Production boot heap, first `diag: heap=` (V0.6 close 240 732 B) — **gate ≥ 200 kB; V0.7 budget ≤ 16 kB, unchanged** | **231 952 B (−8 780 B: 8.8 kB of the 16 kB, 55 %; 31 952 B above the gate)**. Closing figure ≥ 224 kB as ADR-0023 §10 required | `v0-boot`, `v07-selftest-prod` |
+| 2026-11-24 | STARK-0708 | Test image boot heap (V0.6 close 237 812 B) | 225 032 B (−12 780 B: the production cost plus the test-only fakes' static state) | `storage/v07-selftest` |
+| 2026-11-24 | STARK-0708 | Firmware binary (V0.6 close 483 216 B) — **plan: ceiling +52 kB (≤ 535 216 B); restated: +90 kB (≤ 573 216 B), ADR-0023 0708 addendum** | **572 016 B (+88 800 B, 13.6 % of the 4 MB partition)**; test image 576 480 B (V0.6 close 500 288 B) | `build/stark-one.bin`, `build/emu-storage/stark-one-emu-storage.bin` |
+| 2026-11-24 | STARK-0708 | Static RAM and image sections (V0.6 close → V0.7) | `.bss` 65 880 → 72 120 B, `.data` 14 615 → 14 743 B: **+6 368 B**; DIRAM used 136 546 → 146 130 B (+9 584 B, which includes the IRAM-overflow code); IRAM 16 384 of 16 384 B before and after (0 B free); Flash Code 290 302 → 360 022 B (+69 720 B); Flash Data 105 708 → 121 452 B (+15 744 B) | `idf.py size` |
+| 2026-11-24 | STARK-0708 | The seven tasks' image growth against the plan (ADR-0023 §10) | +3 312, +9 328, +4 496, +10 752, +38 240, +7 440, +15 232 B = **+88 800 B** against the planned +52 kB; plan against actual, per task, in ADR-0023's 0708 addendum | `build/stark-one.bin` per task |
+| 2026-11-24 | STARK-0708 | FreeRTOS tasks added by V0.7 — **ADR-0023: none** | 0 (the UART driver has no event queue task; every lab operation runs on the UI task or the app worker) | `idf.py size-components`, the sources |
+| 2026-11-24 | STARK-0708 | Host line coverage: every pure V0.7 file | 100 % lines each: `lab_pins.c`, `lab_pwm.c`, `lab_meas.c`, `lab_i2c.c`, `lab_i2c_hints.c`, `lab_spi.c`, `lab_uart.c`, `lab_autobaud.c`, `lab_uart_svc.c`, `lab_transport_hal.c`, `stark_lab_transport.h`, `stark_board.c`, `gpio_views.c`, `i2c_views.c`, `spi_views.c`, `uart_views.c`, `uart_log.c`, `selftest_views.c`, `selftest_core.c`, `selftest_report.c`, `selftest_svc.c`, `selftest_checks.c`, `selftest_export.c`, `selftest_sha256.c`, `log_ring.c`, `fake_lab.c`; whole tree 99.96 % | `test_host.sh --coverage` |
+| 2026-11-24 | STARK-0708 | Host suite and script tests | 96 test programs pass under ASan and UBSan; @178@ script unit tests (`test_emu_shards.py` is new: 10 tests) | `test_host.sh`, `check.sh` |
+| 2026-11-24 | STARK-0708 | **The V0.7 soak** (`soak/v07-soak`, test image, two passes of about 60 s, 122.5 s of emulated time): Self-Test with a walk and an export; GPIO (a confirmed drive, a contention against an injected short, PWM wired to a pad, a pulse, a measured external source, pin 40 withdrawn by a module appearing); the I²C scan with a confirmed write and a refused EEPROM write; the SPI probe and its refusal on the Sub-GHz module; the UART loopback and a log | @**PASS** (3 375 s of wall time under a host load average near 20). Thirteen `stark_diag` lines (1 s, then every 10 s), `drops=0` on all; **root heap first 217 580 B, last 217 484 B (Δ 96 B, gate ≤ 1 kB)**, the same 217 484 B at every line in between (each taken at the launcher), minimum 183 324 B (the Self-Test RAM block). Per pass: `7 pass  3 attested  0 fail  0 skip` and a report (`report_0001.txt` 1 461 B, `report_0002.txt` 1 449 B); `lab: contention pin 38` once, never on another pin; `lab: wire 38 -> 39 edges=4 high=50%`, one PWM, one pulse; `lab: measure 1000.0 Hz duty 25.0 %`; pins 40 to 42 withdrawn; `lab: i2c scan found 0x23 0x3c 0x48 0x50 0x68 0x76`, one confirmed write, one `module eeprom` refusal; one SPI transaction (`rx 00 ef 40 18`) and the `owned by Sub-GHz` refusal; `uart loop 64/64 ok` and `uart_000N.log 1300 bytes crc 0xdd1ba36f`. An exploratory run caught a test-model artefact before the final one: a talking UART peer left on kept driving pad 39, so the next pass measured 34.86 kHz; the soak now silences the peer after the UART section@ | `soak/v07-soak` |
+| 2026-11-24 | STARK-0708 | **Task stack peaks** over the V0.7 soak, untouched bytes counted from each stack's low end in a fill-pattern dump at the end (method below) | @`app_worker` **1 924 of 4 096 B** (2 172 untouched; V0.6 close 2 484); `stark_storage` **2 152 of 4 096 B** (1 944 untouched: the report and the UART log are written through it); `stark_module` **1 460 of 2 560 B** (1 100 untouched; V0.6 1 472); `stark_subghz` 1 528 of 4 096 B (V0.6 1 600; it identified the CC1101 module in the SPI refusal); `stark_nfc` 1 376 of 4 096 B (V0.6 680: it ran with its PN532 switched off, so its retry path is in this figure); `stark_ir` 736 of 3 072 B (idle; V0.6 728). The app worker is the deepest V0.7 task, as the 0703 and 0705 plans expected; none is near its stack@ | GDB dump, `soak/v07-soak` |
+| 2026-11-24 | STARK-0708 | Least free stack of any task at the Self-Test events check (the check demands 256 B), V0.7 soak | @**568 B** (13 tasks) at both Self-Test runs, the same as the V0.7 task runs (STARK-0707 recorded 568 B); the check demands 256 B@ | `selftest: events and stacks pass …` |
+| 2026-11-24 | STARK-0708 | Root heap, first vs last `stark_diag` line over each earlier 60 s soak — **gate ≤ 1 kB, unchanged**; event drops — **gate 0** | @v01 234 152 → 234 188 B (Δ 36 B, 533 s wall); v02 217 580 → 217 472 B (Δ 108 B, 883 s); v03, v04, v05, v06 217 580 → 217 484 B (Δ 96 B; 831, 1 177, 697 and 848 s); drops 0 in all; none wall-capped; the soaks themselves unchanged@ | `soak/v01…v06-soak` |
+| 2026-11-24 | STARK-0708 | Scenarios, whole set: production image 27 (every `test/emu/*.toml`), test image 39 (every `test/emu/storage/*.toml`), soaks v01 to v07 | @**all pass.** Production 27 of 27 in one run. Test image 37 of 39 in the full run; `storage/v04-reads` and `storage/v06-detect` hit the harness's 600 s wall-clock cap (host load average about 20, two emulators plus other projects' containers) at 34 s of 40.4 s and 46 s of 54 s of emulated time, and **passed alone with the cap raised to 6 000 s** (513 s and 605 s), so they are recorded as wall-capped under load, not as failures (as STARK-0707 recorded for `v06-detect`). Soaks v01 to v07 pass. No pre-existing scenario was edited@ | `test_emu.sh` |
+| 2026-11-24 | STARK-0708 | CI duration: the test-image scenarios as four shards from one image build | 39 scenarios in 4 shards of 10, 10, 10 and 9, weights 351, 349, 349 and 337 s (emulated time plus 20 s of boot each); the serial job took about an hour. The shard partition is checked by `emu_shards.py --check` and by 10 unit tests; no scenario dropped or changed | `scripts/emu_shards.py`, `scripts/test_emu_shards.py`, `ci.yml` |
+
+**Flash and static RAM per component, V0.6 close → V0.7** (`idf.py size-components`: code + rodata for flash, `.bss` + `.data` for RAM;
+every archive not listed moved by less than 100 B):
+
+| Component | Flash V0.6 → V0.7 | Static RAM V0.6 → V0.7 |
+| --- | --- | --- |
+| `stark_lab` (pins, PWM, measurement, I²C, SPI, UART, autobaud) | 0 → 17 061 B | 0 → 1 214 B |
+| `app_uart` | 0 → 8 224 B | 0 → 1 388 B |
+| `app_i2c` | 0 → 5 012 B | 0 → 1 364 B |
+| `app_gpio` | 0 → 4 963 B | 0 → 853 B |
+| `app_selftest` | 0 → 3 937 B | 0 → 233 B |
+| `app_spi` | 0 → 3 870 B | 0 → 170 B |
+| `stark_lab_transport` | 0 → 2 571 B | 0 → 8 B |
+| `main` (the self-test checks, SHA-256, export, target glue) | 1 605 → 7 127 B (+5 522) | 4 → 132 B |
+| `stark_diag` (the self-test runner, report and service) | 734 → 3 481 B (+2 747) | 656 → 1 605 B (+949) |
+| `stark_hal` (pad, PWM stop, edge capture, delay) | 422 → 1 555 B (+1 133) | 0 → 30 B |
+| `stark_board` (pin classes) | 1 165 → 1 628 B (+463) | 12 → 12 B |
+| `stark_log` (the non-destructive tail) | 611 → 821 B (+210) | 4 128 → 4 128 B |
+| `esp_driver_uart` (the ESP-IDF UART driver) | 2 790 → 13 759 B (+10 969) | 360 → 361 B |
+| `esp_ringbuf` (a dependency of the driver) | 0 → 2 318 B | 0 → 0 B |
+| `esp_hal_uart` | 58 → 1 126 B (+1 068) | 0 → 0 B |
+| `esp_driver_gpio`, `esp_driver_ledc` (the pad and PWM calls) | +1 132 B, +386 B | 36 → 36 B, 52 → 52 B |
+| `libesp_stdio.a` (the tool's attribution; its object list is unchanged, so not claimed as a V0.7 cost) | 73 053 → 85 824 B (+12 771) | 40 → 40 B |
+| The V0.1 to V0.6 components (`stark_subghz`, `stark_nfc`, `stark_ir`, `stark_storage`, `stark_module`, `stark_ui`, the other apps) | unchanged within ±100 B | unchanged |
+
+**How the stack peak is read** (the method of STARK-0606). FreeRTOS fills a static task stack with 0xa5 when the task is created.
+After the soak's last press, with esp-emu halted at its sampling breakpoint, the harness's GDB script counted the bytes still holding
+0xa5 from the low end of each static stack array (`while $p[$n] == 0xa5`, `$p = 'app_worker.c'::s_stack`, likewise `stark_module.c`,
+`stark_nfc.c`, `stark_ir.c`, `stark_storage.c`, `stark_subghz.c`). Peak = size − untouched. It covers what the soak exercised, not interrupt
+stacks, and not the UI task, which runs on the main task's dynamically allocated stack: for that the Self-Test events check's
+"least free stack of any task" is the figure. The V0.7 apps run on the app worker (GPIO, measurement, the UART monitor and log,
+Self-Test) or on the UI task (the I²C sweep and transactions and the SPI probe, as 0704 and 0706 recorded).
+
+### V0.7 exit criteria — evidence (ROADMAP.md "V0.7", ADR-0023)
+
+V0.7 completion is **software / lab-protocol verified**. Every physical half is open until the V1 prototype (ROADMAP V1 exit 13,
+`docs/bringup/v1-labtools.md`, 36 blank checks) and is **not claimed** here: no pad has been driven, no wire measured and no real
+peripheral has answered on real hardware, and nothing below shows a level on a pin.
+
+| # | Criterion | Software evidence (V0.7) | Physical evidence |
+| --- | --- | --- | --- |
+| 1 | I²C scanner finds devices at the expected addresses | `test_lab_i2c` (15 sweeps, 112 refusal cases and 110 hex cases against the independent reference, fault injection: NACK, timeout, stuck bus), `test_fake_lab`, `test_ui_i2c` (20 tests); `storage/v07-i2c` (exactly `0x23 0x3c 0x48 0x68 0x76`), `storage/v07-i2c-bus` (seven with a module and the PN532, a stuck bus ends after three probes), `v07-i2c-prod` (esp-emu's one device, `0x50`, and nothing else); both passes of `soak/v07-soak` (six: the module's EEPROM too) | Open: checks 20-25 |
+| 2 | UART bridge round-trips data at 115200 | `test_lab_uart`, `test_lab_uart_svc`, `test_lab_autobaud` (the 64-byte pattern at every baud and format, a mismatch reported, auto-baud against 72 reference vectors); `storage/v07-uart`, `v07-uart-bauds`, `v07-uart-formats`, `v07-uart-log` (the logged scene's CRC-32 equals `gen_lab_vectors.py`'s); `v07-uart-prod` (a host peer on `--uart1-tcp` through the production driver); both passes of the soak | Open: checks 28-32 |
+| 3 | GPIO app cannot configure a reserved pin | `test_board_pins`, `test_lab_pins` (every GPIO -1 to 64 against every call; arm, contention, hot-plug withdrawal), `test_lab_service` (the same again at the transport), `test_lab_i2c` and `test_lab_spi` (EEPROM, PN532 and radio-slot refusals); `storage/v07-pins`, `v07-gpio`, `v07-spi`, `v07-i2c-bus`; `v07-gpio-prod` (exactly 38 and 39); the soak's withdrawal of pin 40 and its two refusals | Open: checks 1-11 |
+| 4 | Frequency and duty measurement | `test_lab_meas` (79 edge sets against the reference, 49 held to ±0.5 % to 10 kHz and ±2 % above, ±2 and ±5 points of duty, every status, a counter wrap), `test_lab_pins` (a PWM wired to a measured pad at six frequency and duty pairs, host only: the GPIO app holds one pin, ADR-0023 0703 addendum 10), `test_lab_pwm` (every integer 100 to 40 000 Hz, worst 997 ppm); `storage/v07-measure` (an external source on pad 39 through the app), `v07-measure-prod` (the real interrupt service installed, counted nothing, removed); the soak's measurement and PWM-wired line | Open: checks 12-19 (the loop restated with independent references, check 17) |
+| 5 | Self-test and export | `test_selftest_core`, `test_selftest_checks` (38 tests: every check passes and fails on its injected fault), `test_selftest_report`, `test_selftest_export` (a card failing at every write leaves no file), `test_ui_selftest`; `v07-selftest-prod` (`6 pass  3 attested  0 fail  1 skip`), `storage/v07-selftest` (`7 pass  3 attested`, two reports), `v07-selftest-faults`; both passes of the soak (a report each); attested checks are `attested`, never `pass` | Open: checks 33-36 |
+
+**Not claimed:** which GPIOs of the real board are the offered ones and that no other can be reached, drive strength, levels, pulls,
+hi-Z after an exit, the read-back that detects a contention (and the documented blind spot for a short to a pulse's idle level), the
+LEDC waveform and the pulse widths, the interrupt's latency and the accuracy of a real signal from 1 Hz to 50 kHz, a real I²C device,
+its pull-ups and waveforms, a real flash's JEDEC ID and the panel and card staying intact beside the probe, a real baud, an adapter,
+a long log to a real card, the flash and RAM checks on silicon, and a person seeing the bars, pressing the keys, hearing the tones
+and seeing the LED.
+
+Software evidence only: no pad, wire, pull, drive, device or adapter exists before the V1 prototype (ROADMAP V1 exit 13,
+`docs/bringup/v1-labtools.md`).
+
 ## Hardware (gated, V1 prototype)
 
 To be filled in at the V1 prototype milestone (ROADMAP.md "V1 prototype"), with the
@@ -438,6 +517,15 @@ simulated figure above kept alongside for reference.
 | Conducted power at `PATABLE` 0x60 (V0.6) | ≤ +3 dBm | | |
 | On-air time and duty over an hour of permitted sends (V0.6) | ≤ 360 s, off-time ≥ 9× | | |
 | GDO0 waveform vs the file; carrier gone after the last symbol (V0.6) | ≤ 2 µs error, ends low | | |
+| Offered pins on the board (38, 39, and 40 to 42 with an empty slot) and no other reachable (V0.7) | exactly those / none | | |
+| Drive strength, output levels, pulls, hi-Z on exit (V0.7) | within the datasheet / released | | |
+| Contention detected and released within 2 ms; pin withdrawn on hot-plug (V0.7) | pass / (record) | | |
+| PWM 100 Hz to 40 kHz on a logic analyser; pulse widths (V0.7) | ≤ 0.2 % / ±10 % or ±20 µs | | |
+| Frequency and duty against a signal generator, 1 Hz to 50 kHz; edge-latency asymmetry (V0.7) | ±0.5 % / ±2 % ; ±2 / ±5 points | | |
+| I²C scan, 100 and 400 kHz waveforms, confirmed write, refused EEPROM and PN532 accesses, bus recovery (V0.7) | pass / spec rise times | | |
+| SPI probe at 100 kHz to 4 MHz beside the panel and card; a real JEDEC ID; refusal on the Sub-GHz module (V0.7) | pass | | |
+| UART loopback 1 200 to 921 600 Bd, a USB-serial adapter, auto-baud, TX glitch on format change, a 10 min log (V0.7) | 64/64 / named within 3 % / (record) | | |
+| Self-test on silicon with every attested check observed; the report from a real card (V0.7) | pass | | |
 
 ## V0 exit criteria — evidence (ROADMAP.md "V0")
 

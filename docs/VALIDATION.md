@@ -349,7 +349,8 @@ receiving is never claimed below V1.
 V0.7 completion means **software / lab-protocol verified**: a pad driven, a wire measured or a
 real peripheral answering is never claimed below V1 (ROADMAP V1 exit 13). Landed so far:
 STARK-0701 (pin safety and the lab seam), STARK-0702 (the GPIO app), STARK-0703 (frequency and duty
-measurement), STARK-0704 (the I²C scanner), STARK-0705 (the UART tool), STARK-0706 (the SPI probe) and STARK-0707 (the self-test and the report); the exit task follows in STARK-0708.
+measurement), STARK-0704 (the I²C scanner), STARK-0705 (the UART tool), STARK-0706 (the SPI probe), STARK-0707 (the self-test and the report) and STARK-0708 (the exit: the soak, the
+measurements, the restated budget and the V1 checklist). **V0.7 is complete as software / lab-protocol verified.**
 
 **What runs where (STARK-0701).**
 * **Host:** the board's pin classes for every number from -1 to 64 and the offer table derived
@@ -537,6 +538,22 @@ measurement), STARK-0704 (the I²C scanner), STARK-0705 (the UART tool), STARK-0
   image's digest, the cache and flash timing under the two passes), and a report written to and read from a real card (ADR-0023,
   0707 addendum).
 
+**What runs where (STARK-0708, the exit).**
+* **Host and emulator:** nothing new is built; the exit adds the soak and the evidence tables. `soak/v07-soak` drives the real
+  apps and services over the fake lab transport twice through Self-Test with an export, GPIO (a confirmed drive, a contention
+  against an injected short, PWM wired to a pad, a pulse, a measured external source and a slot pin withdrawn by a module appearing),
+  the I²C scan with a confirmed write and a refused module-EEPROM write, the SPI probe and its refusal on the Sub-GHz module, and
+  the UART loopback with a log. Its gates are those of the earlier soaks (`drops=0`, root heap within 1 kB first against last) and
+  its `forbid` lines pin every refusal and failure that must not appear unprompted. docs/measurements.md "V0.7 exit criteria"
+  names, for each of the five exit criteria, the host tests and emulator scenarios that are its software half.
+* **CI:** the test-image scenarios run as four parallel shards from one image build (`scripts/emu_shards.py`, section 5 and
+  TESTING.md section 7), and each soak is its own matrix entry. No scenario was dropped or weakened.
+* **Not claimed anywhere before V1:** every physical half is a blank check in `docs/bringup/v1-labtools.md` (ROADMAP V1 exit 13): the
+  offered pins on the board, drive strength, contention, hi-Z, the PWM waveform, the measurement accuracy and the interrupt's latency
+  against a generator, real I²C and SPI parts, the UART against an adapter and a long log, and the self-test on silicon with each
+  attested check really observed. The plan's "PWM on `LAB_UART_TX` wired into `LAB_UART_RX`" needs two live pins, which the one-pin
+  GPIO app cannot hold, so it is restated there as independent references on each side (ADR-0023, 0708 addendum).
+
 ---
 
 ## 4. Hardware-in-the-loop (future tier, V1 prototype)
@@ -567,6 +584,8 @@ scripts/test_emu.sh test/emu/soak/v01-soak.toml   # the 60 s soak (~8 min wall)
 scripts/build.sh --docker --emu-storage            # the storage test image (ADR-0018)
 python3 scripts/check_emu_image.py                 # ... differs only in stark_storage_medium
 scripts/test_emu.sh --image storage                # every test/emu/storage/*.toml
+scripts/test_emu.sh --image storage $(python3 scripts/emu_shards.py --image storage --shards 4 --index 0)   # one CI shard
+python3 scripts/emu_shards.py --image storage --shards 4 --check   # every scenario in exactly one shard
 ```
 
 Optional, only with free Wokwi quota: `WOKWI_CLI_TOKEN=… scripts/test_wokwi.sh`, or
