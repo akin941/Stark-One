@@ -227,11 +227,14 @@ void        stark_hal_gpio_write(int pin, bool level);
 stark_err_t stark_hal_gpio_config_in(int pin, stark_hal_pull_t pull);   /* input, optional pull, irq off */
 stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial);      /* GPIO_DRIVE_CAP_0, read-back on */
 stark_err_t stark_hal_gpio_hiz(int pin);                                /* input, no pull, released */
+stark_err_t stark_hal_gpio_drive_weak(int pin);                         /* a pad LEDC drives (STARK-0702) */
+void        stark_hal_delay_us(uint32_t us);                            /* busy wait, a pulse under 1 ms */
 
 /* pwm (LEDC) */
 stark_err_t stark_hal_pwm_init(int pin, uint32_t hz, uint8_t channel);
 stark_err_t stark_hal_pwm_set_freq(uint8_t channel, uint32_t hz);
 stark_err_t stark_hal_pwm_set_duty_pct(uint8_t channel, uint8_t pct);
+stark_err_t stark_hal_pwm_stop(uint8_t channel);   /* idle low; channel 2 is the lab's (STARK-0702) */
 
 /* spi bus ownership: stark_board initialises SPI2; devices attach via esp_lcd /
    spi_bus_add_device in their own port files. stark_hal does not wrap SPI. */
@@ -886,7 +889,7 @@ UID; the pure writer (`nfc_writer.c`) carries it out:
 - it reads back and compares.
 
 `WRITE_DONE` / `WRITE_FAILED` follow, then the tag is read again. The NFC app
-(`apps/app_nfc`, Lab, row 12) only calls it after a confirmation that names the UID and
+(`apps/app_nfc`, Lab, row 13) only calls it after a confirmation that names the UID and
 the content.
 
 Host tests inject `test/fake/fake_pn532.c`; the emulator test
@@ -993,7 +996,7 @@ withdrawn, re-identified with a reset), so a chip that cannot reach IDLE is neve
 again without a reset. Logs: `subghz: meter 433.920 MHz`, `subghz: rssi -40 dBm` (the meter
 logs a level only when it moved by 3 dB or more since the last logged one),
 `subghz: peak 433.925 MHz -40 dBm`, `subghz: idle` (once the chip reports IDLE after a
-stop). The Sub-GHz app (`apps/app_subghz`, Lab, row 13) is a home list with the two views;
+stop). The Sub-GHz app (`apps/app_subghz`, Lab, row 14) is a home list with the two views;
 LEFT/RIGHT step the meter 25 kHz inside the band; with no module it shows
 `No Sub-GHz module`, and a module lost while open returns it to the home list showing
 `Sub-GHz module lost`.
@@ -1116,8 +1119,9 @@ and returns `STARK_ERR_IO`; so does any transport error. `state` finds what a pa
 applying each pull for 2 ms and leaves it an input with no pull.
 
 **The transport** (`stark_lab_transport.h`) is the seam and the fifth and last test-image
-substitution: today the pad group (`pad_in`, `pad_out`, `pad_read`, `pad_hiz`); later V0.7 tasks append
-PWM and edge capture, the shared I²C bus, SPI on a leased slot and the lab UART. It re-checks
+substitution: today the pad group (`pad_in`, `pad_out`, `pad_read`, `pad_hiz`) and the PWM and
+pulse outputs (`pwm_start`, `pwm_stop`, `pulse`, `pulse_cancel`; STARK-0702); later V0.7 tasks
+append edge capture, the shared I²C bus, SPI on a leased slot and the lab UART. It re-checks
 the pin on every call (`stark_lab_pad_ok()`: stark_board's class and, for a slot line, the module
 table), so no caller can reach a pin the board does not offer even by bypassing the service; the
 policy is an inline function in the header, shared by the production transport
@@ -1125,6 +1129,25 @@ policy is an inline function in the header, shared by the production transport
 (`test/emu/storage_image/components/stark_lab_transport`, built on `test/fake/fake_lab.c`: pads with
 an external source, wires between pads and faults), so neither can touch what the policy refuses.
 Production has no fake mode and no simulator branch.
+
+**PWM, pulse and the GPIO app (STARK-0702).** The service tracks what it did to each held pin
+(`stark_lab_info()`: hi-Z, input with a pull, output at a level, PWM at hz and duty) and
+`stark_lab_toggle()`, `stark_lab_hiz()`, `stark_lab_pwm_start()/stop()`, `stark_lab_pulse()` and
+`stark_lab_pulse_cancel()` join the pad calls. `lab_pwm.c` is the second pure file: the limits
+(100 to 40 000 Hz, 0 to 100 %, the six pulse widths), the frequency ladder and the LEDC arithmetic
+(10-bit duty on the 80 MHz APB clock, a Q8 divider), swept over every frequency on the host. One
+PWM at a time on LEDC channel 2 (the buzzer's channel 0 and the backlight's channel 1 are never
+named by the lab); the arm is required; any other mode of the pin, release, withdrawal and failure
+stop it first and leave the pad in hi-Z. A pulse drives the idle level (read back), the level for
+the width, the idle level again, and restores the mode the pad had; it runs on the app worker, and
+its wait is cut short by `stark_lab_pulse_cancel()` (BACK, the screen's `on_exit`, the hot-plug
+refresh). `apps/app_gpio` (Lab, row 11, first of the category; no capability required) is a home
+list of the offered pins and a pin view per mode; `gpio_views.c` is its pure row logic (100 %
+lines), `app_gpio.c` binds it to the service. Before the first drive of a pin in a session a
+confirmation shows the pin, its name and what the pad reads; OK arms the pin, BACK touches nothing.
+BACK from a pin, BACK at home and leaving the app release every pin (`lab: released all`). The
+test image's transport has the pokes `emu_lab_ext_*`, `emu_lab_wire` and `emu_lab_fault`
+(`lab_transport_fake.c`, ADR-0023 addendum 0702).
 
 ### 6.9 Deferred components (contracts only, no V0 code)
 
@@ -1136,7 +1159,7 @@ Production has no fake mode and no simulator branch.
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); the fixed transmit policy and the gated replay of a saved capture implemented (§6.9g, STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
-| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO, measurement, I²C, UART and SPI tools and the self-test are planned (ADR-0023, TASKS STARK-0702…0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
+| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); the measurement, I²C, UART and SPI tools and the self-test are planned (ADR-0023, TASKS STARK-0703…0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 

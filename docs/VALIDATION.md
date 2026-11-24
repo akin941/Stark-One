@@ -344,7 +344,8 @@ receiving is never claimed below V1.
 
 V0.7 completion means **software / lab-protocol verified**: a pad driven, a wire measured or a
 real peripheral answering is never claimed below V1 (ROADMAP V1 exit 13). Landed so far:
-STARK-0701 (pin safety and the lab seam); the apps and tools follow in STARK-0702 to 0707.
+STARK-0701 (pin safety and the lab seam) and STARK-0702 (the GPIO app); the other tools follow in
+STARK-0703 to 0707.
 
 **What runs where (STARK-0701).**
 * **Host:** the board's pin classes for every number from -1 to 64 and the offer table derived
@@ -366,6 +367,28 @@ STARK-0701 (pin safety and the lab seam); the apps and tools follow in STARK-070
   tests that need them run on the host and the test image only.
 * **Not proven anywhere before V1:** that the offered pins are the only reachable ones, drive
   strength, hi-Z on the board, the current into or out of a pin, 3.3 V tolerance.
+
+**What runs where (STARK-0702).**
+* **Host:** the PWM and pulse rules and the LEDC arithmetic swept over every frequency from 100 to
+  40 000 Hz (`test_lab_pwm`: divider in range, error at most 0.2 %, 997 ppm worst); the pure core's new
+  calls (`test_lab_pins`: toggle, info, hi-Z, one PWM at a time, every exit path stopping it, a pulse
+  restoring the pad's mode, contention and faults ending in hi-Z, the sweep of every number against
+  every call); the transport over the fake HAL (`test_lab_service`: the sweep again for PWM and
+  pulse, LEDC channel 2 only with the buzzer's and backlight's untouched, pulse widths and the
+  cancel); the pure pin view (`test_gpio_views`); and the real app on the UI port over the real pad
+  decisions and the pad model (`test_ui_gpio`: the home list, each mode, the confirmation with BACK
+  touching nothing, the contention alert, the hot-plug withdrawing a driven slot pin, one pulse per
+  press, every exit path leaving every pad in hi-Z; 20 frames pinned after inspection).
+  `lab_pins.c`, `lab_pwm.c`, `lab_transport_hal.c`, `fake_lab.c` and `gpio_views.c` run at 100 % lines.
+* **Emulator, production image:** `v07-gpio-prod` lists exactly pins 38 and 39, sets 38 to an input
+  with a pull-up and reads it high (the emulator reads every unconnected input high, so this does
+  not exercise a pull), opens no dialog, and the exit logs `lab: released all`.
+* **Emulator, test image:** `storage/v07-gpio` (the confirmation, BACK on it, the toggle, a short
+  to ground as a contention, a slot pin withdrawn by a module) and `storage/v07-gpio-pwm` (the
+  PWM request with a wire from pad 38 to 39 checked by the pad model, a pulse, a pad-model fault).
+  LEDC does not reach a pad in esp-emu, so no PWM waveform is claimed here.
+* **Not proven anywhere before V1:** the PWM waveform on a logic analyser, a pulse's width, a
+  short to the idle level during a pulse, a PWM against a driven pad, drive strength.
 
 ---
 

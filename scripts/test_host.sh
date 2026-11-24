@@ -90,6 +90,7 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
             --filter "$PROJECT_ROOT/components/stark_lab/" \
             --filter "$PROJECT_ROOT/components/stark_lab_transport/" \
             --filter "$PROJECT_ROOT/components/stark_board/stark_board.c" \
+            --filter "$PROJECT_ROOT/apps/app_gpio/gpio_views.c" \
             --filter "$PROJECT_ROOT/test/fake/fake_lab.c" \
             --filter "$PROJECT_ROOT/components/stark_storage/log_rotate" \
             --filter "$PROJECT_ROOT/components/stark_storage/storage_log" \

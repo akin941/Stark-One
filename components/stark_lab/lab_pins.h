@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "stark_board.h"
+#include "lab_pwm.h"
 #include "stark_lab.h"
 #include "stark_module.h"
 
@@ -31,6 +32,9 @@ typedef struct {
     stark_err_t (*pad_out)(void *ctx, int pin, bool level);
     stark_err_t (*pad_read)(void *ctx, int pin, bool *level);
     stark_err_t (*pad_hiz)(void *ctx, int pin);
+    stark_err_t (*pwm_start)(void *ctx, int pin, uint32_t hz, uint8_t duty_pct);
+    stark_err_t (*pwm_stop)(void *ctx, int pin); /* stops the channel and releases the pad */
+    stark_err_t (*pulse)(void *ctx, int pin, bool level, uint32_t us);
     void (*delay_us)(void *ctx, uint32_t us);
     void (*log)(void *ctx, lab_log_t what, int a, int b);
 } lab_io_t;
@@ -39,6 +43,11 @@ typedef struct {
     bool held;
     bool armed;
     char owner[LAB_OWNER_MAX];
+    stark_lab_mode_t mode;
+    stark_lab_pull_t pull;
+    bool level;
+    uint32_t hz;
+    uint32_t duty_pct;
 } lab_pin_hold_t;
 
 typedef struct {
@@ -46,6 +55,7 @@ typedef struct {
     stark_board_lab_pin_t tab[STARK_BOARD_LAB_PINS_MAX];
     lab_pin_hold_t hold[STARK_BOARD_LAB_PINS_MAX];
     size_t n;
+    int pwm_idx;      /* the table index that has the PWM, or -1 (one pin at a time) */
     uint32_t offered; /* bit i: tab[i] was offered at the last look */
     bool changed;     /* the offer changed or a held pin was withdrawn, not yet taken */
 } lab_pins_t;
@@ -64,9 +74,15 @@ void lab_pins_release(lab_pins_t *p, int pin);
 void lab_pins_release_all(lab_pins_t *p);
 stark_err_t lab_pins_arm(lab_pins_t *p, int pin);
 stark_err_t lab_pins_input(lab_pins_t *p, int pin, stark_lab_pull_t pull);
+stark_err_t lab_pins_hiz(lab_pins_t *p, int pin);
 stark_err_t lab_pins_read(lab_pins_t *p, int pin, bool *level);
 stark_err_t lab_pins_state(lab_pins_t *p, int pin, stark_lab_pinstate_t *st);
 stark_err_t lab_pins_write(lab_pins_t *p, int pin, bool level);
+stark_err_t lab_pins_toggle(lab_pins_t *p, int pin);
+stark_err_t lab_pins_info(lab_pins_t *p, int pin, stark_lab_info_t *out);
+stark_err_t lab_pins_pwm_start(lab_pins_t *p, int pin, uint32_t hz, uint32_t duty_pct);
+void lab_pins_pwm_stop(lab_pins_t *p);
+stark_err_t lab_pins_pulse(lab_pins_t *p, int pin, bool level, uint32_t us);
 
 /*
  * Looks at the offer again: every held pin that is gone goes to hi-Z and is withdrawn, every

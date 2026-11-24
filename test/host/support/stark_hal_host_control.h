@@ -20,6 +20,20 @@
  * The clock never advances on its own — only this call moves it. */
 void hal_host_set_now_us(uint64_t now_us);
 
+/* The time stark_hal_delay_ms() and stark_hal_delay_us() were asked to wait since the last
+ * hal_host_gpio_reset() (they never wait); the hook runs after each delay_ms with its 1-based
+ * call number, so a test can act in the middle of a wait (NULL removes it). */
+uint64_t hal_host_delayed_us(void);
+
+/* Failures to inject (STARK-0702): stark_err IO from the calls named in the mask, until the mask is
+ * changed or hal_host_gpio_reset() clears it. */
+#define HAL_HOST_FAIL_PWM_INIT   1u
+#define HAL_HOST_FAIL_PWM_DUTY   2u
+#define HAL_HOST_FAIL_DRIVE_WEAK 4u
+#define HAL_HOST_FAIL_OUT_WEAK   8u
+void hal_host_fail(unsigned mask);
+void hal_host_set_delay_hook(void (*hook)(unsigned call));
+
 /* ---- GPIO control ---------------------------------------------------- */
 
 /* Clears all fake GPIO state (for test isolation between cases). */
@@ -27,12 +41,17 @@ void hal_host_gpio_reset(void);
 
 /* ---- Lab pad inspection (STARK-0701) ---------------------------------------
  * What the pad calls of stark_hal.h last did to a pin; mode is NONE until one has. */
-typedef enum { HAL_HOST_PAD_NONE, HAL_HOST_PAD_IN, HAL_HOST_PAD_OUT } hal_host_pad_mode_t;
+typedef enum {
+    HAL_HOST_PAD_NONE,
+    HAL_HOST_PAD_IN,
+    HAL_HOST_PAD_OUT,
+    HAL_HOST_PAD_PWM /* stark_hal_pwm_init() routed it to LEDC */
+} hal_host_pad_mode_t;
 
 typedef struct {
     hal_host_pad_mode_t mode;
     stark_hal_pull_t pull; /* IN */
-    bool weak;             /* OUT: the weakest drive strength was set */
+    bool weak;             /* OUT, PWM: the weakest drive strength was set */
     bool level;            /* OUT: the level it was set to */
 } hal_host_pad_t;
 
@@ -65,6 +84,13 @@ typedef struct {
     uint8_t pct;
 } hal_host_pwm_set_duty_call_t;
 
+typedef struct {
+    bool called;
+    uint8_t channel;
+} hal_host_pwm_stop_call_t;
+
+const hal_host_pwm_stop_call_t *hal_host_pwm_last_stop(void);
+unsigned hal_host_pwm_stops(void);
 const hal_host_pwm_init_call_t *hal_host_pwm_last_init(void);
 const hal_host_pwm_set_freq_call_t *hal_host_pwm_last_set_freq(void);
 const hal_host_pwm_set_duty_call_t *hal_host_pwm_last_set_duty(void);

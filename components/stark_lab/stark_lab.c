@@ -2,8 +2,9 @@
  * stark_lab.c — the lab service's target port (stark_lab.h): binds the pure pad decisions
  * (lab_pins.c) to stark_module's table, stark_lab_transport, the log and the event bus. One
  * mutex serialises every call; the operations on it are short (the longest is the state
- * probe, 4 ms of busy waiting). Nothing is allocated after init and no task is created: a
- * call runs on its caller's task. Target-only.
+ * probe, 4 ms of busy waiting) except a pulse, which holds it for its width (up to 1 s) on the
+ * app's worker and can be cut short by stark_lab_pulse_cancel(), which takes no lock. Nothing is
+ * allocated after init and no task is created: a call runs on its caller's task. Target-only.
  */
 #include "stark_lab.h"
 #include <stdio.h>
@@ -49,6 +50,24 @@ static stark_err_t io_pad_hiz(void *ctx, int pin)
 {
     (void)ctx;
     return stark_lab_transport_pad_hiz(pin);
+}
+
+static stark_err_t io_pwm_start(void *ctx, int pin, uint32_t hz, uint8_t duty_pct)
+{
+    (void)ctx;
+    return stark_lab_transport_pwm_start(pin, hz, duty_pct);
+}
+
+static stark_err_t io_pwm_stop(void *ctx, int pin)
+{
+    (void)ctx;
+    return stark_lab_transport_pwm_stop(pin);
+}
+
+static stark_err_t io_pulse(void *ctx, int pin, bool level, uint32_t us)
+{
+    (void)ctx;
+    return stark_lab_transport_pulse(pin, level, us);
 }
 
 static void io_delay_us(void *ctx, uint32_t us)
@@ -128,6 +147,9 @@ stark_err_t stark_lab_init(void)
                          .pad_out = io_pad_out,
                          .pad_read = io_pad_read,
                          .pad_hiz = io_pad_hiz,
+                         .pwm_start = io_pwm_start,
+                         .pwm_stop = io_pwm_stop,
+                         .pulse = io_pulse,
                          .delay_us = io_delay_us,
                          .log = io_log};
     lab_pins_init(&s_pins, &io, stark_board_pins());
@@ -161,6 +183,7 @@ void stark_lab_release(int pin)
     if (enter()) {
         lab_pins_release(&s_pins, pin);
         leave();
+        STARK_LOGI("lab", "released pin %d", pin);
     }
 }
 
@@ -169,6 +192,7 @@ void stark_lab_release_all(void)
     if (enter()) {
         lab_pins_release_all(&s_pins);
         leave();
+        STARK_LOGI("lab", "released all");
     }
 }
 
@@ -178,6 +202,19 @@ stark_err_t stark_lab_arm(int pin)
         return STARK_ERR_STATE;
     }
     stark_err_t err = lab_pins_arm(&s_pins, pin);
+    leave();
+    if (err == STARK_OK) {
+        STARK_LOGI("lab", "armed pin %d", pin);
+    }
+    return err;
+}
+
+stark_err_t stark_lab_hiz(int pin)
+{
+    if (!enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_pins_hiz(&s_pins, pin);
     leave();
     return err;
 }
@@ -222,8 +259,70 @@ stark_err_t stark_lab_write(int pin, bool level)
     return err;
 }
 
+stark_err_t stark_lab_info(int pin, stark_lab_info_t *out)
+{
+    if (!enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_pins_info(&s_pins, pin, out);
+    leave();
+    return err;
+}
+
+stark_err_t stark_lab_toggle(int pin)
+{
+    if (!enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_pins_toggle(&s_pins, pin);
+    leave();
+    return err;
+}
+
+stark_err_t stark_lab_pwm_start(int pin, uint32_t hz, uint32_t duty_pct)
+{
+    if (!enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_pins_pwm_start(&s_pins, pin, hz, duty_pct);
+    leave();
+    if (err == STARK_OK) {
+        STARK_LOGI("lab", "pwm pin %d %u Hz %u %%", pin, (unsigned)hz, (unsigned)duty_pct);
+    }
+    return err;
+}
+
+void stark_lab_pwm_stop(void)
+{
+    if (enter()) {
+        lab_pins_pwm_stop(&s_pins);
+        leave();
+        STARK_LOGI("lab", "pwm stopped");
+    }
+}
+
+stark_err_t stark_lab_pulse(int pin, bool level, uint32_t us)
+{
+    if (!enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_pins_pulse(&s_pins, pin, level, us);
+    leave();
+    if (err == STARK_OK) {
+        STARK_LOGI("lab", "pulse pin %d %s %u us", pin, level ? "high" : "low", (unsigned)us);
+    }
+    return err;
+}
+
+void stark_lab_pulse_cancel(void)
+{
+    stark_lab_transport_pulse_cancel();
+}
+
 void stark_lab_refresh(void)
 {
+    stark_lab_transport_pulse_cancel(); /* a pulse in flight must not hold the lock past a hot-plug
+                                         */
     if (!enter()) {
         return;
     }

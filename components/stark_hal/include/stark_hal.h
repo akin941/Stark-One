@@ -33,6 +33,10 @@ uint64_t stark_hal_now_us(void);
 /* Blocking delay. Target: vTaskDelay(). Host: no-op (tests never sleep). */
 void stark_hal_delay_ms(uint32_t ms);
 
+/* Busy-wait delay for short waits (STARK-0702: a pulse under 1 ms). Target: esp_rom_delay_us().
+ * Host: records the time and never waits. Not for more than 1 ms: use stark_hal_delay_ms(). */
+void stark_hal_delay_us(uint32_t us);
+
 /* ---- GPIO -------------------------------------------------------------
  *
  * A pin outside 0-48 (ESP32-S3's real GPIO range) is rejected with
@@ -81,6 +85,14 @@ stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial);
 /* The pad is released: input, no pull, interrupts off. */
 stark_err_t stark_hal_gpio_hiz(int pin);
 
+/*
+ * The weakest drive strength (GPIO_DRIVE_CAP_0) for a pad that a peripheral drives (the lab's
+ * PWM, which routes LEDC to the pad), confirmed by reading it back; STARK_ERR_IO when it cannot
+ * be. A pad that was an output through stark_hal_gpio_config_out_weak() or a PWM output is
+ * reset by the next stark_hal_gpio_config_in()/hiz(), whatever it was routed to.
+ */
+stark_err_t stark_hal_gpio_drive_weak(int pin);
+
 /* ---- PWM (LEDC) --------------------------------------------------------
  *
  * Channel allocation is caller-specified, not hardcoded here — but V0 has
@@ -89,6 +101,7 @@ stark_err_t stark_hal_gpio_hiz(int pin);
  *
  *   channel 0 — buzzer   (components/stark_buzzer, not yet implemented)
  *   channel 1 — backlight (components/stark_display, not yet implemented)
+ *   channel 2 — the lab's PWM output (stark_lab_transport, STARK-0702)
  *
  * A caller that needs a different channel is free to pass one; nothing
  * here enforces this table. It exists so two future components don't
@@ -101,3 +114,10 @@ stark_err_t stark_hal_pwm_set_freq(uint8_t channel, uint32_t hz);
 /* pct > 100 is clamped to 100, not rejected — both implementations agree
  * on this; there is no invalid duty value a caller can pass. */
 stark_err_t stark_hal_pwm_set_duty_pct(uint8_t channel, uint8_t pct);
+
+/*
+ * Stops one LEDC channel with the idle level low (STARK-0702: the lab's channel 2). Only that
+ * channel is touched: the buzzer's and the backlight's keep running. The pad it drove is released
+ * by stark_hal_gpio_hiz(). Channel 2 is the lab's: nothing else may use it.
+ */
+stark_err_t stark_hal_pwm_stop(uint8_t channel);

@@ -28,6 +28,7 @@ presses = [
     { key = "DOWN", at_ms = 7100, hold_ms = 60 },
     { key = "OK", at_ms = 7400, hold_ms = 60 },
     { key = "BACK", at_ms = 8100, hold_ms = 60 },
+    { key = "DOWN", at_ms = 8250, hold_ms = 60 },   # GPIO (STARK-0702): not opened here, skipped
     { key = "DOWN", at_ms = 8400, hold_ms = 60 },   # IR (STARK-0305)
     { key = "OK", at_ms = 8700, hold_ms = 60 },
     { key = "BACK", at_ms = 9000, hold_ms = 60 },

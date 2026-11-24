@@ -731,7 +731,8 @@ target_link_libraries(run_fake_lab_tests PRIVATE unity)
 add_test(NAME stark_fake_lab_tests COMMAND run_fake_lab_tests)
 
 add_executable(run_lab_pins_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_pins.c
-    ${STARK_COMPONENTS}/stark_lab/lab_pins.c ${FAKE_LAB} ${FAKE_24C02}
+    ${STARK_COMPONENTS}/stark_lab/lab_pins.c ${STARK_COMPONENTS}/stark_lab/lab_pwm.c
+    ${FAKE_LAB} ${FAKE_24C02}
     ${STARK_COMPONENTS}/stark_err/stark_err.c ${STARK_COMPONENTS}/stark_board/stark_board.c
     ${CMAKE_CURRENT_SOURCE_DIR}/support/stark_board_host.c
     ${STARK_COMPONENTS}/stark_module/module_desc.c ${STARK_COMPONENTS}/stark_module/module_core.c)
@@ -740,6 +741,14 @@ target_compile_options(run_lab_pins_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_lab_pins_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_lab_pins_tests PRIVATE unity)
 add_test(NAME stark_lab_pins_tests COMMAND run_lab_pins_tests)
+
+add_executable(run_lab_pwm_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_pwm.c
+    ${STARK_COMPONENTS}/stark_lab/lab_pwm.c)
+target_include_directories(run_lab_pwm_tests PRIVATE ${LAB_INCLUDES})
+target_compile_options(run_lab_pwm_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_pwm_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_pwm_tests PRIVATE unity)
+add_test(NAME stark_lab_pwm_tests COMMAND run_lab_pwm_tests)
 
 add_executable(run_lab_service_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_service.c
     ${STARK_COMPONENTS}/stark_lab_transport/lab_transport_hal.c
@@ -881,6 +890,38 @@ add_test(NAME stark_ui_settings_tests COMMAND run_ui_settings_tests)
 add_test(NAME stark_ui_ir_tests COMMAND run_ui_ir_tests)
 add_test(NAME stark_ui_nfc_tests COMMAND run_ui_nfc_tests)
 add_test(NAME stark_ui_subghz_tests COMMAND run_ui_subghz_tests)
+
+# The GPIO app (STARK-0702, ADR-0023): its pure pin view on its own, and the real app on the UI
+# port over the real pad decisions (lab_pins.c, lab_pwm.c) and the test-only pad model.
+add_executable(run_gpio_views_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_gpio_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_gpio/gpio_views.c
+    ${STARK_COMPONENTS}/stark_lab/lab_pwm.c)
+target_include_directories(run_gpio_views_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_gpio)
+target_compile_options(run_gpio_views_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_gpio_views_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_gpio_views_tests PRIVATE unity)
+add_test(NAME stark_gpio_views_tests COMMAND run_gpio_views_tests)
+
+add_executable(run_ui_gpio_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_gpio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_gpio/app_gpio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_gpio/gpio_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_gpio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_module.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/stark_board_host.c
+    ${STARK_COMPONENTS}/stark_lab/lab_pins.c
+    ${STARK_COMPONENTS}/stark_lab/lab_pwm.c
+    ${STARK_COMPONENTS}/stark_board/stark_board.c
+    ${FAKE_LAB}
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_gpio_tests BEFORE PRIVATE ${UI_PORT_INCLUDES} ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_gpio)
+target_compile_options(run_ui_gpio_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_gpio_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_gpio_tests PRIVATE unity)
+add_test(NAME stark_ui_gpio_tests COMMAND run_ui_gpio_tests)
 add_test(NAME stark_ui_app_caps_tests COMMAND run_ui_app_caps_tests)
 add_test(NAME stark_ui_modules_tests COMMAND run_ui_modules_tests)
 add_test(NAME stark_ui_diagnostics_tests COMMAND run_ui_diagnostics_tests)

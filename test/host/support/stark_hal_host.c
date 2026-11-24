@@ -17,9 +17,40 @@ uint64_t stark_hal_now_us(void)
     return g_fake_now_us;
 }
 
+static unsigned g_fail;
+static uint64_t g_delayed_us;
+static unsigned g_delay_calls;
+static void (*g_delay_hook)(unsigned call);
+
 void stark_hal_delay_ms(uint32_t ms)
 {
-    (void)ms; /* no-op in host tests — tests never sleep */
+    /* no waiting in host tests — tests never sleep; the time is only counted */
+    g_delayed_us += (uint64_t)ms * 1000u;
+    g_delay_calls++;
+    if (g_delay_hook != NULL) {
+        g_delay_hook(g_delay_calls);
+    }
+}
+
+void stark_hal_delay_us(uint32_t us)
+{
+    g_delayed_us += us;
+}
+
+uint64_t hal_host_delayed_us(void)
+{
+    return g_delayed_us;
+}
+
+void hal_host_fail(unsigned mask)
+{
+    g_fail = mask;
+}
+
+void hal_host_set_delay_hook(void (*hook)(unsigned call))
+{
+    g_delay_hook = hook;
+    g_delay_calls = 0;
 }
 
 void hal_host_set_now_us(uint64_t now_us)
@@ -109,12 +140,28 @@ stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial)
     if (pin < 0 || pin >= MAX_GPIO) {
         return STARK_ERR_INVALID_ARG;
     }
+    if ((g_fail & HAL_HOST_FAIL_OUT_WEAK) != 0u) {
+        return STARK_ERR_IO;
+    }
     g_pad_calls++;
     g_pads[pin] = (hal_host_pad_t){.mode = HAL_HOST_PAD_OUT, .weak = true, .level = initial};
     g_gpio_state[pin].configured = true;
     g_gpio_state[pin].is_output = true;
     g_gpio_state[pin].pullup = false;
     g_gpio_state[pin].level = initial;
+    return STARK_OK;
+}
+
+stark_err_t stark_hal_gpio_drive_weak(int pin)
+{
+    if (pin < 0 || pin >= MAX_GPIO) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if ((g_fail & HAL_HOST_FAIL_DRIVE_WEAK) != 0u) {
+        return STARK_ERR_IO;
+    }
+    g_pad_calls++;
+    g_pads[pin].weak = true;
     return STARK_OK;
 }
 
@@ -130,6 +177,10 @@ unsigned hal_host_pad_calls(void)
 
 void hal_host_gpio_reset(void)
 {
+    g_fail = 0;
+    g_delayed_us = 0;
+    g_delay_calls = 0;
+    g_delay_hook = NULL;
     memset(g_pads, 0, sizeof(g_pads));
     g_pad_calls = 0;
     memset(g_gpio_state, 0, sizeof(g_gpio_state));
@@ -142,13 +193,22 @@ void hal_host_gpio_reset(void)
 static hal_host_pwm_init_call_t g_pwm_init_call;
 static hal_host_pwm_set_freq_call_t g_pwm_set_freq_call;
 static hal_host_pwm_set_duty_call_t g_pwm_set_duty_call;
+static hal_host_pwm_stop_call_t g_pwm_stop_call;
+static unsigned g_pwm_stop_calls;
 
 stark_err_t stark_hal_pwm_init(int pin, uint32_t hz, uint8_t channel)
 {
+    if ((g_fail & HAL_HOST_FAIL_PWM_INIT) != 0u) {
+        return STARK_ERR_IO;
+    }
     g_pwm_init_call.called = true;
     g_pwm_init_call.pin = pin;
     g_pwm_init_call.hz = hz;
     g_pwm_init_call.channel = channel;
+    if (pin >= 0 && pin < MAX_GPIO) {
+        g_pads[pin] =
+            (hal_host_pad_t){.mode = HAL_HOST_PAD_PWM}; /* routed to LEDC, not a GPIO level */
+    }
     return STARK_OK;
 }
 
@@ -162,6 +222,9 @@ stark_err_t stark_hal_pwm_set_freq(uint8_t channel, uint32_t hz)
 
 stark_err_t stark_hal_pwm_set_duty_pct(uint8_t channel, uint8_t pct)
 {
+    if ((g_fail & HAL_HOST_FAIL_PWM_DUTY) != 0u) {
+        return STARK_ERR_IO;
+    }
     if (pct > 100) {
         pct = 100;
     }
@@ -169,6 +232,24 @@ stark_err_t stark_hal_pwm_set_duty_pct(uint8_t channel, uint8_t pct)
     g_pwm_set_duty_call.channel = channel;
     g_pwm_set_duty_call.pct = pct;
     return STARK_OK;
+}
+
+stark_err_t stark_hal_pwm_stop(uint8_t channel)
+{
+    g_pwm_stop_call.called = true;
+    g_pwm_stop_call.channel = channel;
+    g_pwm_stop_calls++;
+    return STARK_OK;
+}
+
+const hal_host_pwm_stop_call_t *hal_host_pwm_last_stop(void)
+{
+    return &g_pwm_stop_call;
+}
+
+unsigned hal_host_pwm_stops(void)
+{
+    return g_pwm_stop_calls;
 }
 
 const hal_host_pwm_init_call_t *hal_host_pwm_last_init(void)
@@ -191,4 +272,6 @@ void hal_host_pwm_reset(void)
     memset(&g_pwm_init_call, 0, sizeof(g_pwm_init_call));
     memset(&g_pwm_set_freq_call, 0, sizeof(g_pwm_set_freq_call));
     memset(&g_pwm_set_duty_call, 0, sizeof(g_pwm_set_duty_call));
+    memset(&g_pwm_stop_call, 0, sizeof(g_pwm_stop_call));
+    g_pwm_stop_calls = 0;
 }

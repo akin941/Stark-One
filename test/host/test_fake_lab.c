@@ -199,6 +199,93 @@ static void test_reset_returns_to_power_on(void)
     TEST_ASSERT_FALSE(level(PIN_B));
 }
 
+/* ---- STARK-0702: PWM and pulse ------------------------------------------------------------ */
+
+static void test_a_pwm_pad_reads_its_waveform_and_hiz_ends_it(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pwm_start(PIN_A, 1000, 25));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_PWM, fake_lab_mode(PIN_A));
+    TEST_ASSERT_EQUAL_UINT32(1000, fake_lab_pwm_hz(PIN_A));
+    TEST_ASSERT_EQUAL_UINT8(25, fake_lab_pwm_duty(PIN_A));
+    fake_lab_time_us(100); /* the period is 1000 us: high for the first 250 */
+    TEST_ASSERT_TRUE(level(PIN_A));
+    fake_lab_time_us(300);
+    TEST_ASSERT_FALSE(level(PIN_A));
+    fake_lab_time_us(1100);
+    TEST_ASSERT_TRUE(level(PIN_A));
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pad_hiz(PIN_A));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(PIN_A));
+    TEST_ASSERT_EQUAL_UINT32(0, fake_lab_pwm_hz(PIN_A));
+    TEST_ASSERT_EQUAL_UINT8(0, fake_lab_pwm_duty(PIN_A));
+    fake_lab_time_us(100);
+    TEST_ASSERT_FALSE(level(PIN_A));
+}
+
+static void test_a_wire_carries_a_pwm_and_an_external_source_fights_it(void)
+{
+    fake_lab_wire(PIN_A, PIN_B);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pwm_start(PIN_A, 1000, 50));
+    unsigned high = 0;
+    for (uint64_t t = 0; t < 4000; t += 10) { /* four periods, 400 samples */
+        fake_lab_time_us(t);
+        high += level(PIN_B) ? 1u : 0u;
+    }
+    TEST_ASSERT_EQUAL_UINT(200, high); /* 50 % */
+    fake_lab_time_us(100);
+    fake_lab_ext(PIN_A, FAKE_LAB_EXT_LOW, 0, 0); /* a short to ground against the PWM */
+    TEST_ASSERT_FALSE(level(PIN_A));
+    fake_lab_ext(PIN_A, FAKE_LAB_EXT_NONE, 0, 0);
+    TEST_ASSERT_TRUE(level(PIN_A));
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pad_hiz(PIN_A)); /* the wire carries nothing now */
+    TEST_ASSERT_FALSE(level(PIN_B));
+}
+
+static void test_the_square_wave_formula(void)
+{
+    TEST_ASSERT_TRUE(fake_lab_square(1000, 50, 0));
+    TEST_ASSERT_TRUE(fake_lab_square(1000, 50, 499));
+    TEST_ASSERT_FALSE(fake_lab_square(1000, 50, 500));
+    TEST_ASSERT_FALSE(fake_lab_square(1000, 0, 0));
+    TEST_ASSERT_TRUE(fake_lab_square(1000, 100, 999));
+    TEST_ASSERT_TRUE(fake_lab_square(0, 100, 5));       /* no frequency: a 1 us period */
+    TEST_ASSERT_TRUE(fake_lab_square(2000000, 100, 5)); /* a period under 1 us counts as 1 us */
+}
+
+static void test_a_pulse_rests_at_the_opposite_level_and_is_counted(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pulse(PIN_A, true, 100));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_OUT, fake_lab_mode(PIN_A));
+    TEST_ASSERT_FALSE(fake_lab_out_level(PIN_A));
+    TEST_ASSERT_EQUAL_UINT(1, fake_lab_pulses());
+    TEST_ASSERT_EQUAL_UINT32(100, fake_lab_last_pulse_us());
+    TEST_ASSERT_TRUE(fake_lab_last_pulse_level());
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pulse(PIN_A, false, 10));
+    TEST_ASSERT_TRUE(fake_lab_out_level(PIN_A));
+    TEST_ASSERT_EQUAL_UINT(2, fake_lab_pulses());
+    TEST_ASSERT_FALSE(fake_lab_last_pulse_level());
+    fake_lab_reset();
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_pulses());
+    TEST_ASSERT_EQUAL_UINT32(0, fake_lab_last_pulse_us());
+}
+
+static void test_pwm_and_pulse_obey_the_config_fault_and_bad_arguments(void)
+{
+    fake_lab_fault(FAKE_LAB_FAULT_CONFIG_ERROR, PIN_A, 2);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, fake_lab_pwm_start(PIN_A, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, fake_lab_pulse(PIN_A, true, 100));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(PIN_A)); /* neither took effect */
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_pulses());
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pwm_start(PIN_A, 1000, 50)); /* the count ran out */
+    unsigned calls = fake_lab_calls();
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_pwm_start(-1, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_pwm_start(49, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_pwm_start(PIN_A, 1000, 101));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_pulse(49, true, 100));
+    TEST_ASSERT_EQUAL_UINT(calls, fake_lab_calls());
+    TEST_ASSERT_EQUAL_UINT32(0, fake_lab_pwm_hz(-1));
+    TEST_ASSERT_EQUAL_UINT8(0, fake_lab_pwm_duty(49));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -213,5 +300,10 @@ int main(void)
     RUN_TEST(test_config_error_fails_pad_in_and_out_but_never_hiz);
     RUN_TEST(test_bad_arguments_touch_nothing);
     RUN_TEST(test_reset_returns_to_power_on);
+    RUN_TEST(test_a_pwm_pad_reads_its_waveform_and_hiz_ends_it);
+    RUN_TEST(test_a_wire_carries_a_pwm_and_an_external_source_fights_it);
+    RUN_TEST(test_the_square_wave_formula);
+    RUN_TEST(test_a_pulse_rests_at_the_opposite_level_and_is_counted);
+    RUN_TEST(test_pwm_and_pulse_obey_the_config_fault_and_bad_arguments);
     return UNITY_END();
 }

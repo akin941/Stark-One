@@ -34,6 +34,8 @@ static struct {
     uint32_t delayed_us;
     unsigned in_calls, read_calls;
     unsigned fail_in_at, fail_read_at, fail_hiz;
+    unsigned pwm_stops, pwm_starts, pulses;
+    bool fail_pwm_stop, fail_pulse;
 } s_rec;
 
 static stark_err_t mio_probe(void *ctx, uint8_t addr)
@@ -89,6 +91,28 @@ static stark_err_t io_pad_hiz(void *ctx, int pin)
     return fake_lab_pad_hiz(pin);
 }
 
+static stark_err_t io_pwm_start(void *ctx, int pin, uint32_t hz, uint8_t duty_pct)
+{
+    (void)ctx;
+    s_rec.pwm_starts++;
+    return fake_lab_pwm_start(pin, hz, duty_pct);
+}
+
+static stark_err_t io_pwm_stop(void *ctx, int pin)
+{
+    (void)ctx;
+    s_rec.pwm_stops++;
+    stark_err_t err = fake_lab_pad_hiz(pin); /* the transport releases the pad even on failure */
+    return s_rec.fail_pwm_stop ? STARK_ERR_IO : err;
+}
+
+static stark_err_t io_pulse(void *ctx, int pin, bool level, uint32_t us)
+{
+    (void)ctx;
+    s_rec.pulses++;
+    return s_rec.fail_pulse ? STARK_ERR_IO : fake_lab_pulse(pin, level, us);
+}
+
 static uint64_t s_now_us;
 
 static void io_delay_us(void *ctx, uint32_t us)
@@ -118,6 +142,9 @@ static void build(void)
                          .pad_out = io_pad_out,
                          .pad_read = io_pad_read,
                          .pad_hiz = io_pad_hiz,
+                         .pwm_start = io_pwm_start,
+                         .pwm_stop = io_pwm_stop,
+                         .pulse = io_pulse,
                          .delay_us = io_delay_us,
                          .log = io_log};
     lab_pins_init(&s_lab, &io, &k_map);
@@ -232,8 +259,15 @@ static void sweep(void)
         TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_read(&s_lab, pin, &level));
         TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_state(&s_lab, pin, &st));
         TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_write(&s_lab, pin, true));
+        TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_toggle(&s_lab, pin));
+        TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_hiz(&s_lab, pin));
+        TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_pwm_start(&s_lab, pin, 1000, 50));
+        TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_pulse(&s_lab, pin, true, 100));
+        stark_lab_info_t info;
+        TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_info(&s_lab, pin, &info));
         lab_pins_release(&s_lab, pin);
         TEST_ASSERT_EQUAL_UINT(before, fake_lab_calls());
+        TEST_ASSERT_EQUAL_UINT(0, s_rec.pwm_starts + s_rec.pwm_stops + s_rec.pulses);
     }
 }
 
@@ -263,7 +297,14 @@ static void test_an_unheld_pin_is_refused_untouched(void)
     TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_read(&s_lab, 38, &level));
     TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_state(&s_lab, 38, &st));
     TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_write(&s_lab, 38, true));
+    stark_lab_info_t info;
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_toggle(&s_lab, 38));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_hiz(&s_lab, 38));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_pulse(&s_lab, 38, true, 100));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_info(&s_lab, 38, &info));
     TEST_ASSERT_EQUAL_UINT(0, fake_lab_calls());
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.pwm_starts + s_rec.pwm_stops + s_rec.pulses);
 }
 
 static void test_acquire_busy_release(void)
@@ -588,6 +629,274 @@ static void test_a_table_that_reports_too_many_entries_is_clamped(void)
     TEST_ASSERT_EQUAL_HEX32(0x03, mask()); /* must not read beyond the array (ASan) */
 }
 
+/* ---- STARK-0702: toggle, info, hiz, PWM and pulse ------------------------------------------ */
+
+static void hold_armed(int pin)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, pin, "gpio"));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, pin));
+}
+
+static void test_info_follows_what_the_service_did(void)
+{
+    stark_lab_info_t i;
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, 38, "gpio"));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_info(&s_lab, 38, NULL));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_info(&s_lab, 38, &i));
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_HIZ, i.mode);
+    TEST_ASSERT_FALSE(i.armed);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_input(&s_lab, 38, STARK_LAB_PULL_UP));
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_IN, i.mode);
+    TEST_ASSERT_EQUAL(STARK_LAB_PULL_UP, i.pull);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 38));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 38, true));
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_OUT, i.mode);
+    TEST_ASSERT_TRUE(i.level);
+    TEST_ASSERT_TRUE(i.armed);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 2000, 30));
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_PWM, i.mode);
+    TEST_ASSERT_EQUAL_UINT32(2000, i.hz);
+    TEST_ASSERT_EQUAL_UINT32(30, i.duty_pct);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_hiz(&s_lab, 38));
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_HIZ, i.mode);
+    TEST_ASSERT_EQUAL_UINT32(0, i.hz);
+    TEST_ASSERT_TRUE(i.armed); /* the pad is released, the pin and its arm are kept */
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT(1, s_rec.pwm_stops); /* hiz stopped the PWM first */
+}
+
+static void test_hiz_failures_end_in_hiz_and_disarm(void)
+{
+    stark_lab_info_t i;
+    hold_armed(38);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 38, true));
+    s_rec.fail_hiz = 1;
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, lab_pins_hiz(&s_lab, 38));
+    s_rec.fail_hiz = 0;
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_HIZ, i.mode);
+    TEST_ASSERT_FALSE(i.armed);
+}
+
+static void test_toggle_flips_an_armed_output_only(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, 38, "gpio"));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_toggle(&s_lab, 38)); /* not armed */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 38));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_toggle(&s_lab, 38)); /* not an output yet */
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 38, true));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_toggle(&s_lab, 38));
+    TEST_ASSERT_FALSE(fake_lab_out_level(38));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_toggle(&s_lab, 38));
+    TEST_ASSERT_TRUE(fake_lab_out_level(38));
+    TEST_ASSERT_EQUAL_UINT32(3 * LAB_CONTENTION_US, s_rec.delayed_us); /* each read back */
+    fake_lab_ext(38, FAKE_LAB_EXT_HIGH, 0, 0); /* now low is held high from outside */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 38, true));
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, lab_pins_toggle(&s_lab, 38));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT(1, s_rec.n_contention);
+}
+
+/* AC 4: one PWM at a time, ranges refused before the arm, the arm required. */
+static void test_pwm_needs_valid_arguments_the_arm_and_one_pin(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, 38, "gpio"));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, 39, "gpio"));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_pwm_start(&s_lab, 38, 1000, 50)); /* not armed */
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_pwm_start(&s_lab, 38, 99, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_pwm_start(&s_lab, 38, 40001, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_pwm_start(&s_lab, 38, 1000, 101));
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.pwm_starts); /* nothing reached the transport */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 38));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 39));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 100, 0));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_PWM, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT32(100, fake_lab_pwm_hz(38));
+    TEST_ASSERT_EQUAL(STARK_ERR_BUSY, lab_pins_pwm_start(&s_lab, 39, 1000, 50)); /* a second pin */
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(39));
+    TEST_ASSERT_EQUAL_UINT(1, s_rec.pwm_starts);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 40000, 100)); /* the same pin: new */
+    TEST_ASSERT_EQUAL_UINT32(40000, fake_lab_pwm_hz(38));
+    TEST_ASSERT_EQUAL_UINT8(100, fake_lab_pwm_duty(38));
+    lab_pins_pwm_stop(&s_lab);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT(1, s_rec.pwm_stops);
+    lab_pins_pwm_stop(&s_lab); /* nothing running: nothing is called */
+    TEST_ASSERT_EQUAL_UINT(1, s_rec.pwm_stops);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 39, 1000, 50)); /* the channel is free */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 38, true));         /* its arm stayed */
+}
+
+/* AC 2: every path that ends a pin ends its PWM and leaves the pad in hi-Z. */
+static void test_every_exit_path_stops_the_pwm(void)
+{
+    hold_armed(38);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    lab_pins_release(&s_lab, 38);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL(-1, s_lab.pwm_idx);
+
+    hold_armed(39);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 39, 1000, 50));
+    lab_pins_release_all(&s_lab);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(39));
+    TEST_ASSERT_EQUAL(-1, s_lab.pwm_idx);
+
+    hold_armed(40); /* a slot pin: the hot-plug withdraws it */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 40, 1000, 50));
+    fit(A0, FAKE_MODULE_SPI_IRQ);
+    ticks(2);
+    TEST_ASSERT_TRUE(lab_pins_refresh(&s_lab));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(40));
+    TEST_ASSERT_EQUAL(-1, s_lab.pwm_idx);
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_pwm_start(&s_lab, 40, 1000, 50));
+    TEST_ASSERT_EQUAL_UINT(3, s_rec.pwm_stops);
+}
+
+static void test_another_mode_on_the_pin_stops_the_pwm_first(void)
+{
+    stark_lab_pinstate_t st;
+    bool level;
+    hold_armed(38);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_input(&s_lab, 38, STARK_LAB_PULL_UP));
+    TEST_ASSERT_EQUAL(-1, s_lab.pwm_idx);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_IN, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 38, true));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_OUT, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_state(&s_lab, 38, &st));
+    TEST_ASSERT_EQUAL(-1, s_lab.pwm_idx);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_read(&s_lab, 38, &level)); /* a read leaves it running */
+    TEST_ASSERT_EQUAL(0, s_lab.pwm_idx);
+    TEST_ASSERT_EQUAL_UINT(3, s_rec.pwm_stops);
+}
+
+static void test_a_failing_pwm_start_or_stop_ends_in_hiz_and_disarms(void)
+{
+    stark_lab_info_t i;
+    hold_armed(38);
+    fake_lab_fault(FAKE_LAB_FAULT_CONFIG_ERROR, 38, 1);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_FALSE(i.armed);
+    TEST_ASSERT_EQUAL(-1, s_lab.pwm_idx);
+
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 38));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    s_rec.fail_pwm_stop = true; /* the stop itself fails: the pin is still released and disarmed */
+    lab_pins_pwm_stop(&s_lab);
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_FALSE(i.armed);
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_HIZ, i.mode);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL(-1, s_lab.pwm_idx);
+
+    s_rec.fail_pwm_stop =
+        false; /* and a failing stop inside another mode's change fails that call */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 38));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    s_rec.fail_pwm_stop = true;
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, lab_pins_pulse(&s_lab, 38, true, 100));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.pulses);
+}
+
+/* A pulse is one pulse, from any mode, and the pad goes back to the mode it had. */
+static void test_a_pulse_returns_the_pad_to_its_mode(void)
+{
+    stark_lab_info_t i;
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, 38, "gpio"));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_pulse(&s_lab, 38, true, 99));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_pulse(&s_lab, 38, true, 0));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_pulse(&s_lab, 38, true, 100)); /* not armed */
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.pulses);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 38));
+
+    /* from hi-Z */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pulse(&s_lab, 38, true, 100));
+    TEST_ASSERT_EQUAL_UINT(1, fake_lab_pulses());
+    TEST_ASSERT_EQUAL_UINT32(100, fake_lab_last_pulse_us());
+    TEST_ASSERT_TRUE(fake_lab_last_pulse_level());
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT32(LAB_CONTENTION_US, s_rec.delayed_us); /* the idle level, read back */
+
+    /* from an input with a pull-up */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_input(&s_lab, 38, STARK_LAB_PULL_UP));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pulse(&s_lab, 38, false, 10));
+    TEST_ASSERT_FALSE(fake_lab_last_pulse_level());
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_IN, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT8(1, fake_lab_pull(38));
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_IN, i.mode);
+    TEST_ASSERT_EQUAL(STARK_LAB_PULL_UP, i.pull);
+
+    /* from an output driven high */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 38, true));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pulse(&s_lab, 38, false, 1000000));
+    TEST_ASSERT_EQUAL_UINT32(1000000, fake_lab_last_pulse_us());
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_OUT, fake_lab_mode(38));
+    TEST_ASSERT_TRUE(fake_lab_out_level(38));
+    TEST_ASSERT_EQUAL_UINT(3, fake_lab_pulses());
+
+    /* from a running PWM: the PWM is stopped, not resumed */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pulse(&s_lab, 38, true, 100));
+    TEST_ASSERT_EQUAL(-1, s_lab.pwm_idx);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+}
+
+/* AC 3: a contention before the pulse ends in hi-Z with an error; a transport failure does too,
+ * and neither leaves the arm. */
+static void test_a_pulse_in_contention_or_failure_ends_in_hiz(void)
+{
+    stark_lab_info_t i;
+    hold_armed(38);
+    fake_lab_ext(38, FAKE_LAB_EXT_HIGH, 0, 0); /* held high from outside: the idle low fails */
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, lab_pins_pulse(&s_lab, 38, true, 100));
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_pulses()); /* the pulse never started */
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT(1, s_rec.n_contention);
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_FALSE(i.armed);
+    fake_lab_ext(38, FAKE_LAB_EXT_NONE, 0, 0);
+
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 38));
+    s_rec.fail_pulse = true;
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, lab_pins_pulse(&s_lab, 38, true, 100));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(38));
+    TEST_ASSERT_EQUAL_UINT(1, s_rec.n_contention); /* an error, not a contention */
+    (void)lab_pins_info(&s_lab, 38, &i);
+    TEST_ASSERT_FALSE(i.armed);
+}
+
+/* AC 3: the withdrawal of a slot pin that is an output at the time, as in the app. */
+static void test_a_withdrawn_slot_pin_is_hiz_with_no_arm_left(void)
+{
+    stark_lab_info_t i;
+    hold_armed(40);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 40, true));
+    fit(A0, FAKE_MODULE_SPI_IRQ);
+    ticks(2);
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_info(&s_lab, 40, &i));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(40));
+    TEST_ASSERT_EQUAL_UINT8(0, fake_lab_pull(40));
+    fake_24c02_remove(A0);
+    ticks(2);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, 40, "gpio"));
+    (void)lab_pins_info(&s_lab, 40, &i);
+    TEST_ASSERT_FALSE(i.armed);
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_HIZ, i.mode);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -615,5 +924,15 @@ int main(void)
     RUN_TEST(test_refresh_with_nothing_to_do_is_quiet);
     RUN_TEST(test_an_empty_module_table_offers_only_the_lab_pins);
     RUN_TEST(test_a_table_that_reports_too_many_entries_is_clamped);
+    RUN_TEST(test_info_follows_what_the_service_did);
+    RUN_TEST(test_hiz_failures_end_in_hiz_and_disarm);
+    RUN_TEST(test_toggle_flips_an_armed_output_only);
+    RUN_TEST(test_pwm_needs_valid_arguments_the_arm_and_one_pin);
+    RUN_TEST(test_every_exit_path_stops_the_pwm);
+    RUN_TEST(test_another_mode_on_the_pin_stops_the_pwm_first);
+    RUN_TEST(test_a_failing_pwm_start_or_stop_ends_in_hiz_and_disarms);
+    RUN_TEST(test_a_pulse_returns_the_pad_to_its_mode);
+    RUN_TEST(test_a_pulse_in_contention_or_failure_ends_in_hiz);
+    RUN_TEST(test_a_withdrawn_slot_pin_is_hiz_with_no_arm_left);
     return UNITY_END();
 }

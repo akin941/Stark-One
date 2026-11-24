@@ -1,0 +1,108 @@
+# STARK-0702 on the test image (ADR-0023 §3, §9): the GPIO app over the test-only pad model
+# (the fifth substitution), slot 0 empty, so five pins are on offer. An output on pin 38 needs
+# the confirmation: BACK on it arms and drives nothing, a second confirmation arms the pin and
+# drives it low, Toggle flips it with no second dialog. A short to ground from outside
+# (emu_lab_ext_mode = 2) makes the next drive against it a contention: `lab: contention pin 38`,
+# an alert, and the pad reads Hi-Z with the arm gone. Pin 40 is driven the same way and a module
+# appearing in slot 0 (emu_mod_slot0 = 32) withdraws it: hi-Z, a log line, an alert, the row
+# gone; the module leaving puts the three slot pins back. Leaving logs `lab: released all`.
+# Integration evidence for the rules and the log lines; the host tests own every pad state and
+# nothing here shows a level on a pad (docs/VALIDATION.md §2).
+name = "emu-v07-gpio"
+image = "storage"
+end_ms = 17540
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 7)
+    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 7)
+    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 7)
+    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 7)
+    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 7)
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 7)
+    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 7)
+    { key = "OK", at_ms = 1940, hold_ms = 60 },  # open the app
+    { key = "OK", at_ms = 2340, hold_ms = 60 },  # open pin 38
+    { key = "RIGHT", at_ms = 2740, hold_ms = 60 },  # Mode: Input, Output (1 of 2)
+    { key = "RIGHT", at_ms = 3040, hold_ms = 60 },  # Mode: Input, Output (2 of 2)
+    { key = "DOWN", at_ms = 3340, hold_ms = 60 },  # Level, Drive (1 of 2)
+    { key = "DOWN", at_ms = 3640, hold_ms = 60 },  # Level, Drive (2 of 2)
+    { key = "OK", at_ms = 3940, hold_ms = 60 },  # Drive: the confirmation opens
+    { key = "BACK", at_ms = 4440, hold_ms = 60 },  # cancel: nothing is armed and nothing is driven
+    { key = "OK", at_ms = 4940, hold_ms = 60 },  # Drive again: it asks again
+    { key = "OK", at_ms = 5440, hold_ms = 60 },  # confirm: armed, driven low
+    { key = "DOWN", at_ms = 6040, hold_ms = 60 },  # Toggle
+    { key = "OK", at_ms = 6340, hold_ms = 60 },  # toggle: high (armed, no dialog)
+    { key = "OK", at_ms = 6940, hold_ms = 60 },  # toggle: low (the short agrees)
+    { key = "OK", at_ms = 7440, hold_ms = 60 },  # toggle: high against the short -> contention
+    { key = "OK", at_ms = 8140, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 8740, hold_ms = 60 },  # release pin 38
+    { key = "DOWN", at_ms = 9240, hold_ms = 60 },  # pin 40, the first slot line (1 of 2)
+    { key = "DOWN", at_ms = 9540, hold_ms = 60 },  # pin 40, the first slot line (2 of 2)
+    { key = "OK", at_ms = 9840, hold_ms = 60 },  # open pin 40
+    { key = "RIGHT", at_ms = 10340, hold_ms = 60 },  # Mode: Input, Output (1 of 2)
+    { key = "RIGHT", at_ms = 10640, hold_ms = 60 },  # Mode: Input, Output (2 of 2)
+    { key = "DOWN", at_ms = 10940, hold_ms = 60 },  # Level, Drive (1 of 2)
+    { key = "DOWN", at_ms = 11240, hold_ms = 60 },  # Level, Drive (2 of 2)
+    { key = "OK", at_ms = 11540, hold_ms = 60 },  # Drive: the confirmation opens
+    { key = "OK", at_ms = 12040, hold_ms = 60 },  # confirm: pin 40 driven low
+    { key = "OK", at_ms = 14240, hold_ms = 60 },  # close the withdrawal alert
+    { key = "BACK", at_ms = 16240, hold_ms = 60 },  # leave the app
+]
+pokes = [
+    { at_ms = 6840, var = "emu_lab_ext_mode", value = 2 },  # pad 38 is shorted to ground from outside
+    { at_ms = 8640, var = "emu_lab_ext_mode", value = 0 },  # the short is removed
+    { at_ms = 12740, var = "emu_mod_slot0", value = 32 },  # a module appears in slot 0 while pin 40 is an output
+    { at_ms = 14740, var = "emu_mod_slot0", value = 0 },  # the module leaves: the slot's pins are on offer again
+]
+expect = [
+    "lab: pins 38 39 40 41 42",
+    'menu: sel=11 "GPIO"',
+    "gpioapp: home 38 39 40 41 42",
+    "app: start gpio",
+    "gpioapp: open pin 38 LAB_UART_TX",
+    "gpioapp: pin 38 Hi-Z",
+    "gpioapp: confirm pin 38 reads floating",
+    'dialog: open "Drive pin 38?"',
+    "dialog: cancel",
+    "gpioapp: cancelled pin 38",
+    "gpioapp: confirm pin 38 reads floating",
+    "dialog: ok",
+    "lab: armed pin 38",
+    "gpioapp: pin 38 OUT L",
+    "gpioapp: pin 38 OUT H",
+    "gpioapp: pin 38 OUT L",
+    "lab: contention pin 38",
+    "gpioapp: pin 38 drive failed: released",
+    'dialog: open "Contention"',
+    "gpioapp: pin 38 Hi-Z",
+    "lab: released pin 38",
+    "gpioapp: close pin 38",
+    "gpioapp: open pin 40 MOD0_CS",
+    "gpioapp: confirm pin 40 reads floating",
+    'dialog: open "Drive pin 40?"',
+    "lab: armed pin 40",
+    "gpioapp: pin 40 OUT L",
+    "lab: pin 40 withdrawn (slot 0)",
+    "lab: pin 41 withdrawn (slot 0)",
+    "lab: pin 42 withdrawn (slot 0)",
+    "lab: pins 38 39",
+    "gpioapp: pin 40 withdrawn",
+    "gpioapp: home 38 39",
+    'dialog: open "Pin withdrawn"',
+    "gpioapp: home 38 39 40 41 42",
+    "lab: released all",
+    "app: stop gpio",
+]
+forbid = [
+    "lab init failed",
+    "gpioapp: pin 38 not available",
+    "gpioapp: pin 40 not available",
+    "gpio: conflict",
+    "panic",
+]
+# BACK on the confirmation changed nothing: no arm and no drive between it and the next one.
+forbid_between = [
+    { after = "gpioapp: cancelled pin 38", before = "gpioapp: confirm pin 38 reads floating", text = "lab: armed pin 38" },
+    { after = "gpioapp: cancelled pin 38", before = "gpioapp: confirm pin 38 reads floating", text = "gpioapp: pin 38 OUT" },
+    { after = "gpioapp: open pin 38", before = "gpioapp: cancelled pin 38", text = "gpioapp: pin 38 OUT" },
+]

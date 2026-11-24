@@ -12,8 +12,10 @@ typedef struct {
     uint8_t pull;
     bool out;
     fake_lab_ext_t ext;
-    uint32_t hz;
+    uint32_t hz; /* the external square wave */
     uint8_t duty;
+    uint32_t pwm_hz; /* the PWM output */
+    uint8_t pwm_duty;
 } pad_t;
 
 typedef struct {
@@ -29,6 +31,9 @@ static int g_wires;
 static fault_t g_fault;
 static uint64_t g_now_us;
 static unsigned g_calls;
+static unsigned g_pulses;
+static uint32_t g_pulse_us;
+static bool g_pulse_level;
 
 static bool valid(int pin)
 {
@@ -44,6 +49,9 @@ void fake_lab_reset(void)
     g_fault = (fault_t){0};
     g_now_us = 0;
     g_calls = 0;
+    g_pulses = 0;
+    g_pulse_us = 0;
+    g_pulse_level = false;
 }
 
 void fake_lab_time_us(uint64_t now_us)
@@ -89,6 +97,15 @@ static bool fault_hits(fake_lab_fault_t kind, int pin)
     return true;
 }
 
+bool fake_lab_square(uint32_t hz, uint8_t duty_pct, uint64_t now_us)
+{
+    uint64_t period = hz > 0 ? 1000000u / hz : 1u;
+    if (period == 0) {
+        period = 1;
+    }
+    return (now_us % period) * 100u < period * duty_pct;
+}
+
 /* The level an external source drives onto the pad now; false when nothing drives it. */
 static bool external(int pin, bool *level)
 {
@@ -100,14 +117,9 @@ static bool external(int pin, bool *level)
         case FAKE_LAB_EXT_LOW:
             *level = false;
             return true;
-        case FAKE_LAB_EXT_SQUARE: {
-            uint64_t period = p->hz > 0 ? 1000000u / p->hz : 1u;
-            if (period == 0) {
-                period = 1;
-            }
-            *level = (g_now_us % period) * 100u < period * p->duty;
+        case FAKE_LAB_EXT_SQUARE:
+            *level = fake_lab_square(p->hz, p->duty, g_now_us);
             return true;
-        }
         case FAKE_LAB_EXT_NONE:
         default:
             break;
@@ -115,6 +127,11 @@ static bool external(int pin, bool *level)
     for (int i = 0; i < g_wires; i++) {
         if (g_wire_to[i] == pin && g_pad[g_wire_from[i]].mode == FAKE_LAB_PAD_OUT) {
             *level = g_pad[g_wire_from[i]].out;
+            return true;
+        }
+        if (g_wire_to[i] == pin && g_pad[g_wire_from[i]].mode == FAKE_LAB_PAD_PWM) {
+            *level = fake_lab_square(g_pad[g_wire_from[i]].pwm_hz, g_pad[g_wire_from[i]].pwm_duty,
+                                     g_now_us);
             return true;
         }
     }
@@ -150,6 +167,40 @@ stark_err_t fake_lab_pad_out(int pin, bool level)
     return STARK_OK;
 }
 
+stark_err_t fake_lab_pwm_start(int pin, uint32_t hz, uint8_t duty_pct)
+{
+    if (!valid(pin) || duty_pct > 100u) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    g_calls++;
+    if (fault_hits(FAKE_LAB_FAULT_CONFIG_ERROR, pin)) {
+        return STARK_ERR_IO;
+    }
+    g_pad[pin].mode = FAKE_LAB_PAD_PWM;
+    g_pad[pin].pull = 0;
+    g_pad[pin].pwm_hz = hz;
+    g_pad[pin].pwm_duty = duty_pct;
+    return STARK_OK;
+}
+
+stark_err_t fake_lab_pulse(int pin, bool level, uint32_t us)
+{
+    if (!valid(pin)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    g_calls++;
+    if (fault_hits(FAKE_LAB_FAULT_CONFIG_ERROR, pin)) {
+        return STARK_ERR_IO;
+    }
+    g_pad[pin].mode = FAKE_LAB_PAD_OUT;
+    g_pad[pin].pull = 0;
+    g_pad[pin].out = !level; /* the pulse is over: the pad rests at the opposite level */
+    g_pulses++;
+    g_pulse_us = us;
+    g_pulse_level = level;
+    return STARK_OK;
+}
+
 stark_err_t fake_lab_pad_hiz(int pin)
 {
     if (!valid(pin)) {
@@ -159,6 +210,8 @@ stark_err_t fake_lab_pad_hiz(int pin)
     g_pad[pin].mode = FAKE_LAB_PAD_HIZ;
     g_pad[pin].pull = 0;
     g_pad[pin].out = false;
+    g_pad[pin].pwm_hz = 0;
+    g_pad[pin].pwm_duty = 0;
     return STARK_OK;
 }
 
@@ -181,6 +234,8 @@ stark_err_t fake_lab_pad_read(int pin, bool *level)
     bool driven = external(pin, &ext);
     if (p->mode == FAKE_LAB_PAD_OUT) {
         *level = driven ? ext : p->out; /* an external source against the output: contention */
+    } else if (p->mode == FAKE_LAB_PAD_PWM) {
+        *level = driven ? ext : fake_lab_square(p->pwm_hz, p->pwm_duty, g_now_us);
     } else if (driven) {
         *level = ext;
     } else {
@@ -207,4 +262,29 @@ uint8_t fake_lab_pull(int pin)
 bool fake_lab_out_level(int pin)
 {
     return valid(pin) && g_pad[pin].out;
+}
+
+uint32_t fake_lab_pwm_hz(int pin)
+{
+    return valid(pin) ? g_pad[pin].pwm_hz : 0u;
+}
+
+uint8_t fake_lab_pwm_duty(int pin)
+{
+    return valid(pin) ? g_pad[pin].pwm_duty : 0u;
+}
+
+unsigned fake_lab_pulses(void)
+{
+    return g_pulses;
+}
+
+uint32_t fake_lab_last_pulse_us(void)
+{
+    return g_pulse_us;
+}
+
+bool fake_lab_last_pulse_level(void)
+{
+    return g_pulse_level;
 }

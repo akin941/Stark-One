@@ -6,6 +6,7 @@
 #include "stark_hal_esp.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "esp_rom_sys.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -68,6 +69,11 @@ void stark_hal_delay_ms(uint32_t ms)
     vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
+void stark_hal_delay_us(uint32_t us)
+{
+    esp_rom_delay_us(us);
+}
+
 /* ---- GPIO --------------------------------------------------------------
  * Failures return stark_err_from_esp(err); config validity beyond plain
  * range (e.g. a pin this specific board doesn't wire up) is
@@ -117,7 +123,8 @@ stark_err_t stark_hal_gpio_config_output(int pin, bool initial)
  * NOTE: gpio_config() reserves a pad it makes an output (esp_gpio_reserve) and warns `gpio:
  * conflict found for GPIO[n]` on every later output configuration of the same pad, a reservation
  * that stays until gpio_reset_pin() revokes it (esp-emu 0.44.0 run, docs/VALIDATION.md §2). The
- * lab pads therefore track the pads this HAL made outputs: a drive of a pad that is already an
+ * lab pads therefore track the pads this HAL made outputs (and the pads it routed to LEDC, which
+ * reserves them the same way): a drive of a pad that is already an
  * output only sets the level, and any other configuration of it resets the pin first, which also
  * detaches whatever the pad was routed to. Callers are serialised (the lab service's mutex).
  */
@@ -150,6 +157,22 @@ stark_err_t stark_hal_gpio_config_in(int pin, stark_hal_pull_t pull)
 stark_err_t stark_hal_gpio_hiz(int pin)
 {
     return stark_hal_gpio_config_in(pin, STARK_HAL_PULL_NONE);
+}
+
+stark_err_t stark_hal_gpio_drive_weak(int pin)
+{
+    if (!STARK_HAL_GPIO_IN_RANGE(pin)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    gpio_drive_cap_t cap = GPIO_DRIVE_CAP_3;
+    esp_err_t err = gpio_set_drive_capability((gpio_num_t)pin, GPIO_DRIVE_CAP_0);
+    if (err == ESP_OK) {
+        err = gpio_get_drive_capability((gpio_num_t)pin, &cap);
+    }
+    if (err != ESP_OK || cap != GPIO_DRIVE_CAP_0) {
+        return err != ESP_OK ? stark_err_from_esp(err) : STARK_ERR_IO;
+    }
+    return STARK_OK;
 }
 
 stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial)
@@ -213,6 +236,9 @@ void stark_hal_gpio_write(int pin, bool level)
 
 stark_err_t stark_hal_pwm_init(int pin, uint32_t hz, uint8_t channel)
 {
+    if (STARK_HAL_GPIO_IN_RANGE(pin)) {
+        lab_release_output(pin); /* LEDC refuses a pad that was an output (see the NOTE above) */
+    }
     ledc_timer_config_t timer_cfg = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .duty_resolution = STARK_HAL_PWM_DUTY_RES,
@@ -234,7 +260,11 @@ stark_err_t stark_hal_pwm_init(int pin, uint32_t hz, uint8_t channel)
         .duty = 0,
         .hpoint = 0,
     };
-    return stark_err_from_esp(ledc_channel_config(&ch_cfg));
+    esp_err_t cerr = ledc_channel_config(&ch_cfg);
+    if (cerr == ESP_OK && STARK_HAL_GPIO_IN_RANGE(pin)) {
+        s_lab_out_mask |= 1ULL << pin; /* LEDC reserved the pad: the next lab call resets it */
+    }
+    return stark_err_from_esp(cerr);
 }
 
 stark_err_t stark_hal_pwm_set_freq(uint8_t channel, uint32_t hz)
@@ -254,4 +284,8 @@ stark_err_t stark_hal_pwm_set_duty_pct(uint8_t channel, uint8_t pct)
         return stark_err_from_esp(err);
     }
     return stark_err_from_esp(ledc_update_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)channel));
+}
+stark_err_t stark_hal_pwm_stop(uint8_t channel)
+{
+    return stark_err_from_esp(ledc_stop(LEDC_LOW_SPEED_MODE, (ledc_channel_t)channel, 0));
 }
