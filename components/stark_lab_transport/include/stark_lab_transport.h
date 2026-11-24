@@ -2,9 +2,9 @@
  * stark_lab_transport.h — the lab tools' wires (TASKS.md STARK-0701, ADR-0023 §2): the one
  * seam between the lab service and the hardware, and the fifth and last substitution of the
  * emulator test image. Today it carries the pad group (configure, read, hi-Z), the PWM and
- * pulse outputs (STARK-0702), the edge capture (STARK-0703) and the shared I2C bus (STARK-0704:
- * probe and one transaction at a time) and the lab UART (STARK-0705: UART1 on the two lab pins);
- * STARK-0706 appends SPI on a leased slot.
+ * pulse outputs (STARK-0702), the edge capture (STARK-0703), the shared I2C bus (STARK-0704:
+ * probe and one transaction at a time), the lab UART (STARK-0705: UART1 on the two lab pins) and
+ * SPI on a leased module slot (STARK-0706: one bounded transaction).
  *
  * Every pad call re-checks the pin against stark_board's classification, whatever the
  * caller says (defence in depth, SECURITY_SCOPE §4.6): a pin that is not offered returns
@@ -310,3 +310,78 @@ stark_err_t stark_lab_transport_uart_set_baud(uint32_t baud);
 
 /* Removes the driver and returns both pads to hi-Z (input, no pull). Idempotent. */
 void stark_lab_transport_uart_close(void);
+
+/* ---- SPI on a leased module slot (STARK-0706, ADR-0023 §6) -------------------------------------
+ *
+ * One transaction on a slot's own chip select, through stark_module's lease and SPI device (the
+ * shared SPI2 bus belongs to the panel, the card and the modules; ESP-IDF's bus lock keeps this
+ * transaction from interleaving with theirs). The only chip select it can ever assert is the
+ * lease's: there is no call that names a pin, so the panel's and the card's devices cannot be
+ * addressed. The call is refused, before the bus is touched, unless the slot's module declares
+ * MOD_SPI and no function bit (stark_lab_spi_entry_ok()): a radio, the NFC reader or anything
+ * unknown owns its slot, because a raw write to a CC1101 could set PATABLE or strobe STX and walk
+ * around the transmit policy (ADR-0022 §6). The same guard is applied by the test image's
+ * transport and the host shim, so none can do what another refuses (defence in depth,
+ * SECURITY_SCOPE §4.6; the service applies it first).
+ */
+#define STARK_LAB_SPI_BYTES_MAX   32u
+#define STARK_LAB_SPI_CLOCK_COUNT 6u
+
+static inline uint32_t stark_lab_spi_clock_hz(size_t index)
+{
+    static const uint32_t k_hz[STARK_LAB_SPI_CLOCK_COUNT] = {100000u,  250000u,  500000u,
+                                                             1000000u, 2000000u, 4000000u};
+    return index < STARK_LAB_SPI_CLOCK_COUNT ? k_hz[index] : 0u;
+}
+
+static inline bool stark_lab_spi_hz_ok(uint32_t hz)
+{
+    for (size_t i = 0; i < STARK_LAB_SPI_CLOCK_COUNT; i++) {
+        if (stark_lab_spi_clock_hz(i) == hz) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* True when the arguments of a transaction are well formed: 1 to 32 bytes, a listed clock, mode 0
+ * to 3. */
+static inline bool stark_lab_spi_args_ok(uint32_t hz, uint8_t mode, size_t n)
+{
+    return n >= 1u && n <= STARK_LAB_SPI_BYTES_MAX && mode <= 3u && stark_lab_spi_hz_ok(hz);
+}
+
+/*
+ * The eligibility rule as a pure function of a table entry: a slot that reads KNOWN and whose
+ * descriptor declares MOD_SPI and nothing else except MOD_IRQ. NFC, Sub-GHz, the IR bits and any
+ * bit this firmware does not know are functions: their slot is a driver's.
+ */
+static inline bool stark_lab_spi_entry_ok(const stark_module_entry_t *e)
+{
+    return e->kind == STARK_MODULE_SLOT && e->state == STARK_MODULE_KNOWN &&
+           (e->declared & STARK_CAP_MOD_SPI) != 0u &&
+           (e->declared & ~(uint32_t)(STARK_CAP_MOD_SPI | STARK_CAP_MOD_IRQ)) == 0u;
+}
+
+/* True when `list` has slot `slot` and it passes stark_lab_spi_entry_ok(). */
+static inline bool stark_lab_spi_slot_ok(const stark_module_entry_t *list, size_t n, int slot)
+{
+    for (size_t i = 0; i < n; i++) {
+        if (list[i].kind == STARK_MODULE_SLOT && (int)list[i].slot == slot) {
+            return stark_lab_spi_entry_ok(&list[i]);
+        }
+    }
+    return false;
+}
+
+/*
+ * One transaction: `n` bytes (1 to STARK_LAB_SPI_BYTES_MAX) are clocked out of `tx` while `n` are
+ * clocked into `rx`, at `hz` (one of the six clocks, 100 kHz to 4 MHz) and SPI mode `mode` (0 to
+ * 3), on the lease's chip select; the device is attached for the call and detached again, so
+ * nothing outlives it. STARK_ERR_INVALID_ARG for a NULL, a length, a clock or a mode out of
+ * range, STARK_ERR_NOT_SUPPORTED when the slot is not eligible (above), STARK_ERR_STATE for a lease
+ * that is stale (the module left), STARK_ERR_BUSY while another driver has a device on the slot,
+ * STARK_ERR_IO for a bus failure. The caller holds the lease; the service claims and releases it.
+ */
+stark_err_t stark_lab_transport_spi_xfer(const stark_module_lease_t *l, uint32_t hz, uint8_t mode,
+                                         const uint8_t *tx, uint8_t *rx, size_t n);

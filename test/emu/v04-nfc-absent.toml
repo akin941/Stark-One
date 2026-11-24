@@ -5,22 +5,24 @@
 # field. The app's own no-module screen stays covered by test_ui_nfc.c and by a
 # module lost while it is open (storage/v04-nfc-app).
 name = "emu-v04-nfc-absent"
-end_ms = 2800
+end_ms = 3100
 heap_min = 200000
 presses = [
     { key = "UP", at_ms = 400, hold_ms = 60 },     # Storage
     { key = "UP", at_ms = 550, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 700, hold_ms = 60 },     # Modules
     { key = "UP", at_ms = 850, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
-    { key = "UP", at_ms = 1000, hold_ms = 60 },     # IR: NFC 14 is dimmed, skipped
-    { key = "DOWN", at_ms = 1150, hold_ms = 60 },  # back past it to Modules
-    { key = "DOWN", at_ms = 1300, hold_ms = 60 },  # UART (STARK-0705): crossed on the way back
+    { key = "UP", at_ms = 1000, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 1150, hold_ms = 60 },     # IR: NFC 14 is dimmed, skipped
+    { key = "DOWN", at_ms = 1300, hold_ms = 60 },  # SPI (STARK-0706): crossed on the way down
+    { key = "DOWN", at_ms = 1450, hold_ms = 60 },  # back past it to Modules
+    { key = "DOWN", at_ms = 1600, hold_ms = 60 },  # UART (STARK-0705): crossed on the way back
 ]
 expect = [
     "nfc: no module (Not found)",
     "module: caps 0x00000003",
-    'menu: sel=18 "Modules"',
+    'menu: sel=19 "Modules"',
     'menu: sel=13 "IR"',
-    'menu: sel=18 "Modules"',
+    'menu: sel=19 "Modules"',
 ]
 forbid = ['menu: sel=14 "NFC"', "app: start nfc", "nfc: field on", "nfc: tag", "nfcapp: confirm"]

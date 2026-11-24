@@ -338,7 +338,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
 | 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
 | 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602), `_CAPTURE` / `_CAPTURE_DONE` (STARK-0603), `_TX_DONE` (6) / `_TX_FAILED` (7) / `_TX_REFUSED` (8) (STARK-0605) |
-| 8 | `STARK_SYS_LAB` | `stark_lab` (STARK-0701) | `STARK_LAB_EVT_PINS` (the offer changed or a held pin was withdrawn); later `_MEASURE_DONE` (STARK-0703); `_UART_DATA` (4) and `_UART_ERROR` (5), each at most ten times a second while the UART monitor runs (STARK-0705); later `_SPI_DONE` (6, STARK-0706); `_SCAN_DONE` (3) stays reserved, the I²C sweep being a synchronous call (STARK-0704) |
+| 8 | `STARK_SYS_LAB` | `stark_lab` (STARK-0701) | `STARK_LAB_EVT_PINS` (the offer changed or a held pin was withdrawn); later `_MEASURE_DONE` (STARK-0703); `_UART_DATA` (4) and `_UART_ERROR` (5), each at most ten times a second while the UART monitor runs (STARK-0705); `_SPI_DONE` (6), published after each SPI probe transaction that reached the bus (STARK-0706); `_SCAN_DONE` (3) stays reserved, the I²C sweep being a synchronous call (STARK-0704) |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -1231,6 +1231,30 @@ Loopback test, Auto-baud, Log, Baud, Format; the monitor is a screen of its own 
 (48); rows and texts are `uart_views.c` (pure, 100 % lines), the card log is `uart_log.c` (host-tested over an in-memory
 `stark_storage`).
 
+**The SPI probe (STARK-0706).** One bounded, confirmed SPI transaction on a module slot, and nothing else (ADR-0023 §6 and its 0706
+addendum). *The rule* is a table entry's, stated once in `stark_lab_transport.h` (`stark_lab_spi_entry_ok()`): a slot that reads
+`KNOWN` and whose descriptor declares `MOD_SPI` and no function bit (`MOD_IRQ` may come with it). A slot declaring Sub-GHz, NFC,
+IR or any bit this firmware does not know is a driver's and is refused (`owned by Sub-GHz`), because a raw write to a CC1101
+could set `PATABLE` or strobe `STX` and walk around the transmit policy (ADR-0022 §6). *Pure file* `lab_spi.c` (100 % lines): the
+judgement with its reason (`no module`, `generic module`, `owned by Sub-GHz`, `no chip select`, ...), the request and its FNV-1a
+fingerprint over slot, clock, mode, bytes and the module's identity, the single-use arm, the claim-use-release of the lease, and
+the log text, over an injected table, lease and bus. `stark_lab.c` binds it to `stark_module_list()`, `stark_module_claim()`
+(owner `spiprobe`, `MOD_SPI` only), the transport and the event bus, under a mutex of its own (a probe never holds up a pin).
+*The arm* is the request: `stark_lab_spi_request()` records what the dialog will show and `stark_lab_spi_send()` takes it exactly
+once (spent before the bus is touched, stale after 30 s, refused if any field or the slot's module changed), judges the slot
+again, claims the lease, judges it again, transfers, and releases the lease, so no lease outlives a transaction and a driver is
+never starved (`BUSY` is "slot busy"). *Transport:* the SPI group of `stark_lab_transport` is one call,
+`stark_lab_transport_spi_xfer(lease, hz, mode, tx, rx, n)`: the guard again (arguments, then the entry rule on the live table),
+then `stark_module_spi_attach`, `_xfer` and `_detach` (`lab_transport_spi.c`, which calls no SPI driver: ARCHITECTURE §8 and
+`check_layers.py` are unchanged). The chip select is the lease's, so the panel's and the card's devices on the same SPI2 bus cannot
+be addressed; ESP-IDF's bus lock keeps the transaction from interleaving with theirs. The host builds a shim over `test/fake/fake_lab.c`'s
+SPI devices (none, a JEDEC flash, an echo, with `SPI_ERROR` and `NO_ANSWER` faults), the test image's transport carries the same
+group (still the fifth and last substitution). *App:* `apps/app_spi` (Lab category, title "SPI", launcher row 15 between NFC and
+Sub-GHz; no capability required): home lists both slots with the module's name or the reason there is no probe, Setup has
+Clock, Mode, three presets (JEDEC ID, Read status, Dummy read) and a byte editor of rows, Send asks the confirmation and shows
+MISO as hex and ASCII; rows and texts are `spi_views.c` (pure, 100 % lines). The module catalogue gains entry 34, the SPI
+breakout (`0x0B01`, `0x00000008`).
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -1241,7 +1265,7 @@ Loopback test, Auto-baud, Log, Baud, Format; the monitor is a screen of its own 
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); the fixed transmit policy and the gated replay of a saved capture implemented (§6.9g, STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
-| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C scanner implemented (§6.9h, STARK-0704); the UART tool implemented (§6.9h, STARK-0705); the SPI probe and the self-test are planned (ADR-0023, TASKS STARK-0706, 0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
+| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C scanner implemented (§6.9h, STARK-0704); the UART tool implemented (§6.9h, STARK-0705); the SPI probe implemented (§6.9h, STARK-0706); the self-test is planned (ADR-0023, TASKS STARK-0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
@@ -1304,8 +1328,9 @@ asserts on the **presence and ordering** of that line, never on the number in it
 * SPI2 has three users (ADR-0008/0018/0021): `stark_display` (panel transactions, UI
   task), `stark_storage_medium` (the microSD, called only from `stark_storage` under
   its mutex — the storage task or an app worker) and `stark_module_spi.c` (a claimed
-  module's driver, STARK-0503; the CC1101's, through `stark_subghz_transport`, STARK-0601). ESP-IDF's `spi_master` bus lock keeps their transactions
-  apart; `check_layers.py` fails any other direct SPI2 use.
+  module's driver, STARK-0503; the CC1101's, through `stark_subghz_transport`, STARK-0601; the lab's SPI probe, through
+  `stark_lab_transport` and a lease on a function-less slot, STARK-0706). ESP-IDF's `spi_master` bus lock keeps their transactions
+  apart; `check_layers.py` fails any other direct SPI2 use (the probe calls `stark_module_spi_*`, never the driver).
 * Only the event bus crosses task boundaries. No shared mutable globals between tasks.
 * All allocation happens during init. The render and input paths are allocation-free.
 * Static memory budget V0: band buffers 51.2 kB + event ring 2 kB + UI/app state < 8 kB.
@@ -1380,7 +1405,8 @@ to set differently (ADR-0010).
   `stark_lab → stark_event` (offer-change events), `stark_lab → stark_module` (the table that
   decides which slot pins are offered), `stark_lab → stark_lab_transport` (the pads' wires) and
   `stark_lab_transport → stark_module` (its pin guard reads the table), all STARK-0701; the I²C group adds none
-  (`esp_driver_i2c` is a platform component). Pure
+  (`esp_driver_i2c` is a platform component), the SPI group adds none (it uses `stark_module`'s lease and SPI device, an edge
+  the transport already has), and `apps/app_spi → stark_module` follows `STARK_SYS_MODULE` like `app_modules` (STARK-0706). Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with

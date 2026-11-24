@@ -4,8 +4,9 @@
  * pad group (STARK-0701), the PWM and pulse outputs (STARK-0702) and the frequency and duty
  * measurement (STARK-0703), whose user is the GPIO app; the shared I2C bus (STARK-0704: scan,
  * hints, register read, dump and write, whose user is the I2C app) and the lab UART (STARK-0705:
- * monitor, send, loopback test and auto-baud on the two lab pins, whose user is the UART app);
- * later tasks add SPI behind the same seam.
+ * monitor, send, loopback test and auto-baud on the two lab pins, whose user is the UART app) and
+ * the SPI probe (STARK-0706: one confirmed transaction on a leased module slot that declares no
+ * function, whose user is the SPI app); the self-test joins in STARK-0707.
  *
  * Pins are named only through stark_board (stark_board_pin_class(), stark_board_lab_pins()):
  * a LAB pin is always offered, a SLOT pin only while its slot reads ABSENT, everything else
@@ -36,6 +37,7 @@
 /* 3 stays reserved: the I2C sweep is a synchronous call (STARK-0704), so it has no SCAN_DONE */
 #define STARK_LAB_EVT_UART_DATA    4 /* the UART monitor received bytes (at most 10 a second) */
 #define STARK_LAB_EVT_UART_ERROR   5 /* ... or counted a framing, parity or overrun error */
+#define STARK_LAB_EVT_SPI_DONE     6 /* an SPI probe transaction finished (STARK-0706) */
 
 typedef enum { STARK_LAB_PULL_NONE, STARK_LAB_PULL_UP, STARK_LAB_PULL_DOWN } stark_lab_pull_t;
 
@@ -500,6 +502,80 @@ stark_err_t stark_lab_uart_log_name_next(uint32_t highest, char *buf, size_t n);
 
 /* CRC-32 (IEEE, the zlib one): start from 0, pass the result back to go on. Pure. */
 uint32_t stark_lab_uart_crc32(uint32_t crc, const uint8_t *data, size_t n);
+
+/* ---- the SPI probe (lab_spi.c; STARK-0706, ADR-0023 §6) ----------------------------------------
+ *
+ * One bounded, confirmed SPI transaction on a leased module slot, and nothing else. The probe runs
+ * only on a slot whose module declares MOD_SPI and no function bit (a "SPI breakout"; MOD_IRQ may
+ * be declared too): a slot declaring Sub-GHz, NFC, IR or any bit this firmware does not know
+ * belongs to a driver and is refused, because a raw write to a CC1101 could set PATABLE or strobe
+ * STX and walk around the transmit policy (ADR-0022 §6). The only chip select that can be asserted
+ * is the slot's own, through stark_module's lease: the panel's and the card's devices on the same
+ * bus are out of reach. No call repeats, streams or loops; no lease outlives a transaction.
+ */
+#define STARK_LAB_SPI_MAX      32u /* bytes of one transaction */
+#define STARK_LAB_SPI_CLOCKS   6u  /* 100 kHz, 250 kHz, 500 kHz, 1 MHz, 2 MHz, 4 MHz */
+#define STARK_LAB_SPI_NAME_MAX 18u /* a module name (module_desc.h: MODULE_NAME_MAX) */
+#define STARK_LAB_SPI_WHY_MAX  24u
+#define STARK_LAB_SPI_SLOTS    2u
+
+typedef struct {
+    uint8_t slot;
+    bool eligible;
+    char why[STARK_LAB_SPI_WHY_MAX];       /* the reason when not eligible: "no module", "owned by
+                                            * Sub-GHz", ...; empty when eligible */
+    char name[STARK_LAB_SPI_NAME_MAX + 1]; /* the module's name when one is known, else empty */
+} stark_lab_spi_slot_t;
+
+/* What the dialog shows and the send must match exactly: the service holds the fingerprint. */
+typedef struct {
+    uint8_t slot;
+    uint32_t hz;
+    uint8_t mode;
+    uint8_t n;
+    uint8_t tx[STARK_LAB_SPI_MAX];
+} stark_lab_spi_req_t;
+
+/* The clock list by index (0 past the end), as hertz. Pure. */
+uint32_t stark_lab_spi_clock(size_t index);
+
+/* "100 kHz", "250 kHz", "500 kHz", "1 MHz", "2 MHz", "4 MHz"; "?" for anything else. Pure. */
+const char *stark_lab_spi_clock_text(uint32_t hz);
+
+/*
+ * Both slots as they are now, each with eligibility and the reason it has none: `no module`,
+ * `generic module`, `unsupported module`, `conflict`, `owned by Sub-GHz` (or `NFC`, `IR`,
+ * `unknown`), `no SPI declared`, `no chip select` (slot 1 has no MOD_CS). Returns how many were
+ * written (at most STARK_LAB_SPI_SLOTS). Drives nothing. Any task.
+ */
+size_t stark_lab_spi_slots(stark_lab_spi_slot_t *out, size_t max);
+
+/*
+ * Records the transaction the app is about to ask a confirmation for: 1 to 32 bytes at one of the
+ * six clocks and mode 0 to 3 on `slot`. STARK_ERR_INVALID_ARG for anything out of range,
+ * STARK_ERR_NOT_SUPPORTED when the slot is not eligible (logged `lab: spi request refused: <why>`),
+ * STARK_ERR_STATE before init. It replaces any earlier request and touches no bus. The request is
+ * the arm: a fingerprint of the slot, its module, the clock, the mode and the bytes, which
+ * stark_lab_spi_send() takes exactly once and only if the request still matches, within 30 s.
+ */
+stark_err_t stark_lab_spi_request(uint8_t slot, uint32_t hz, uint8_t mode, const uint8_t *tx,
+                                  size_t n, stark_lab_spi_req_t *out);
+
+/*
+ * The app's OK on the dialog: makes the transaction recorded by stark_lab_spi_request() and puts
+ * the `req->n` bytes that came back in `rx` (STARK_LAB_SPI_MAX bytes of room). The request is
+ * consumed before the bus is touched, whatever happens. STARK_ERR_STATE for a request that is
+ * missing, already used, cancelled, older than 30 s, changed (any field, or the slot's module) or
+ * when the lab is not initialised; STARK_ERR_NOT_SUPPORTED when the slot is no longer eligible
+ * (checked again here, and again by the transport); STARK_ERR_BUSY (a driver holds the slot: "slot
+ * busy"), STARK_ERR_NOT_FOUND or the transport's error otherwise. The lease is claimed
+ * ("spiprobe"), used and released inside the call, success or not. Logs `lab: spi slot 0 1 MHz mode
+ * 0 tx 9f 00 00 00 rx 00 ef 40 18` and publishes STARK_LAB_EVT_SPI_DONE.
+ */
+stark_err_t stark_lab_spi_send(const stark_lab_spi_req_t *req, uint8_t *rx);
+
+/* Forgets the request (the dialog's BACK, leaving the app). Any task. */
+void stark_lab_spi_cancel(void);
 
 /*
  * Recomputes the offer: a held pin that is no longer offered goes to hi-Z at once, loses its

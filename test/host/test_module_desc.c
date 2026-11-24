@@ -112,6 +112,25 @@ static void test_caps_rules_and_strings(void)
     TEST_ASSERT_EQUAL_STRING("truncated", module_desc_result_str(MODULE_DESC_TRUNCATED));
 }
 
+/* The SPI breakout (STARK-0706, ADR-0023 §6): MOD_SPI and no function bit, 0x00000008. */
+static void test_the_spi_breakout_declares_mod_spi_and_nothing_else(void)
+{
+    TEST_ASSERT_EQUAL_INT(34, FAKE_MODULE_COUNT);
+    TEST_ASSERT_EQUAL_INT(34, FAKE_MODULE_SPI_BREAKOUT);
+    const fake_module_entry_t *e = &k_fake_modules[FAKE_MODULE_SPI_BREAKOUT - 1];
+    module_desc_t d;
+    TEST_ASSERT_EQUAL(MODULE_DESC_OK, module_desc_parse(e->image, MODULE_DESC_SIZE, &d));
+    TEST_ASSERT_EQUAL_HEX16(0x0B01, d.id);
+    TEST_ASSERT_EQUAL_UINT8(1, d.rev);
+    TEST_ASSERT_EQUAL_HEX32(STARK_CAP_MOD_SPI, d.caps);
+    TEST_ASSERT_EQUAL_HEX32(0x00000008u, d.caps);
+    TEST_ASSERT_EQUAL_STRING("SPI breakout", d.name);
+    TEST_ASSERT_TRUE(module_desc_caps_supported(d.caps));
+    /* the catalogue's indices did not move: the radio is still 32, the last unknown-bit one 33 */
+    TEST_ASSERT_EQUAL_INT(32, FAKE_MODULE_CC1101_MODULE);
+    TEST_ASSERT_EQUAL_INT(33, FAKE_MODULE_UNKNOWN_BIT_6);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -120,5 +139,6 @@ int main(void)
     RUN_TEST(test_truncation_and_null);
     RUN_TEST(test_mutations);
     RUN_TEST(test_caps_rules_and_strings);
+    RUN_TEST(test_the_spi_breakout_declares_mod_spi_and_nothing_else);
     return UNITY_END();
 }

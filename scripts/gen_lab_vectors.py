@@ -32,9 +32,15 @@ of a stream bit by bit (uart_edges()) and restates the estimator of lab_autobaud
 arithmetic, ref_loop() judges a loopback byte by byte, ref_ring() models the ring as a list,
 ref_parse_send() is the grammar of the send file, and the CRC-32 is zlib's.
 
+The SPI vectors (STARK-0706, ADR-0023 §6) are as independent: ref_spi_judge() restates which slot
+may be probed and why not (MOD_SPI and no function bit, the chip select wired, the module known),
+ref_fp_spi() is the textbook FNV-1a over the byte string the request's fingerprint is defined on,
+and ref_spi_flash() / ref_spi_echo() are the two test-only SPI devices of test/fake/fake_lab.h
+written out byte by byte.
+
 Usage:
-  gen_lab_vectors.py            write test/fake/fake_lab_vectors.h, fake_lab_i2c_vectors.h and
-                                fake_lab_uart_vectors.h
+  gen_lab_vectors.py            write test/fake/fake_lab_vectors.h, fake_lab_i2c_vectors.h,
+                                fake_lab_uart_vectors.h and fake_lab_spi_vectors.h
   gen_lab_vectors.py --check    exit 1 if a committed file differs (CI lint)
 """
 import argparse
@@ -48,6 +54,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "test/fake/fake_lab_vectors.h"
 OUT_I2C = ROOT / "test/fake/fake_lab_i2c_vectors.h"
 OUT_UART = ROOT / "test/fake/fake_lab_uart_vectors.h"
+OUT_SPI = ROOT / "test/fake/fake_lab_spi_vectors.h"
 
 TICK_HZ = 240_000_000
 RING = 1024
@@ -1195,11 +1202,213 @@ def render_uart():
     return "\n".join(L)
 
 
+# ---- the SPI probe (STARK-0706, ADR-0023 §6) -----------------------------------------------
+# Written from the rules in components/stark_lab/lab_spi.h and test/fake/fake_lab.h, not from the
+# firmware's code. Module table states in the order of stark_module.h: ABSENT, KNOWN, GENERIC,
+# CONFLICT.
+
+SPI_ABSENT, SPI_KNOWN, SPI_GENERIC, SPI_CONFLICT = 0, 1, 2, 3
+CAP_IR_TX, CAP_IR_RX, CAP_NFC, CAP_SPI, CAP_IRQ, CAP_SUBGHZ = 1, 2, 4, 8, 16, 32
+SPI_DEV_NONE, SPI_DEV_FLASH, SPI_DEV_ECHO = 0, 1, 2
+
+
+def ref_spi_judge(cs, state, declared, unsupported):
+    """(eligible, why): a wired slot that reads KNOWN and declares MOD_SPI and no function bit."""
+    if not cs:
+        return False, "no chip select"
+    if state == SPI_ABSENT:
+        return False, "no module"
+    if state == SPI_GENERIC:
+        return False, "unsupported module" if unsupported else "generic module"
+    if state == SPI_CONFLICT:
+        return False, "conflict"
+    extra = declared & ~(CAP_SPI | CAP_IRQ) & 0xFFFFFFFF
+    if declared & CAP_SPI and not extra:
+        return True, ""
+    if extra:
+        if declared & CAP_SUBGHZ:
+            owner = "Sub-GHz"
+        elif declared & CAP_NFC:
+            owner = "NFC"
+        elif declared & (CAP_IR_TX | CAP_IR_RX):
+            owner = "IR"
+        else:
+            owner = "unknown"
+        return False, "owned by " + owner
+    return False, "no SPI declared"
+
+
+def ref_fp_spi(slot, hz, mode, tx, mod_id, rev, declared):
+    def le(v, n):
+        return bytes((v >> (8 * i)) & 0xFF for i in range(n))
+    return ref_fnv1a(b"S" + bytes([slot]) + le(hz, 4) + bytes([mode, len(tx)]) + bytes(tx)
+                     + le(mod_id, 2) + bytes([rev]) + le(declared, 4))
+
+
+def ref_spi_flash(tx):
+    """MISO of a JEDEC flash class device: zero during the command, then what it returns."""
+    n = len(tx)
+    rx = [0] * n
+    if tx[0] == 0x9F:
+        for i, b in enumerate((0xEF, 0x40, 0x18)):
+            if i + 1 < n:
+                rx[i + 1] = b
+    elif tx[0] == 0x03 and n > 4:
+        addr = (tx[1] << 16) | (tx[2] << 8) | tx[3]
+        for i in range(4, n):
+            rx[i] = (addr + i - 4) & 0xFF
+    return rx
+
+
+def ref_spi_echo(tx):
+    return [0] + list(tx[:-1])
+
+
+def spi_judge_vectors():
+    masks = [0, CAP_SPI, CAP_IRQ, CAP_SPI | CAP_IRQ, CAP_NFC, CAP_NFC | CAP_SPI,
+             CAP_NFC | CAP_IRQ, CAP_NFC | CAP_SPI | CAP_IRQ, CAP_SUBGHZ,
+             CAP_SUBGHZ | CAP_SPI | CAP_IRQ, CAP_SUBGHZ | CAP_SPI, CAP_IR_TX, CAP_IR_RX,
+             CAP_IR_TX | CAP_SPI, CAP_IR_RX | CAP_SPI | CAP_IRQ, 0x40, 0x40 | CAP_SPI,
+             0x80000000, 0x80000000 | CAP_SPI, 0x80000000 | CAP_SPI | CAP_IRQ, 0xFFFFFFFF,
+             CAP_SUBGHZ | CAP_NFC | CAP_SPI]
+    out = []
+    for cs in (True, False):
+        for state in (SPI_ABSENT, SPI_KNOWN, SPI_GENERIC, SPI_CONFLICT):
+            for declared in masks:
+                for unsupported in ((False, True) if state == SPI_GENERIC else (False,)):
+                    ok, why = ref_spi_judge(cs, state, declared, unsupported)
+                    out.append((cs, state, declared, unsupported, ok, why))
+    return out
+
+
+def spi_fp_vectors():
+    rows = []
+    jedec = [0x9F, 0, 0, 0]
+    for slot, hz, mode, tx, ident in (
+            (0, 1000000, 0, jedec, (0x0B01, 1, 0x08)),
+            (1, 1000000, 0, jedec, (0x0B01, 1, 0x08)),
+            (0, 100000, 0, jedec, (0x0B01, 1, 0x08)),
+            (0, 4000000, 0, jedec, (0x0B01, 1, 0x08)),
+            (0, 1000000, 3, jedec, (0x0B01, 1, 0x08)),
+            (0, 1000000, 0, [0x9F, 0, 0, 1], (0x0B01, 1, 0x08)),
+            (0, 1000000, 0, [0x9F, 0, 0], (0x0B01, 1, 0x08)),
+            (0, 1000000, 0, jedec, (0x0B02, 1, 0x08)),
+            (0, 1000000, 0, jedec, (0x0B01, 2, 0x08)),
+            (0, 1000000, 0, jedec, (0x0B01, 1, 0x18)),
+            (0, 250000, 1, [0x05, 0x00], (0x0203, 1, 0x08)),
+            (0, 500000, 2, [0x00] * 4, (0x0202, 1, 0x18)),
+            (0, 2000000, 0, [0xFF] * 32, (0xFFFE, 255, 0x18)),
+            (0, 1000000, 0, [0x5A], (0x0001, 0, 0x08))):
+        rows.append((slot, hz, mode, tx, ident[0], ident[1], ident[2],
+                     ref_fp_spi(slot, hz, mode, tx, *ident)))
+    return rows
+
+
+def spi_dev_vectors():
+    out = []
+    txs = [[0x9F, 0, 0, 0], [0x9F], [0x9F, 0], [0x9F] + [0] * 31, [0x05, 0], [0x05],
+           [0x03, 0x00, 0x00, 0x00, 0, 0, 0, 0], [0x03, 0x12, 0x34, 0xFE, 0, 0, 0, 0, 0],
+           [0x03, 0xFF, 0xFF, 0xFD, 0, 0, 0, 0, 0], [0x03, 0, 0, 0], [0x03], [0x06],
+           [0xC7, 0, 0], [0x02, 0, 0, 0, 0xAA], [0xAA, 0x55, 0xA5, 0x5A], [0x01],
+           list(range(32)), [0xDE, 0xAD, 0xBE, 0xEF]]
+    for tx in txs:
+        out.append((SPI_DEV_FLASH, tx, ref_spi_flash(tx)))
+        out.append((SPI_DEV_ECHO, tx, ref_spi_echo(tx)))
+        out.append((SPI_DEV_NONE, tx, [0] * len(tx)))
+    return out
+
+
+def render_spi():
+    L = [
+        "/* Generated by scripts/gen_lab_vectors.py — do not edit.",
+        " * SPEC-DERIVED, NOT A RECORDING OF A REAL DEVICE (ADR-0023 §6): which slot may be probed and",
+        " * why not, the request's fingerprint (FNV-1a) and what the test-only SPI devices answer,",
+        " * each with the result an independent Python implementation computes.",
+        " * Test infrastructure only. */",
+        "/* clang-format off */",
+        "#pragma once",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "/* state: 0 ABSENT, 1 KNOWN, 2 GENERIC, 3 CONFLICT (stark_module.h) */",
+        "typedef struct {",
+        "    uint8_t cs;",
+        "    uint8_t state;",
+        "    uint8_t unsupported;",
+        "    uint32_t declared;",
+        "    uint8_t eligible;",
+        "    const char *why;",
+        "} fake_lab_spi_judge_vec_t;",
+        "",
+        "typedef struct {",
+        "    uint8_t slot;",
+        "    uint32_t hz;",
+        "    uint8_t mode;",
+        "    const uint8_t *tx;",
+        "    uint8_t n;",
+        "    uint16_t id;",
+        "    uint8_t rev;",
+        "    uint32_t declared;",
+        "    uint32_t fp;",
+        "} fake_lab_spi_fp_vec_t;",
+        "",
+        "/* device: 0 none, 1 flash, 2 echo (fake_lab_spi_mode_t) */",
+        "typedef struct {",
+        "    uint8_t device;",
+        "    const uint8_t *tx;",
+        "    const uint8_t *rx;",
+        "    uint8_t n;",
+        "} fake_lab_spi_dev_vec_t;",
+        "",
+    ]
+
+    def arr(name, vals):
+        L.append("static const uint8_t %s[] = {%s};" % (name, ",".join("0x%02x" % v for v in vals)))
+
+    L.append("static const fake_lab_spi_judge_vec_t fake_lab_spi_judge_vecs[] = {")
+    for cs, state, declared, unsupported, ok, why in spi_judge_vectors():
+        L.append('    {%d, %d, %d, 0x%08xu, %d, "%s"},' % (int(cs), state, int(unsupported),
+                                                          declared, int(ok), why))
+    L.append("};")
+    L.append("#define FAKE_LAB_SPI_JUDGE_VECS (sizeof(fake_lab_spi_judge_vecs) / "
+             "sizeof(fake_lab_spi_judge_vecs[0]))")
+    L.append("")
+
+    fps = spi_fp_vectors()
+    for i, (slot, hz, mode, tx, mid, rev, declared, fp) in enumerate(fps):
+        arr("fake_lab_spi_fptx_%d" % i, tx)
+    L.append("")
+    L.append("static const fake_lab_spi_fp_vec_t fake_lab_spi_fp_vecs[] = {")
+    for i, (slot, hz, mode, tx, mid, rev, declared, fp) in enumerate(fps):
+        L.append("    {%d, %du, %d, fake_lab_spi_fptx_%d, %d, 0x%04x, %d, 0x%08xu, %du}," % (
+            slot, hz, mode, i, len(tx), mid, rev, declared, fp))
+    L.append("};")
+    L.append("#define FAKE_LAB_SPI_FP_VECS (sizeof(fake_lab_spi_fp_vecs) / "
+             "sizeof(fake_lab_spi_fp_vecs[0]))")
+    L.append("")
+
+    devs = spi_dev_vectors()
+    for i, (dev, tx, rx) in enumerate(devs):
+        arr("fake_lab_spi_dtx_%d" % i, tx)
+        arr("fake_lab_spi_drx_%d" % i, rx)
+    L.append("")
+    L.append("static const fake_lab_spi_dev_vec_t fake_lab_spi_dev_vecs[] = {")
+    for i, (dev, tx, rx) in enumerate(devs):
+        L.append("    {%d, fake_lab_spi_dtx_%d, fake_lab_spi_drx_%d, %d}," % (dev, i, i, len(tx)))
+    L.append("};")
+    L.append("#define FAKE_LAB_SPI_DEV_VECS (sizeof(fake_lab_spi_dev_vecs) / "
+             "sizeof(fake_lab_spi_dev_vecs[0]))")
+    L.append("")
+    return "\n".join(L)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args(argv)
-    outputs = ((OUT, render()), (OUT_I2C, render_i2c()), (OUT_UART, render_uart()))
+    outputs = ((OUT, render()), (OUT_I2C, render_i2c()), (OUT_UART, render_uart()),
+               (OUT_SPI, render_spi()))
     if args.check:
         stale = [path for path, text in outputs if not path.exists() or path.read_text() != text]
         for path in stale:

@@ -25,7 +25,7 @@ These are designed properly, thoroughly, and to a professional standard:
 | --- | --- |
 | GPIO read/write/pulse/PWM, frequency & duty measurement | Bench debugging |
 | I²C scanning, register read/write, device identification | Bench debugging |
-| SPI transaction probing | Bench debugging |
+| SPI transaction probing | Bench debugging. Only on a module slot whose module declares SPI and no function (a "SPI breakout"): a slot owned by a driver, the Sub-GHz radio included, is refused at the request, again at the send and again by the transport, so a raw transfer can never set a radio's power table or strobe its transmitter around the transmit policy; one confirmed transaction of 1 to 32 bytes at a time, never repeated, streamed or looped, the lease claimed and released inside it, and only the slot's own chip select ever asserted (the panel and the card on the shared bus are out of reach) (ADR-0023 §6) |
 | UART bridging, monitoring, auto-baud detection | Bench debugging. Our own lines only: the "bridge" is a loopback test on the two lab pins (no USB bridge to a host before V2), the monitor drives nothing, a send is one confirmed press (1 to 32 bytes, never repeated), and what is received goes only to the user's own card (`logs/uart_NNNN.log`, 1 MiB at most) and never to the console log (ADR-0023 §7) |
 | Logic-level timing capture and analysis | Protocol work |
 | IR receive, decode, and replay **of our own devices** | Remote/appliance development |

@@ -349,7 +349,7 @@ receiving is never claimed below V1.
 V0.7 completion means **software / lab-protocol verified**: a pad driven, a wire measured or a
 real peripheral answering is never claimed below V1 (ROADMAP V1 exit 13). Landed so far:
 STARK-0701 (pin safety and the lab seam), STARK-0702 (the GPIO app), STARK-0703 (frequency and duty
-measurement), STARK-0704 (the I²C scanner) and STARK-0705 (the UART tool); the other tools follow in STARK-0706 and 0707.
+measurement), STARK-0704 (the I²C scanner), STARK-0705 (the UART tool) and STARK-0706 (the SPI probe); the self-test follows in STARK-0707.
 
 **What runs where (STARK-0701).**
 * **Host:** the board's pin classes for every number from -1 to 64 and the offer table derived
@@ -473,6 +473,37 @@ measurement), STARK-0704 (the I²C scanner) and STARK-0705 (the UART tool); the 
   parity errors from a real line, levels and the 3.3 V limit, an adapter on the other end, the highest baud the edge
   capture can follow, the glitch when a format change routes TX again, a long log on a real card, and the interrupt
   handling at 921 600 baud with the driver's 2 kB buffer while the card or a flash write holds the CPU (ADR-0023, 0705
+  addendum).
+
+**What runs where (STARK-0706).**
+* **Host:** the probe's rules (`test_lab_spi`, over the real module core and the fake 24C02, the host shim of the transport's
+  SPI group and the test-only SPI devices): which slot may be probed and why not (220 vectors from `scripts/gen_lab_vectors.py`
+  whose independent Python reference decides every state against 22 declared-bit mixes, with and without the chip select, and
+  the transport's own predicate agreeing with it on every one), the request's fingerprint (14 vectors, all distinct), every
+  clock, mode and length at its edges, a request consumed by success, failure, a bad argument and a cancel, stale at 30 s and
+  not before (the clock's wrap included), any changed field or a different module in the slot, a module swapped for a radio or
+  pulled before the send and between the claim and the transfer, a stale lease, a busy slot left alone, and the lease released
+  after every outcome; and that **no path reaches a driver-owned slot**: with the CC1101 module in slot 0 and the fake chip bound
+  behind the SPI model, a PATABLE burst, an `STX` strobe and 32 bytes of `ff` are refused at the request, at a hand-made send and
+  at the transport with a lease the radio's own driver could hold, and the chip's transfer count, PATABLE writes, strobes and
+  MARCSTATE do not move, while the same harness on an eligible slot does reach the chip (the control). The devices'
+  answers (`test_fake_lab`: none, JEDEC flash, echo, `SPI_ERROR`, `NO_ANSWER`, a bound chip) match a second independent Python
+  model (54 vectors); the app's rows (`test_spi_views`) and the real app on the UI port (`test_ui_spi`: both slots with their
+  reason, a driver-owned slot refused with an alert and no traffic, a JEDEC read behind a confirmation whose BACK sends nothing
+  and whose second press asks again, the presets, the clock, mode and byte editors, a 32-byte answer in four hex and four text
+  rows, a module swapped for a radio or pulled after the dialog opened, a stale request, a busy slot, a failing bus, a request
+  that never outlives the app; 16 frames pinned after inspection). `lab_spi.c`, `spi_views.c` and `fake_lab.c` run at 100 % lines.
+* **Emulator, production image:** `v07-spi-prod`: esp-emu answers at 0x50, so slot 0 reads as a generic module and slot 1 has no
+  chip select; the real module table and the real guard refuse both with an alert, no lease is claimed, no transfer is made.
+  No transaction is attempted on this image: its only slot with a chip select reads as a generic module and is refused (nothing
+  was probed on esp-emu's GP-SPI for this task, so no claim is made about what it would answer).
+* **Emulator, test image:** `storage/v07-spi` (catalogue entry 34 and a JEDEC flash: BACK sends nothing, OK makes one transaction
+  with the claim and release visible in the log, a second press asks again, an echo device, then the module swapped for the
+  CC1101 module: `owned by Sub-GHz`, an alert, never claimed by the probe, the Sub-GHz detection unchanged; then an empty slot).
+  The device is the pad model's, spec-derived.
+* **Not proven anywhere before V1:** a transaction on MOSI, MISO and SCK at 100 kHz to 4 MHz in each mode, the panel and the card
+  staying intact while the probe uses the shared bus (no display corruption, a logic-analyser capture of the chip selects), a real
+  flash's JEDEC ID, the refusal on a real Sub-GHz module, and how a breakout's own pull-ups and levels behave (ADR-0023, 0706
   addendum).
 
 ---

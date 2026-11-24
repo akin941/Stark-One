@@ -110,7 +110,7 @@ expect = [
     "module: slot 0 claimed by subghz",
     "subghz: cc1101 version 0x14",
     "module: caps 0x00000027",
-    'menu: sel=15 "Sub-GHz"',
+    'menu: sel=16 "Sub-GHz"',
     # pass 1
     "app: start subghz",
     "subghz: meter 433.920 MHz",

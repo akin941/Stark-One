@@ -873,6 +873,21 @@ target_link_options(run_ui_uart_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVER
 target_link_libraries(run_ui_uart_tests PRIVATE unity)
 add_test(NAME stark_ui_uart_tests COMMAND run_ui_uart_tests)
 
+# The SPI probe (STARK-0706, ADR-0023 §6): its rules over the real module core and fake 24C02, the
+# host shim of the transport's SPI group (the production header's guard), the test-only SPI devices
+# and the fake CC1101 (which must see nothing), against the vectors of scripts/gen_lab_vectors.py.
+add_executable(run_lab_spi_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_spi.c
+    ${STARK_COMPONENTS}/stark_lab/lab_spi.c ${STARK_COMPONENTS}/stark_lab/lab_i2c.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/lab_transport_spi_host.c
+    ${STARK_COMPONENTS}/stark_module/module_desc.c ${STARK_COMPONENTS}/stark_module/module_core.c
+    ${FAKE_LAB} ${FAKE_24C02} ${FAKE_CC1101} ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_lab_spi_tests PRIVATE ${LAB_INCLUDES}
+    ${STARK_COMPONENTS}/stark_subghz_transport/include ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+target_compile_options(run_lab_spi_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_spi_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_spi_tests PRIVATE unity)
+add_test(NAME stark_lab_spi_tests COMMAND run_lab_spi_tests)
+
 # The I2C app (STARK-0704, ADR-0023 §5): its pure editor rows on their own.
 add_executable(run_i2c_views_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_i2c_views.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_i2c/i2c_views.c
@@ -903,6 +918,39 @@ target_compile_options(run_ui_i2c_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_ui_i2c_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_ui_i2c_tests PRIVATE unity)
 add_test(NAME stark_ui_i2c_tests COMMAND run_ui_i2c_tests)
+
+# The SPI app (STARK-0706, ADR-0023 §6): its pure setup rows on their own, and the real app on the
+# UI port over the real rules, the real module core, the transport guard and the test-only devices.
+add_executable(run_spi_views_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_spi_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_spi/spi_views.c
+    ${STARK_COMPONENTS}/stark_lab/lab_spi.c ${STARK_COMPONENTS}/stark_lab/lab_i2c.c
+    ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_spi_views_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_spi)
+target_compile_options(run_spi_views_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_spi_views_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_spi_views_tests PRIVATE unity)
+add_test(NAME stark_spi_views_tests COMMAND run_spi_views_tests)
+
+add_executable(run_ui_spi_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_spi.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_spi/app_spi.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_spi/spi_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_spi.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/lab_transport_spi_host.c
+    ${STARK_COMPONENTS}/stark_lab/lab_spi.c
+    ${STARK_COMPONENTS}/stark_lab/lab_i2c.c
+    ${STARK_COMPONENTS}/stark_module/module_desc.c
+    ${STARK_COMPONENTS}/stark_module/module_core.c
+    ${FAKE_LAB} ${FAKE_24C02}
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_spi_tests BEFORE PRIVATE ${UI_PORT_INCLUDES} ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_spi)
+target_compile_options(run_ui_spi_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_spi_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_spi_tests PRIVATE unity)
+add_test(NAME stark_ui_spi_tests COMMAND run_ui_spi_tests)
 
 # The real NFC app on the UI port (STARK-0404) with a fake stark_nfc.
 add_executable(run_ui_nfc_tests

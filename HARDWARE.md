@@ -166,6 +166,14 @@ GPIOs; a header of spare lab pins is a V1 hardware requirement.
   releases and routes the TX pad once (a glitch on a wired line: a V1 check). Auto-baud listens to the RX pad
   for up to 2 s. Real baud, levels, an adapter on the other end and the highest baud the edge capture can follow
   (a bit at 921 600 is 1.09 µs) are V1 checks (ROADMAP V1 exit 13).
+* **SPI probe (STARK-0706)** talks to a module slot through `stark_module`'s lease, on the slot's own `MOD_CS`
+  (slot 0: GPIO 40) over the shared SPI2 bus (MOSI, MISO and SCK as the panel and the card use them), at 100 kHz
+  to 4 MHz, SPI mode 0 to 3, 1 to 32 bytes per transaction. It is offered only for a module whose descriptor
+  declares `MOD_SPI` and no function bit; a slot with a Sub-GHz, NFC or unknown module is refused, and slot 1
+  has no `MOD_CS` at all, so it is refused too. The panel's and the card's chip selects cannot be named by the
+  probe. 3.3 V logic only; a SPI breakout's own pull-ups and levels are the user's to check. A real flash's
+  JEDEC ID, the panel and the card staying intact while the probe runs (no display corruption, a logic-analyser
+  capture of the transaction) and the refusal on a real Sub-GHz module are V1 checks (ROADMAP V1 exit 13).
 * **Module ID EEPROMs (0x50, 0x51) are never written** by the I²C tool (ADR-0021 §2; a 16-bit
   register read of one is refused too, since its second byte would be written), the PN532 is not
   touched at all while NFC is confirmed, and the SPI probe is refused on any slot whose module declares a function (ADR-0023 §6).

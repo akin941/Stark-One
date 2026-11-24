@@ -6,18 +6,19 @@
 # (STARK-0306).
 name = "emu-v03-ir-app"
 image = "storage"
-end_ms = 3600
+end_ms = 3700
 heap_min = 200000
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
     { key = "UP", at_ms = 400, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 500, hold_ms = 60 },     # Modules (STARK-0505)
     { key = "UP", at_ms = 600, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
-    { key = "UP", at_ms = 700, hold_ms = 60 },     # NFC (STARK-0404)
-    { key = "UP", at_ms = 800, hold_ms = 60 },     # IR
-    { key = "OK", at_ms = 900, hold_ms = 60 },
-    { key = "OK", at_ms = 1300, hold_ms = 60 },    # Save last
-    { key = "BACK", at_ms = 2600, hold_ms = 60 },
+    { key = "UP", at_ms = 700, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 800, hold_ms = 60 },     # NFC (STARK-0404)
+    { key = "UP", at_ms = 900, hold_ms = 60 },     # IR
+    { key = "OK", at_ms = 1000, hold_ms = 60 },
+    { key = "OK", at_ms = 1400, hold_ms = 60 },    # Save last
+    { key = "BACK", at_ms = 2700, hold_ms = 60 },
 ]
 expect = [
     "storage: mounted emu-flashfat",
