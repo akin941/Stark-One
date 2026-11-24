@@ -7,7 +7,7 @@
 # 1 kB. Overruns are reported, never asserted (ADR-0011). 16 app visits,
 # activity ends at 48270 ms. Outside the default set (test/emu/soak/).
 name = "emu-v01-soak"
-end_ms = 62500
+end_ms = 62720
 heap_min = 200000
 heap_delta_max = 1024
 wall_limit_s = 1800
@@ -55,54 +55,56 @@ presses = [
     { key = "DOWN", at_ms = 21740, hold_ms = 60 },  # ... wraps to About
     { key = "DOWN", at_ms = 21850, hold_ms = 60 },  # one more: the walk crosses GPIO (STARK-0702)
     { key = "DOWN", at_ms = 21960, hold_ms = 60 },  # and I2C (STARK-0704)
-    { key = "OK", at_ms = 22110, hold_ms = 60 },
-    { key = "BACK", at_ms = 23620, hold_ms = 60 },
-    { key = "DOWN", at_ms = 23930, hold_ms = 60 },
-    { key = "OK", at_ms = 24240, hold_ms = 60 },
-    { key = "BACK", at_ms = 26550, hold_ms = 60 },
-    { key = "DOWN", at_ms = 26860, hold_ms = 60 },
-    { key = "OK", at_ms = 27170, hold_ms = 60 },
-    { key = "OK", at_ms = 27480, hold_ms = 60 },
-    { key = "OK", at_ms = 27790, hold_ms = 60 },
-    { key = "OK", at_ms = 28100, hold_ms = 60 },
-    { key = "DOWN", at_ms = 28410, hold_ms = 60 },
-    { key = "OK", at_ms = 28720, hold_ms = 60 },
-    { key = "BACK", at_ms = 29030, hold_ms = 60 },
-    { key = "DOWN", at_ms = 29340, hold_ms = 60 },
-    { key = "OK", at_ms = 29650, hold_ms = 60 },
-    { key = "DOWN", at_ms = 30960, hold_ms = 60 },
-    { key = "OK", at_ms = 31270, hold_ms = 60 },
-    { key = "OK", at_ms = 31880, hold_ms = 60 },
-    { key = "OK", at_ms = 32190, hold_ms = 60 },
-    { key = "BACK", at_ms = 32500, hold_ms = 700 },
-    { key = "DOWN", at_ms = 33450, hold_ms = 60 },
-    { key = "OK", at_ms = 33760, hold_ms = 60 },
-    { key = "OK", at_ms = 34070, hold_ms = 60 },
-    { key = "BACK", at_ms = 34880, hold_ms = 60 },
-    { key = "DOWN", at_ms = 35190, hold_ms = 60 },
-    { key = "OK", at_ms = 35500, hold_ms = 60 },
-    { key = "BACK", at_ms = 37810, hold_ms = 60 },
-    { key = "DOWN", at_ms = 38120, hold_ms = 60 },
-    { key = "OK", at_ms = 38430, hold_ms = 60 },
-    { key = "UP", at_ms = 38740, hold_ms = 60 },
-    { key = "LEFT", at_ms = 39050, hold_ms = 60 },
-    { key = "RIGHT", at_ms = 39360, hold_ms = 60 },
-    { key = "BACK", at_ms = 39670, hold_ms = 60 },
-    { key = "DOWN", at_ms = 39980, hold_ms = 60 },
-    { key = "OK", at_ms = 40290, hold_ms = 60 },
-    { key = "BACK", at_ms = 42600, hold_ms = 60 },
-    { key = "DOWN", at_ms = 42710, hold_ms = 60 },  # Hello -> IR (STARK-0305)
-    { key = "DOWN", at_ms = 42820, hold_ms = 60 },  # ... NFC (STARK-0404)
-    { key = "DOWN", at_ms = 42930, hold_ms = 60 },  # ... Settings (STARK-0205)
-    { key = "DOWN", at_ms = 43040, hold_ms = 60 },  # ... Storage (STARK-0202)
-    { key = "DOWN", at_ms = 43150, hold_ms = 60 },  # ... wraps to About
-    { key = "DOWN", at_ms = 43260, hold_ms = 60 },  # one more: the walk crosses GPIO (STARK-0702)
-    { key = "DOWN", at_ms = 43370, hold_ms = 60 },  # and I2C (STARK-0704)
-    { key = "OK", at_ms = 43520, hold_ms = 60 },
-    { key = "BACK", at_ms = 45030, hold_ms = 60 },
-    { key = "DOWN", at_ms = 45340, hold_ms = 60 },
-    { key = "OK", at_ms = 45650, hold_ms = 60 },
-    { key = "BACK", at_ms = 47960, hold_ms = 60 },
+    { key = "DOWN", at_ms = 22070, hold_ms = 60 },  # and UART (STARK-0705)
+    { key = "OK", at_ms = 22220, hold_ms = 60 },
+    { key = "BACK", at_ms = 23730, hold_ms = 60 },
+    { key = "DOWN", at_ms = 24040, hold_ms = 60 },
+    { key = "OK", at_ms = 24350, hold_ms = 60 },
+    { key = "BACK", at_ms = 26660, hold_ms = 60 },
+    { key = "DOWN", at_ms = 26970, hold_ms = 60 },
+    { key = "OK", at_ms = 27280, hold_ms = 60 },
+    { key = "OK", at_ms = 27590, hold_ms = 60 },
+    { key = "OK", at_ms = 27900, hold_ms = 60 },
+    { key = "OK", at_ms = 28210, hold_ms = 60 },
+    { key = "DOWN", at_ms = 28520, hold_ms = 60 },
+    { key = "OK", at_ms = 28830, hold_ms = 60 },
+    { key = "BACK", at_ms = 29140, hold_ms = 60 },
+    { key = "DOWN", at_ms = 29450, hold_ms = 60 },
+    { key = "OK", at_ms = 29760, hold_ms = 60 },
+    { key = "DOWN", at_ms = 31070, hold_ms = 60 },
+    { key = "OK", at_ms = 31380, hold_ms = 60 },
+    { key = "OK", at_ms = 31990, hold_ms = 60 },
+    { key = "OK", at_ms = 32300, hold_ms = 60 },
+    { key = "BACK", at_ms = 32610, hold_ms = 700 },
+    { key = "DOWN", at_ms = 33560, hold_ms = 60 },
+    { key = "OK", at_ms = 33870, hold_ms = 60 },
+    { key = "OK", at_ms = 34180, hold_ms = 60 },
+    { key = "BACK", at_ms = 34990, hold_ms = 60 },
+    { key = "DOWN", at_ms = 35300, hold_ms = 60 },
+    { key = "OK", at_ms = 35610, hold_ms = 60 },
+    { key = "BACK", at_ms = 37920, hold_ms = 60 },
+    { key = "DOWN", at_ms = 38230, hold_ms = 60 },
+    { key = "OK", at_ms = 38540, hold_ms = 60 },
+    { key = "UP", at_ms = 38850, hold_ms = 60 },
+    { key = "LEFT", at_ms = 39160, hold_ms = 60 },
+    { key = "RIGHT", at_ms = 39470, hold_ms = 60 },
+    { key = "BACK", at_ms = 39780, hold_ms = 60 },
+    { key = "DOWN", at_ms = 40090, hold_ms = 60 },
+    { key = "OK", at_ms = 40400, hold_ms = 60 },
+    { key = "BACK", at_ms = 42710, hold_ms = 60 },
+    { key = "DOWN", at_ms = 42820, hold_ms = 60 },  # Hello -> IR (STARK-0305)
+    { key = "DOWN", at_ms = 42930, hold_ms = 60 },  # ... NFC (STARK-0404)
+    { key = "DOWN", at_ms = 43040, hold_ms = 60 },  # ... Settings (STARK-0205)
+    { key = "DOWN", at_ms = 43150, hold_ms = 60 },  # ... Storage (STARK-0202)
+    { key = "DOWN", at_ms = 43260, hold_ms = 60 },  # ... wraps to About
+    { key = "DOWN", at_ms = 43370, hold_ms = 60 },  # one more: the walk crosses GPIO (STARK-0702)
+    { key = "DOWN", at_ms = 43480, hold_ms = 60 },  # and I2C (STARK-0704)
+    { key = "DOWN", at_ms = 43590, hold_ms = 60 },  # and UART (STARK-0705)
+    { key = "OK", at_ms = 43740, hold_ms = 60 },
+    { key = "BACK", at_ms = 45250, hold_ms = 60 },
+    { key = "DOWN", at_ms = 45560, hold_ms = 60 },
+    { key = "OK", at_ms = 45870, hold_ms = 60 },
+    { key = "BACK", at_ms = 48180, hold_ms = 60 },
 ]
 expect = [
     "app: start about",

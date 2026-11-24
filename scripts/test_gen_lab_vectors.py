@@ -205,20 +205,24 @@ class Output(unittest.TestCase):
 
     def test_check_mode(self):
         with tempfile.TemporaryDirectory() as d:
-            old, old_i2c = gen.OUT, gen.OUT_I2C
+            old, old_i2c, old_uart = gen.OUT, gen.OUT_I2C, gen.OUT_UART
             try:
                 gen.OUT = Path(d) / "fake_lab_vectors.h"
                 gen.OUT_I2C = Path(d) / "fake_lab_i2c_vectors.h"
+                gen.OUT_UART = Path(d) / "fake_lab_uart_vectors.h"
                 self.assertEqual(gen.main(["--check"]), 1)  # missing
                 self.assertEqual(gen.main([]), 0)
                 self.assertEqual(gen.main(["--check"]), 0)
                 gen.OUT.write_text("stale")
                 self.assertEqual(gen.main(["--check"]), 1)
                 self.assertEqual(gen.main([]), 0)
-                gen.OUT_I2C.write_text("stale")  # either file being stale fails the check
+                gen.OUT_I2C.write_text("stale")  # any file being stale fails the check
+                self.assertEqual(gen.main(["--check"]), 1)
+                self.assertEqual(gen.main([]), 0)
+                gen.OUT_UART.write_text("stale")
                 self.assertEqual(gen.main(["--check"]), 1)
             finally:
-                gen.OUT, gen.OUT_I2C = old, old_i2c
+                gen.OUT, gen.OUT_I2C, gen.OUT_UART = old, old_i2c, old_uart
 
     def test_the_committed_header_is_current(self):
         self.assertEqual(gen.main(["--check"]), 0)
@@ -229,6 +233,130 @@ class Output(unittest.TestCase):
                      "FAKE_LAB_PLAN_VECS"):
             self.assertIn(name, text)
         self.assertIn("SPEC-DERIVED, NOT A RECORDING", text)
+
+
+class UartReference(unittest.TestCase):
+    """STARK-0705: the independent restatement of the UART tool's rules."""
+
+    def test_wire_time_rounds_up_and_the_window_is_twice_it_plus_20_ms(self):
+        self.assertEqual(gen.uart_bits(0), 10)
+        self.assertEqual(gen.uart_bits(1), 11)
+        self.assertEqual(gen.uart_bits(3), 11)
+        self.assertEqual(gen.uart_bits(4), 10)
+        self.assertEqual(gen.ref_wire_ms(64, 115200, 0), 6)  # 5.56 ms
+        self.assertEqual(gen.ref_wire_ms(64, 1200, 3), 587)  # 586.7 ms
+        self.assertEqual(gen.ref_window_ms(115200, 0), 32)
+        self.assertEqual(gen.ref_window_ms(1200, 3), 1194)
+
+    def test_the_ring_keeps_the_newest_bytes_and_counts_the_rest(self):
+        self.assertEqual(gen.ref_ring(8, 5, 1), (5, 0, [0, 1, 2, 3, 4]))
+        count, lost, kept = gen.ref_ring(8, 20, 3)
+        self.assertEqual((count, lost, kept), (8, 12, list(range(12, 20))))
+        count, lost, kept = gen.ref_ring(4096, 9000, 64)
+        self.assertEqual((count, lost), (4096, 9000 - 4096))
+        self.assertEqual(kept[0], 4904 & 0xFF)
+
+    def test_loopback_judgement(self):
+        p = list(range(64))
+        self.assertEqual(gen.ref_loop(p, 64, 0, 0, 0), (gen.LOOP_OK, 64, 0, -1))
+        self.assertEqual(gen.ref_loop([], 64, 0, 0, 0), (gen.LOOP_NO_DATA, 0, 64, 0))
+        self.assertEqual(gen.ref_loop([], 64, 3, 0, 1), (gen.LOOP_NO_DATA, 0, 68, 0))
+        self.assertEqual(gen.ref_loop(p, 64, 2, 0, 0), (gen.LOOP_LINE_ERRORS, 64, 2, -1))
+        flipped = p[:5] + [p[5] ^ 1] + p[6:]
+        self.assertEqual(gen.ref_loop(flipped, 64, 0, 0, 0), (gen.LOOP_MISMATCH, 64, 1, 5))
+        self.assertEqual(gen.ref_loop(p[:40], 64, 0, 0, 0), (gen.LOOP_MISMATCH, 40, 24, 40))
+        self.assertEqual(gen.ref_loop(p + [9], 64, 0, 0, 0), (gen.LOOP_MISMATCH, 65, 1, 64))
+        # a mismatch is never a success, whatever else is true
+        for v in gen.loop_vectors():
+            name, rx, sent, f, pa, o, status, received, errors, first = v
+            if status == gen.LOOP_OK:
+                self.assertEqual((errors, first), (0, -1), name)
+
+    def test_rows(self):
+        self.assertEqual(gen.ref_hex_row([0, 0x41, 0xFF], 64), "00 41 ff")
+        self.assertEqual(gen.ref_hex_row([0, 0x41, 0xFF], 7), "00 41")  # "00 41 ff" needs 9
+        self.assertEqual(gen.ref_hex_row([1], 0), "")
+        self.assertEqual(gen.ref_ascii_row([0x41, 0x7F, 0x20, 0x1F], 64), "A. .")
+        self.assertEqual(gen.ref_ascii_row([0x41, 0x42], 2), "A")
+
+    def test_the_send_file(self):
+        P = gen.ref_parse_send
+        self.assertEqual(P(b"AT\r\n"), (gen.FILE_OK, [0x41, 0x54]))
+        self.assertEqual(P(b"hex:41 54 0d 0a"), (gen.FILE_OK, [0x41, 0x54, 0x0D, 0x0A]))
+        self.assertEqual(P(b"hex:4a4B"), (gen.FILE_OK, [0x4A, 0x4B]))
+        self.assertEqual(P(b""), (gen.FILE_EMPTY, []))
+        self.assertEqual(P(b"hex:"), (gen.FILE_EMPTY, []))
+        self.assertEqual(P(b"x" * 33)[0], gen.FILE_TOO_BIG)
+        self.assertEqual(P(b"x" * 1025)[0], gen.FILE_TOO_BIG)
+        self.assertEqual(P(b"a\tb")[0], gen.FILE_BAD)
+        self.assertEqual(P(b"hex:4")[0], gen.FILE_BAD)
+        self.assertEqual(P(b"hex:0x41")[0], gen.FILE_BAD)
+        self.assertEqual(P(b"hexagon"), (gen.FILE_OK, list(b"hexagon")))  # only `hex:` is hex
+        self.assertEqual(P(b"hex:" + b"41 " * 33)[0], gen.FILE_TOO_BIG)
+
+    def test_log_names_and_crc(self):
+        self.assertEqual(gen.ref_log_name("uart_0001.log"), (True, 1))
+        self.assertEqual(gen.ref_log_name("uart_9999.log"), (True, 9999))
+        self.assertEqual(gen.ref_log_name("uart_001.log"), (False, 0))
+        self.assertEqual(gen.ref_log_name("uart_000a.log"), (False, 0))
+        parse, nxt = gen.name_vectors()
+        self.assertEqual([n for n in nxt if n[1]], [(9999, True, "")])
+        self.assertEqual(gen.zlib.crc32(b"123456789"), 0xCBF43926)
+
+    def test_the_scenes_are_what_the_fake_peer_says_and_the_log_scenario_names_their_crc(self):
+        text = gen.scene_text()
+        self.assertEqual(len(text), 1300)
+        self.assertTrue(text.startswith(b"stark uart scene line 00\r\n"))
+        self.assertTrue(text.endswith(b"stark uart scene line 49\r\n"))
+        self.assertEqual(len(gen.scene_binary()), 1024)
+        scenario = (gen.ROOT / "test/emu/storage/v07-uart-log.toml").read_text()
+        self.assertIn("crc 0x%08x" % gen.zlib.crc32(text), scenario)
+        self.assertIn("crc 0x%08x" % gen.zlib.crc32(gen.scene_binary()), scenario)
+
+    def test_a_frame_is_start_data_lsb_first_parity_stop(self):
+        self.assertEqual(gen.frame_bits(0x41, 0), [0, 1, 0, 0, 0, 0, 0, 1, 0, 1])  # 'A' 8N1
+        self.assertEqual(gen.frame_bits(0x03, 1), [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1])  # 8E1: two ones
+        self.assertEqual(gen.frame_bits(0x01, 1)[9], 1)  # an odd count gets an even parity bit of 1
+        self.assertEqual(gen.frame_bits(0x01, 2)[9], 0)  # and an odd-parity bit of 0
+        self.assertEqual(gen.frame_bits(0x00, 3), [0] + [0] * 8 + [1, 1])  # 8N2
+        self.assertEqual(len(gen.frame_bits(0x7F, 4)), 10)  # 7E1
+
+    def test_edges_are_ordered_and_spaced_by_the_bit_time(self):
+        ts = gen.uart_edges(bytes([0x55] * 4), 115200, 0, 1000)
+        self.assertEqual(ts[0], 1000)
+        self.assertTrue(all(b > a for a, b in zip(ts, ts[1:])))
+        self.assertTrue(all(abs((b - a) - gen.TICK_HZ // 115200) <= 1 for a, b in zip(ts, ts[1:])))
+        wrapped = gen.uart_edges(bytes([0x55] * 4), 115200, 0, 0xFFFFFF00)
+        self.assertTrue(all(0 <= t <= 0xFFFFFFFF for t in wrapped))
+
+    def test_every_listed_baud_is_named_and_every_status_appears(self):
+        vs = gen.autobaud_vectors()
+        named = {v[3] for v in vs if v[3]}
+        self.assertEqual(named, set(gen.UART_BAUDS))
+        self.assertEqual({v[4] for v in vs}, set(range(5)))
+        names = [v[0] for v in vs]
+        self.assertEqual(len(names), len(set(names)))
+        self.assertGreaterEqual(len(vs), 60)
+
+    def test_the_snap_is_3_percent(self):
+        for baud in (9600, 115200):
+            for pct, ok in ((-2.9, True), (2.9, True), (-3.1, False), (3.1, False)):
+                period = gen.TICK_HZ / (baud * (1 + pct / 100))
+                ts = [int(i * period) for i in range(40)]
+                status = gen.ref_autobaud(ts, gen.TICK_HZ)[0]
+                self.assertEqual(status == gen.BAUD_OK, ok, (baud, pct))
+
+    def test_hostile_input(self):
+        A = gen.ref_autobaud
+        T = gen.TICK_HZ
+        self.assertEqual(A([], T)[0], gen.BAUD_TOO_FEW)
+        self.assertEqual(A(list(range(15)), T)[0], gen.BAUD_TOO_FEW)
+        self.assertEqual(A([5000] * 20, T)[0], gen.BAUD_NO_PULSE)
+        self.assertEqual(A([i * 2000 for i in range(20)], 0)[0], gen.BAUD_INVALID)
+        self.assertEqual(A(list(range(0, 5000 * 10, 5000)) + [1] + list(range(0, 50000, 5000)),
+                           T)[0], gen.BAUD_INVALID)
+        self.assertEqual(A([0] * 2049, T)[0], gen.BAUD_INVALID)
+        self.assertEqual(A([i * 2500 for i in range(20)], T)[0], gen.BAUD_UNKNOWN)  # 96 000
 
 
 if __name__ == "__main__":

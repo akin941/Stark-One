@@ -10,40 +10,41 @@
 # an LED, light or a receiver (V1 hardware checks).
 name = "emu-v03-replay"
 image = "storage"
-end_ms = 11500
+end_ms = 11600
 heap_min = 200000
 rmt_loopback = "0:2"
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
     { key = "UP", at_ms = 400, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 500, hold_ms = 60 },     # Modules (STARK-0505)
-    { key = "UP", at_ms = 600, hold_ms = 60 },     # NFC (STARK-0404)
-    { key = "UP", at_ms = 700, hold_ms = 60 },     # IR
-    { key = "OK", at_ms = 800, hold_ms = 60 },
-    { key = "DOWN", at_ms = 1100, hold_ms = 60 },  # Browse saved
-    { key = "OK", at_ms = 1300, hold_ms = 60 },    # 9 files; lab_bad disabled
-    { key = "OK", at_ms = 1800, hold_ms = 60 },    # lab_nec.ir (first enabled)
-    { key = "OK", at_ms = 2200, hold_ms = 60 },    # confirm
-    { key = "BACK", at_ms = 3000, hold_ms = 60 },  # back to the receive view
-    { key = "OK", at_ms = 3300, hold_ms = 60 },    # Save last
-    { key = "DOWN", at_ms = 3800, hold_ms = 60 },
-    { key = "OK", at_ms = 4000, hold_ms = 60 },    # 10 files, ir_0001.ir first
-    { key = "OK", at_ms = 4500, hold_ms = 60 },
-    { key = "OK", at_ms = 4900, hold_ms = 60 },    # confirm
-    { key = "DOWN", at_ms = 5600, hold_ms = 60 },  # lab_nec (lab_bad skipped)
-    { key = "DOWN", at_ms = 5750, hold_ms = 60 },  # lab_necx
-    { key = "DOWN", at_ms = 5900, hold_ms = 60 },  # lab_raw
-    { key = "OK", at_ms = 6200, hold_ms = 60 },
-    { key = "OK", at_ms = 6600, hold_ms = 60 },    # confirm
-    { key = "OK", at_ms = 7500, hold_ms = 60 },
-    { key = "BACK", at_ms = 7900, hold_ms = 60 },  # cancel
-    { key = "OK", at_ms = 8400, hold_ms = 60 },
-    { key = "OK", at_ms = 8700, hold_ms = 60 },    # confirm: sent
-    { key = "OK", at_ms = 8900, hold_ms = 60 },
-    { key = "OK", at_ms = 9200, hold_ms = 60 },    # confirm: inside 1 s
-    { key = "OK", at_ms = 9700, hold_ms = 60 },    # dismiss the alert
-    { key = "BACK", at_ms = 10300, hold_ms = 60 }, # list -> view
-    { key = "BACK", at_ms = 10700, hold_ms = 60 }, # leave the app
+    { key = "UP", at_ms = 600, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
+    { key = "UP", at_ms = 700, hold_ms = 60 },     # NFC (STARK-0404)
+    { key = "UP", at_ms = 800, hold_ms = 60 },     # IR
+    { key = "OK", at_ms = 900, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1200, hold_ms = 60 },  # Browse saved
+    { key = "OK", at_ms = 1400, hold_ms = 60 },    # 9 files; lab_bad disabled
+    { key = "OK", at_ms = 1900, hold_ms = 60 },    # lab_nec.ir (first enabled)
+    { key = "OK", at_ms = 2300, hold_ms = 60 },    # confirm
+    { key = "BACK", at_ms = 3100, hold_ms = 60 },  # back to the receive view
+    { key = "OK", at_ms = 3400, hold_ms = 60 },    # Save last
+    { key = "DOWN", at_ms = 3900, hold_ms = 60 },
+    { key = "OK", at_ms = 4100, hold_ms = 60 },    # 10 files, ir_0001.ir first
+    { key = "OK", at_ms = 4600, hold_ms = 60 },
+    { key = "OK", at_ms = 5000, hold_ms = 60 },    # confirm
+    { key = "DOWN", at_ms = 5700, hold_ms = 60 },  # lab_nec (lab_bad skipped)
+    { key = "DOWN", at_ms = 5850, hold_ms = 60 },  # lab_necx
+    { key = "DOWN", at_ms = 6000, hold_ms = 60 },  # lab_raw
+    { key = "OK", at_ms = 6300, hold_ms = 60 },
+    { key = "OK", at_ms = 6700, hold_ms = 60 },    # confirm
+    { key = "OK", at_ms = 7600, hold_ms = 60 },
+    { key = "BACK", at_ms = 8000, hold_ms = 60 },  # cancel
+    { key = "OK", at_ms = 8500, hold_ms = 60 },
+    { key = "OK", at_ms = 8800, hold_ms = 60 },    # confirm: sent
+    { key = "OK", at_ms = 9000, hold_ms = 60 },
+    { key = "OK", at_ms = 9300, hold_ms = 60 },    # confirm: inside 1 s
+    { key = "OK", at_ms = 9800, hold_ms = 60 },    # dismiss the alert
+    { key = "BACK", at_ms = 10400, hold_ms = 60 }, # list -> view
+    { key = "BACK", at_ms = 10800, hold_ms = 60 }, # leave the app
 ]
 expect = [
     "storage: mounted emu-flashfat",

@@ -26,7 +26,7 @@ These are designed properly, thoroughly, and to a professional standard:
 | GPIO read/write/pulse/PWM, frequency & duty measurement | Bench debugging |
 | I²C scanning, register read/write, device identification | Bench debugging |
 | SPI transaction probing | Bench debugging |
-| UART bridging, monitoring, auto-baud detection | Bench debugging |
+| UART bridging, monitoring, auto-baud detection | Bench debugging. Our own lines only: the "bridge" is a loopback test on the two lab pins (no USB bridge to a host before V2), the monitor drives nothing, a send is one confirmed press (1 to 32 bytes, never repeated), and what is received goes only to the user's own card (`logs/uart_NNNN.log`, 1 MiB at most) and never to the console log (ADR-0023 §7) |
 | Logic-level timing capture and analysis | Protocol work |
 | IR receive, decode, and replay **of our own devices** | Remote/appliance development |
 | NFC tag reading, technology identification, NDEF read/write **on tags we own** | Tag development |

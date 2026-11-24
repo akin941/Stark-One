@@ -76,6 +76,8 @@ bump is a deliberate change with a full emulator run — never "latest".
 | I²C sweep 0x08 to 0x77 and register access (STARK-0701 probe) | ✅ 112 `i2c_master_probe` calls (5 ms timeout each, about 3.2 ms of emulated time in all): exactly **0x50** answers; a write to 0x51 at 400 kHz returns `ESP_ERR_INVALID_RESPONSE` (264, the address NACK). The built-in EEPROM at 0x50 reads zeros **and accepts writes**: A5 5A written at register 0x10 is read back from register 0x10 (a plain read after a write returned zeros). Correction to the "reads zeros" fact above: the bus does not refuse a write there, so STARK-0704's refusal of writes to 0x50 is firmware's, never the bus's |
 | The GPIO interrupt service and an any-edge handler (STARK-0703, `v07-measure-prod`) | ✅ `gpio_install_isr_service(ESP_INTR_FLAG_IRAM)`, `gpio_set_intr_type(GPIO_INTR_ANYEDGE)`, `gpio_isr_handler_add` with an `IRAM_ATTR` handler and the removal again all return OK on the production image; an unconnected pull-up pad raises no interrupt in a 20 ms gate and a 4 s window (the pad reads high throughout), so the Measure row answers `no signal (high)`; no `gpio:` error line. A pad the firmware toggles itself raised 20 of 20 interrupts in the STARK-0701 probe, but the GPIO app never measures a pad it drives, so no edge is ever stamped in the production image |
 | The I²C app on the production image (STARK-0704, `v07-i2c-prod`) | ✅ The scan (112 `i2c_master_probe` calls through the lab transport, 5 ms each) logs `lab: i2c scan found 0x50`: **the whole list is 0x50**, so 0x10, 0x24, 0x51 and 0x52 NACK as the STARK-0701 probe found. A register read of 0x50 (8 bytes from register 0, one `i2c_master_transmit_receive` on a device handle attached for the call and removed after it) returns eight zeros, and the handle coexists with the module task's own handle at the same address. A write to 0x50 is refused by the service before the bus is touched (the emulator's EEPROM would take it), no confirmation is asked, and a read after it is zero again. No second device and no waveform exist in the emulator, so this is the real driver and transport on the one thing the model has, never evidence of a device |
+| UART1 bridged to a host peer, `--uart1-tcp` (STARK-0705 probe, 2026-11-24, throwaway task on the production image, not committed) | ✅ on the **S3 model** (upstream verified it on C3 and P4 only). `uart_driver_install(UART_NUM_1, 4096, 0, 0, NULL, 0)`, `uart_param_config` (115 200 8N1) and `uart_set_pin(38, 39)` return OK; the emulator listens and the host peer connects (the bridge does not depend on the pins). The device's 64-byte pattern `00..3f` reaches the peer intact; the peer's 1 000, 3 000 and 20 000 bytes in one burst come back through the device's echo task identical, **none lost** (the driver's 4 kB buffer is drained by the task as it fills); the first 256 bytes of the reply arrive 174 µs of emulated time after the device sent. **No baud timing**: 20 000 bytes make the round trip in 0.08 s of wall time where 115 200 baud needs 1.7 s each way, so bytes arrive at once whatever baud is configured, and framing, parity and noise cannot be produced. The emulated clock runs at about 0.3× wall time, so a peer that answers within a millisecond of wall time answers within microseconds of emulated time. With no client connected TX is discarded (the harness fails a scenario whose peer cannot connect) |
+| The UART app on the production image (STARK-0705, `v07-uart-prod`) | ✅ A host peer on `--uart1-tcp` (`uart1_peer = "echo"`: it sends back every byte it receives and nothing of its own). The monitor opens the real driver receive-only (no TX pad routed; the peer is silent) and BACK removes it and releases both pins; the loopback view asks the confirmation once, routes TX, sends the 64-byte pattern as two writes of 32 and reads it back **64/64 ok** at 115 200, then at 230 400 (the driver's baud changes) and at 230 400 8E1 (the driver is installed again, TX still routed; ESP-IDF logs `GPIO 38 is not usable, maybe used by others` there: its own reservation of the previous install); leaving removes the driver and releases both pins. This is the real driver, transport and service on the one thing the model has: byte transport. It never shows a baud rate, a level or an error (the model produces none) |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 
 **Not available, and not faked:**
@@ -347,7 +349,7 @@ receiving is never claimed below V1.
 V0.7 completion means **software / lab-protocol verified**: a pad driven, a wire measured or a
 real peripheral answering is never claimed below V1 (ROADMAP V1 exit 13). Landed so far:
 STARK-0701 (pin safety and the lab seam), STARK-0702 (the GPIO app), STARK-0703 (frequency and duty
-measurement) and STARK-0704 (the I²C scanner); the other tools follow in STARK-0705 to 0707.
+measurement), STARK-0704 (the I²C scanner) and STARK-0705 (the UART tool); the other tools follow in STARK-0706 and 0707.
 
 **What runs where (STARK-0701).**
 * **Host:** the board's pin classes for every number from -1 to 64 and the offer table derived
@@ -444,6 +446,34 @@ measurement) and STARK-0704 (the I²C scanner); the other tools follow in STARK-
 * **Not proven anywhere before V1:** a real device at its address, pull-ups, the 100 and 400 kHz waveforms,
   bus recovery after a device is pulled mid-transaction, and the lab's temporary device handle sharing the
   bus with the NFC and module handles at the real clocks (ADR-0023, 0704 addendum 2).
+
+**What runs where (STARK-0705).**
+* **Host:** the data rules (`test_lab_uart`: wire times and the loopback window, the 4 kB ring and its loss count over 14
+  sequences, the judgement of 21 loopbacks, 29 hex and ASCII rows, 41 send files against the strict grammar, the log
+  names, zlib's CRC-32, and the fake peer's two scenes against the CRC-32 the generator computes), auto-baud
+  (`test_lab_autobaud`: 72 edge sets from `scripts/gen_lab_vectors.py` whose independent Python estimator names the baud
+  at every baud and format, with jitter, runs of identical bits, idle gaps and spikes, the 3 % snap from both sides, bauds
+  that are not on the list, too few edges, glitches, a missing clock and stamps that go backwards; and the fake peer's own
+  stream read back at every baud and format), the session over the real pin hold, the host shim of the production guard
+  and the peer (`test_lab_uart_svc`: both pins held while open and free after every exit, TX off until armed, a new
+  baud or format, the ring and its counters, errors and a buffer overrun counted and announced at most ten times a second,
+  the loopback at every baud and format and against a matching, a garbling, a slow, a mute and a talking peer, every
+  transport failure ending the session with the driver removed, auto-baud holding the RX pin only for the capture), the
+  app's rows (`test_uart_views`), the card log over an in-memory `stark_storage` (`test_uart_log`: numbering, the 2 kB buffer,
+  the sync every 4 kB, 1 MiB exactly, a card that goes away, every card error) and the app on the UI port
+  (`test_ui_uart`: 37 frames pinned after inspection). `lab_uart.c`, `lab_autobaud.c`, `lab_uart_svc.c`, `uart_views.c`,
+  `uart_log.c` and `fake_lab.c` run at 100 % lines; `scripts/test_emu_harness.py` covers the `uart1_peer` thread.
+* **Emulator, production image:** `v07-uart-prod` (the row of §2 above): the real UART driver and transport carry the
+  loopback pattern through a host peer; no baud, level or error is shown.
+* **Emulator, test image:** `storage/v07-uart` (loopback 64/64, an echo peer at the wrong baud reported as a mismatch,
+  auto-baud 38 400 applied to the Baud row, the monitor, a send behind its confirmation), `v07-uart-bauds` (every baud of
+  the list), `v07-uart-formats` (every format) and `v07-uart-log` (the scene logged, its CRC-32 equal to the generator's,
+  a second file, the GPIO app then opening the released pin 38). The peer is the pad model's, spec-derived.
+* **Not proven anywhere before V1:** a baud on a wire (the S3 model has no timing, the pad model is arithmetic), framing and
+  parity errors from a real line, levels and the 3.3 V limit, an adapter on the other end, the highest baud the edge
+  capture can follow, the glitch when a format change routes TX again, a long log on a real card, and the interrupt
+  handling at 921 600 baud with the driver's 2 kB buffer while the card or a flash write holds the CPU (ADR-0023, 0705
+  addendum).
 
 ---
 

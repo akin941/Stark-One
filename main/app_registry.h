@@ -18,6 +18,7 @@ extern const stark_app_t app_hello;
 extern const stark_app_t app_apptest;
 extern const stark_app_t app_gpio;
 extern const stark_app_t app_i2c;
+extern const stark_app_t app_uart;
 extern const stark_app_t app_nfc;
 extern const stark_app_t app_ir;
 extern const stark_app_t app_subghz;

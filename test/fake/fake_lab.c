@@ -54,6 +54,8 @@ static unsigned g_i2c_writes;
 static fake_lab_i2c_probe_fn g_i2c_ext_probe;
 static fake_lab_i2c_xfer_fn g_i2c_ext_xfer;
 
+static void uart_reset(void); /* the UART peer's state, below */
+
 static void i2c_reset(void)
 {
     g_i2c_mask = FAKE_LAB_I2C_ALL;
@@ -98,6 +100,7 @@ void fake_lab_reset(void)
     g_glitch_every = 0;
     g_epoch = 0;
     i2c_reset();
+    uart_reset();
 }
 
 void fake_lab_time_us(uint64_t now_us)
@@ -459,6 +462,167 @@ static void square_edges(sink_t *k, uint32_t hz, uint8_t duty, uint64_t start, u
     }
 }
 
+/* ---- the UART peer (STARK-0705): state and the edges of a talking peer ------------------------
+ */
+
+#define UART_Q       256u /* characters in flight between the peer and the device */
+#define UART_FMTS    5u
+#define UART_LINES   50u
+#define UART_LINE    26u /* "stark uart scene line NN\r\n" */
+#define UART_BIN_LEN 1024u
+
+typedef struct {
+    uint64_t t_ns;
+    uint8_t b;
+    uint8_t fe, pe;
+} uart_char_t;
+
+static struct {
+    int tx_pin, rx_pin;
+    fake_lab_uart_mode_t mode;
+    uint32_t peer_baud;
+    uint8_t peer_fmt;
+    bool open, tx;
+    uint32_t baud;
+    uint8_t fmt;
+    size_t rx_buf;
+    uint64_t t_open_ns, tx_free_ns, peer_free_ns;
+    uart_char_t q[UART_Q];
+    size_t qh, qn;
+    size_t stream_next; /* the next scene byte to arrive */
+    unsigned dropped;
+} g_uart = {.tx_pin = -1, .rx_pin = -1};
+
+/* bits per character: start, data, parity, stop; 0 for a format that does not exist */
+static const struct {
+    uint8_t data;
+    char parity;
+    uint8_t stop;
+} k_uart_fmt[UART_FMTS] = {{8, 'N', 1}, {8, 'E', 1}, {8, 'O', 1}, {8, 'N', 2}, {7, 'E', 1}};
+
+uint32_t fake_lab_uart_bits(uint8_t fmt)
+{
+    if (fmt >= UART_FMTS) {
+        return 0;
+    }
+    return 1u + k_uart_fmt[fmt].data + (k_uart_fmt[fmt].parity != 'N' ? 1u : 0u) +
+           k_uart_fmt[fmt].stop;
+}
+
+static uint64_t char_ns(uint32_t baud, uint8_t fmt)
+{
+    return baud == 0u ? 0u : (uint64_t)fake_lab_uart_bits(fmt) * 1000000000u / baud;
+}
+
+size_t fake_lab_uart_scene_len(fake_lab_uart_mode_t mode)
+{
+    if (mode == FAKE_LAB_UART_TEXT) {
+        return UART_LINES * UART_LINE;
+    }
+    return mode == FAKE_LAB_UART_BINARY ? UART_BIN_LEN : 0u;
+}
+
+uint8_t fake_lab_uart_scene_byte(fake_lab_uart_mode_t mode, size_t j)
+{
+    if (mode == FAKE_LAB_UART_BINARY) {
+        return (uint8_t)(j * 7u + 3u);
+    }
+    static const char k_text[] = "stark uart scene line ";
+    size_t line = j / UART_LINE;
+    size_t col = j % UART_LINE;
+    if (col < 22u) {
+        return (uint8_t)k_text[col];
+    }
+    if (col == 22u) {
+        return (uint8_t)('0' + (line / 10u) % 10u);
+    }
+    if (col == 23u) {
+        return (uint8_t)('0' + line % 10u);
+    }
+    return col == 24u ? (uint8_t)'\r' : (uint8_t)'\n';
+}
+
+/* What a receiver set to (rx_baud, rx_fmt) makes of a byte sent at (tx_baud, tx_fmt): the byte
+ * itself when the baud is within 3 % and the format the same, else garbage and a framing error
+ * (a parity error when the receiver checks parity). The garbage is a fixed bijection that never
+ * returns to the original after two legs, so an echo through a mismatched peer differs too. */
+static uint8_t deliver(uint8_t b, uint32_t tx_baud, uint8_t tx_fmt, uint32_t rx_baud,
+                       uint8_t rx_fmt, uint8_t *fe, uint8_t *pe)
+{
+    uint32_t diff = tx_baud > rx_baud ? tx_baud - rx_baud : rx_baud - tx_baud;
+    *fe = 0;
+    *pe = 0;
+    if ((uint64_t)diff * 100u > (uint64_t)rx_baud * 3u) {
+        *fe = 1;
+        return (uint8_t)(b * 5u + 1u);
+    }
+    if (tx_fmt != rx_fmt) {
+        if (rx_fmt < UART_FMTS && k_uart_fmt[rx_fmt].parity != 'N') {
+            *pe = 1;
+        } else {
+            *fe = 1;
+        }
+        return (uint8_t)(b * 5u + 1u);
+    }
+    return b;
+}
+
+static bool uart_stream_mode(void)
+{
+    return g_uart.mode == FAKE_LAB_UART_TEXT || g_uart.mode == FAKE_LAB_UART_BINARY;
+}
+
+/*
+ * The edges of the peer talking on the RX pad over [start, end) ticks: the scene, again and again,
+ * back to back from `start`, each character a start bit, the data bits least significant first, the
+ * parity bit if the format has one and the stop bits, at the peer's baud. The line idles high.
+ * Bit boundaries are computed from the start, never accumulated, so the baud has no drift.
+ */
+static void uart_rx_edges(sink_t *k, uint64_t start, uint64_t end, bool *first_level)
+{
+    *first_level = true;
+    size_t len = fake_lab_uart_scene_len(g_uart.mode);
+    uint32_t bits = fake_lab_uart_bits(g_uart.peer_fmt);
+    if (len == 0u || bits == 0u || g_uart.peer_baud == 0u) {
+        return;
+    }
+    uint64_t m = 0; /* the bit number since `start` */
+    bool level = true;
+    uint64_t edge_no = 0;
+    for (size_t j = 0;; j = (j + 1u) % len) {
+        uint8_t c = fake_lab_uart_scene_byte(g_uart.mode, j);
+        bool seq[16];
+        size_t n = 0;
+        uint8_t ones = 0;
+        seq[n++] = false; /* the start bit */
+        for (uint8_t d = 0; d < k_uart_fmt[g_uart.peer_fmt].data; d++) {
+            bool bit = ((c >> d) & 1u) != 0u;
+            ones = (uint8_t)(ones + (bit ? 1u : 0u));
+            seq[n++] = bit;
+        }
+        char par = k_uart_fmt[g_uart.peer_fmt].parity;
+        if (par != 'N') {
+            seq[n++] = par == 'E' ? (ones & 1u) != 0u : (ones & 1u) == 0u;
+        }
+        for (uint8_t s = 0; s < k_uart_fmt[g_uart.peer_fmt].stop; s++) {
+            seq[n++] = true;
+        }
+        for (size_t i = 0; i < n; i++, m++) {
+            uint64_t t = start + m * FAKE_LAB_TICK_HZ / g_uart.peer_baud;
+            if (t >= end) {
+                return;
+            }
+            if (seq[i] != level) {
+                level = seq[i];
+                int64_t moved = (int64_t)t + jitter_of(edge_no++);
+                if (!sink_edge(k, moved < 0 ? 0u : (uint64_t)moved)) {
+                    return;
+                }
+            }
+        }
+    }
+}
+
 stark_err_t fake_lab_pad_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap, size_t *n,
                                uint32_t *seen, bool *first_level)
 {
@@ -479,6 +643,14 @@ stark_err_t fake_lab_pad_edges(int pin, uint32_t window_us, uint32_t *ts, size_t
     } else {
         const pad_t *p = &g_pad[pin];
         src_t s;
+        if (pin == g_uart.rx_pin && uart_stream_mode()) {
+            uint64_t from = g_now_us * FAKE_LAB_TICKS_PER_US; /* a peer that is talking */
+            uart_rx_edges(&k, from, from + (uint64_t)window_us * FAKE_LAB_TICKS_PER_US,
+                          first_level);
+            *seen = k.seen;
+            *n = k.seen < k.cap ? k.seen : k.cap;
+            return STARK_OK;
+        }
         if (!external_src(pin, &s)) {
             if (p->mode == FAKE_LAB_PAD_PWM) {
                 s = (src_t){.square = true, .hz = p->pwm_hz, .duty = p->pwm_duty};
@@ -676,4 +848,181 @@ uint8_t fake_lab_i2c_reg(uint8_t addr, uint8_t reg)
 uint16_t fake_lab_i2c_word(uint8_t reg)
 {
     return g_i2c_word[reg & 3u];
+}
+
+/* ---- the UART peer (STARK-0705, ADR-0023 §7) ------------------------------------------------- */
+
+static void uart_reset(void)
+{
+    memset(&g_uart, 0, sizeof g_uart);
+    g_uart.tx_pin = -1;
+    g_uart.rx_pin = -1;
+}
+
+void fake_lab_uart_pins(int tx, int rx)
+{
+    g_uart.tx_pin = tx;
+    g_uart.rx_pin = rx;
+}
+
+void fake_lab_uart_peer(fake_lab_uart_mode_t mode, uint32_t baud, uint8_t fmt)
+{
+    if ((unsigned)mode < (unsigned)FAKE_LAB_UART_MODES && fmt < UART_FMTS) {
+        g_uart.mode = mode;
+        g_uart.peer_baud = baud;
+        g_uart.peer_fmt = fmt;
+    }
+}
+
+stark_err_t fake_lab_uart_open(uint32_t baud, uint8_t fmt, size_t rx_buf, bool tx)
+{
+    if (baud == 0u || fmt >= UART_FMTS || rx_buf == 0u) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (g_uart.open) {
+        return STARK_ERR_STATE;
+    }
+    uint64_t now_ns = g_now_us * 1000u;
+    g_uart.open = true;
+    g_uart.tx = tx;
+    g_uart.baud = baud;
+    g_uart.fmt = fmt;
+    g_uart.rx_buf = rx_buf;
+    g_uart.qh = 0;
+    g_uart.qn = 0;
+    g_uart.stream_next = 0;
+    g_uart.t_open_ns = now_ns;
+    g_uart.tx_free_ns = now_ns;
+    g_uart.peer_free_ns = now_ns;
+    return STARK_OK;
+}
+
+void fake_lab_uart_close(void)
+{
+    g_uart.open = false;
+    g_uart.tx = false;
+    g_uart.qn = 0;
+}
+
+stark_err_t fake_lab_uart_set_baud(uint32_t baud)
+{
+    if (!g_uart.open) {
+        return STARK_ERR_STATE;
+    }
+    if (baud == 0u) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    g_uart.baud = baud;
+    return STARK_OK;
+}
+
+bool fake_lab_uart_is_open(void)
+{
+    return g_uart.open;
+}
+
+bool fake_lab_uart_tx(void)
+{
+    return g_uart.open && g_uart.tx;
+}
+
+static void uart_enqueue(uint64_t t_ns, uint8_t b, uint8_t fe, uint8_t pe)
+{
+    if (g_uart.qn == UART_Q) {
+        g_uart.dropped++;
+        return;
+    }
+    g_uart.q[(g_uart.qh + g_uart.qn) % UART_Q] = (uart_char_t){t_ns, b, fe, pe};
+    g_uart.qn++;
+}
+
+uint32_t fake_lab_uart_wire_us(size_t n)
+{
+    return (uint32_t)(((uint64_t)n * char_ns(g_uart.baud, g_uart.fmt) + 999u) / 1000u);
+}
+
+size_t fake_lab_uart_write(const uint8_t *buf, size_t n)
+{
+    if (!fake_lab_uart_tx() || buf == NULL) {
+        return 0;
+    }
+    uint64_t now_ns = g_now_us * 1000u;
+    uint64_t dev_ct = char_ns(g_uart.baud, g_uart.fmt);
+    uint64_t peer_ct = char_ns(g_uart.peer_baud, g_uart.peer_fmt);
+    for (size_t i = 0; i < n; i++) {
+        uint64_t start = g_uart.tx_free_ns > now_ns ? g_uart.tx_free_ns : now_ns;
+        uint64_t end = start + dev_ct;
+        g_uart.tx_free_ns = end;
+        if (g_uart.mode == FAKE_LAB_UART_LOOP) {
+            uart_enqueue(end, buf[i], 0, 0);
+        } else if (g_uart.mode == FAKE_LAB_UART_ECHO) {
+            uint8_t fe, pe;
+            uint8_t at_peer = deliver(buf[i], g_uart.baud, g_uart.fmt, g_uart.peer_baud,
+                                      g_uart.peer_fmt, &fe, &pe);
+            uint64_t echo_start = g_uart.peer_free_ns > end ? g_uart.peer_free_ns : end;
+            g_uart.peer_free_ns = echo_start + peer_ct;
+            uint8_t back = deliver(at_peer, g_uart.peer_baud, g_uart.peer_fmt, g_uart.baud,
+                                   g_uart.fmt, &fe, &pe);
+            uart_enqueue(g_uart.peer_free_ns, back, fe, pe);
+        }
+    }
+    return n;
+}
+
+size_t fake_lab_uart_read(uint8_t *buf, size_t max, uint32_t *framing, uint32_t *parity,
+                          uint32_t *overrun)
+{
+    if (!g_uart.open || buf == NULL) {
+        return 0;
+    }
+    uint64_t now_ns = g_now_us * 1000u;
+    uint64_t peer_ct = char_ns(g_uart.peer_baud, g_uart.peer_fmt);
+    size_t len = uart_stream_mode() ? fake_lab_uart_scene_len(g_uart.mode) : 0u;
+    /* the stream bytes that have arrived by now: byte j ends at t_open + (j + 1) * peer_ct */
+    size_t arrived = 0;
+    if (len > 0u && peer_ct > 0u && now_ns > g_uart.t_open_ns) {
+        uint64_t whole = (now_ns - g_uart.t_open_ns) / peer_ct;
+        arrived = whole < len ? (size_t)whole : len;
+    }
+    if (arrived > g_uart.stream_next && arrived - g_uart.stream_next > g_uart.rx_buf) {
+        g_uart.stream_next = arrived - g_uart.rx_buf; /* the driver's buffer overflowed */
+        if (overrun != NULL) {
+            (*overrun)++;
+        }
+    }
+    size_t got = 0;
+    while (got < max) {
+        if (g_uart.qn > 0u && g_uart.q[g_uart.qh].t_ns <= now_ns) {
+            uart_char_t c = g_uart.q[g_uart.qh];
+            g_uart.qh = (g_uart.qh + 1u) % UART_Q;
+            g_uart.qn--;
+            buf[got++] = c.b;
+            if (framing != NULL) {
+                *framing += c.fe;
+            }
+            if (parity != NULL) {
+                *parity += c.pe;
+            }
+        } else if (g_uart.stream_next < arrived) {
+            uint8_t fe, pe;
+            buf[got++] =
+                deliver(fake_lab_uart_scene_byte(g_uart.mode, g_uart.stream_next), g_uart.peer_baud,
+                        g_uart.peer_fmt, g_uart.baud, g_uart.fmt, &fe, &pe);
+            g_uart.stream_next++;
+            if (framing != NULL) {
+                *framing += fe;
+            }
+            if (parity != NULL) {
+                *parity += pe;
+            }
+        } else {
+            break;
+        }
+    }
+    return got;
+}
+
+unsigned fake_lab_uart_dropped(void)
+{
+    return g_uart.dropped;
 }

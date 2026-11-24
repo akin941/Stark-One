@@ -1,0 +1,81 @@
+# STARK-0705 on the production image (ADR-0023 §7, §9; docs/VALIDATION.md §2). The one scenario that
+# runs the real ESP-IDF UART driver and the real lab transport on the S3 model, with a host peer
+# on esp-emu's --uart1-tcp bridge (scripts/test_emu.py `uart1_peer = "echo"`: it connects to the
+# port the run opened and sends back every byte it receives, nothing of its own). The probe of
+# STARK-0705 found that UART1 round-trips bytes on the S3 model (20 000 of 20 000, identical, no
+# loss), with no baud timing: bytes come back at once whatever the configured baud, so this shows the
+# driver and the service work end to end, never a baud rate or a level on a pin.
+# The walk: UP from About wraps to Storage, Settings, Modules, UART. The monitor opens receive-only
+# (a driver with no TX pad: the peer is silent) and BACK closes it; the loopback view asks the
+# confirmation before the first drive, sends the 64-byte pattern and gets it back (64/64 ok); a new
+# baud changes the installed driver, a new format installs it again (ESP-IDF logs `GPIO 38 is not
+# usable, maybe used by others` once there: its own reservation of the previous install, harmless),
+# and the pattern comes back each time; leaving releases both pins.
+name = "emu-v07-uart-prod"
+end_ms = 17500
+heap_min = 200000
+uart1_peer = "echo"
+presses = [
+    { key = "UP", at_ms = 400, hold_ms = 60 },      # Storage
+    { key = "UP", at_ms = 550, hold_ms = 60 },      # Settings
+    { key = "UP", at_ms = 700, hold_ms = 60 },      # Modules
+    { key = "UP", at_ms = 850, hold_ms = 60 },      # UART
+    { key = "OK", at_ms = 1300, hold_ms = 60 },     # open the app
+    { key = "OK", at_ms = 2000, hold_ms = 60 },     # Monitor: receive-only
+    { key = "BACK", at_ms = 3500, hold_ms = 60 },   # close it
+    { key = "DOWN", at_ms = 4200, hold_ms = 60 },   # Send
+    { key = "DOWN", at_ms = 4400, hold_ms = 60 },   # Loopback test
+    { key = "OK", at_ms = 4800, hold_ms = 60 },     # the view
+    { key = "OK", at_ms = 5400, hold_ms = 60 },     # Run test: the confirmation first
+    { key = "OK", at_ms = 6000, hold_ms = 60 },     # confirm: TX on, the pattern goes out and comes back
+    { key = "DOWN", at_ms = 7500, hold_ms = 60 },   # Baud
+    { key = "RIGHT", at_ms = 7900, hold_ms = 60 },  # 230 400: the driver's baud changes
+    { key = "UP", at_ms = 8500, hold_ms = 60 },     # Run test
+    { key = "OK", at_ms = 8900, hold_ms = 60 },     # again, armed: no dialog
+    { key = "DOWN", at_ms = 10500, hold_ms = 60 },  # Baud
+    { key = "DOWN", at_ms = 10700, hold_ms = 60 },  # Format
+    { key = "RIGHT", at_ms = 11100, hold_ms = 60 }, # 8E1: the driver is installed again, TX still on
+    { key = "UP", at_ms = 11900, hold_ms = 60 },    # Baud
+    { key = "UP", at_ms = 12100, hold_ms = 60 },    # Run test
+    { key = "OK", at_ms = 12500, hold_ms = 60 },    # a third time
+    { key = "BACK", at_ms = 14500, hold_ms = 60 },  # leave the view: the pins are released
+    { key = "BACK", at_ms = 16000, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "lab: pins 38 39",
+    'menu: sel=16 "UART"',
+    "uartapp: home",
+    "app: start uart",
+    "lab: uart open 115200 8N1",
+    "uartapp: monitor 115200 8N1",
+    "lab: uart closed",
+    "uartapp: monitor closed",
+    "lab: uart open 115200 8N1",
+    "uartapp: loop view",
+    'dialog: open "Drive LAB_UART_TX?"',
+    "dialog: ok",
+    "lab: uart tx on",
+    "lab: uart loop 64/64 ok",
+    "uartapp: loop 64/64 ok",
+    "lab: uart open 230400 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 230400 8E1",
+    "lab: uart loop 64/64 ok",
+    "lab: released pin 39",
+    "lab: released pin 38",
+    "lab: uart closed",
+    "app: stop uart",
+]
+forbid = [
+    "lab: uart failed",
+    "mismatch",
+    "no data",
+    "uartapp: not opened",
+    "uartapp: loop not run",
+    "dialog: cancel",
+    "panic",
+]
+# The confirmation is asked once: later runs in the same view are armed.
+forbid_after = [
+    { after = "lab: uart tx on", text = 'dialog: open "Drive LAB_UART_TX?"' },
+]

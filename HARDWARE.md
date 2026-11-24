@@ -157,6 +157,15 @@ GPIOs; a header of spare lab pins is a V1 hardware requirement.
   dumps and writes registers on the shared bus (`I2C_SDA` 1, `I2C_SCL` 2) at 100 or 400 kHz, 3.3 V
   devices only, with the board's pull-ups; every dump and write is confirmed first and logged. Real
   devices, waveforms and bus recovery after a device is pulled are V1 checks.
+* **UART tool (STARK-0705)** uses UART1 on `LAB_UART_TX` 38 and `LAB_UART_RX` 39, 3.3 V TTL only (not 5 V
+  tolerant: RS-232 and 5 V TTL need a level shifter; on the breadboard put 330 Ω in series with each line), at
+  1 200 to 921 600 baud in 8N1, 8E1, 8O1, 8N2 or 7E1. The **monitor never touches the TX pad**; the first send
+  or loopback test in a view asks a confirmation naming `LAB_UART_TX` ("own hardware only"), and the line is then
+  driven at the weakest drive strength. Both pins belong to the tool while it runs, so the GPIO app cannot drive
+  them, and both are hi-Z on leaving. Changing the format while TX is on installs the driver again, which
+  releases and routes the TX pad once (a glitch on a wired line: a V1 check). Auto-baud listens to the RX pad
+  for up to 2 s. Real baud, levels, an adapter on the other end and the highest baud the edge capture can follow
+  (a bit at 921 600 is 1.09 µs) are V1 checks (ROADMAP V1 exit 13).
 * **Module ID EEPROMs (0x50, 0x51) are never written** by the I²C tool (ADR-0021 §2; a 16-bit
   register read of one is refused too, since its second byte would be written), the PN532 is not
   touched at all while NFC is confirmed, and the SPI probe is refused on any slot whose module declares a function (ADR-0023 §6).

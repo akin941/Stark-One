@@ -5835,6 +5835,61 @@ level and series protection, a long log.
 
 ---
 
+**As built.** Differences from the plan and the readings the spec left open, each the smallest sound
+choice (ADR-0023's STARK-0705 addendum records them):
+
+* **The probe came first and passed.** esp-emu 0.44.0's `--uart1-tcp` bridge round-trips bytes on the S3 model:
+  the device's 64-byte pattern reached the host peer intact and 1 000, 3 000 and 20 000 bytes came back identical
+  with none lost (docs/VALIDATION.md §2). It has no baud timing: the bytes arrive at once whatever the configured
+  baud. So `v07-uart-prod` exists; its peer is the harness option `uart1_peer = "echo"` (`scripts/test_emu.py`,
+  unit-tested in `scripts/test_emu_harness.py`). AC 5.
+* **Layers.** The pure files are `lab_uart.c`, `lab_autobaud.c` and the session `lab_uart_svc.c` (100 % lines, with
+  `uart_views.c` and `uart_log.c` of the app); `stark_lab.c` binds the session. The transport's UART group is the
+  specified one plus a `tx` flag on `open` (a monitor never routes TX) and a 32-event queue (the only way the driver
+  reports framing, parity and overrun errors); `lab_transport_uart.c` is target-only, the host builds
+  `test/host/support/lab_transport_uart_host.c`, the test image's transport carries the group too: still five
+  substitutions. New public calls: `stark_lab_uart_open` / `_tx_enable` / `_set_format` / `_poll` / `_ring_read` /
+  `_stats` / `_clear` / `_send` / `_loop_test` / `_autobaud` / `_cancel` / `_close` and the pure text helpers.
+* **TX is armed like any lab output.** The monitor drives nothing; Send and the loopback test ask the confirmation
+  naming `LAB_UART_TX` once per view, and OK arms the pin and routes TX at the weakest drive strength. Leaving the
+  view releases both pins and the driver (AC 4); the GPIO app cannot take a held pin (`STARK_ERR_BUSY`, tested at the
+  service and through the app).
+* **Loopback.** `lab: uart loop <received>/<sent> ok | mismatch first <n> | errors <n> | no data`; a slow or garbling
+  peer is a mismatch, never a success. Auto-baud averages jitter over the pulses (the plan's shortest-pulse rule
+  alone fails its own ±1 µs vectors above 19 200 baud) and is a status, never a number, when nothing fits.
+* **Send file** is `apps/uart_send.txt` (the card has no subdirectories) with the strict grammar `hex:` pairs or
+  printable ASCII. **The log** is `logs/uart_NNNN.log`, 2 kB buffer, synced every 4 kB by a close and an append reopen,
+  1 MiB, with `uartapp: log closed <name> <n> bytes crc 0x...` (the CRC-32 of exactly what it accepted).
+* **App** (Lab category, title "UART", launcher row 16, between Sub-GHz and the Device header). Home: Monitor, Send,
+  Loopback test, Auto-baud, Log, Baud, Format. The monitor is a screen of its own (header, counters, 17 rows of 16
+  bytes of hex or 48 characters of ASCII from the 4 kB ring, scrolling); the loopback test is a view with its Baud and
+  Format rows; Send is the canned list, the file and a byte editor of rows.
+* **Vectors.** `scripts/gen_lab_vectors.py` also writes `test/fake/fake_lab_uart_vectors.h`: 60 wire times, 14 ring
+  sequences, 21 loopback judgements, 29 rows, 41 send files, 15 + 12 log names, 7 CRC-32s and 72 edge sets with the
+  baud an independent Python estimator names; the fake peer's scenes carry the CRC-32 the log scenario expects.
+* **Emulator.** Production `v07-uart-prod`: the monitor opens receive-only, the loopback view's pattern comes back
+  64/64 through the real driver and a host peer at 115 200, 230 400 and 230 400 8E1. Test image `storage/v07-uart`
+  (loop, an echo peer at 9 600 against 115 200 reported as a mismatch, auto-baud 38 400, monitor, send),
+  `v07-uart-bauds` (every baud of the list), `v07-uart-formats` (every format) and `v07-uart-log` (the 1 300-byte scene
+  logged with the CRC-32 the generator computes, a second file, then the GPIO app opens pin 38). The test-image pokes
+  are `emu_lab_uart` (0 silent, 1 loop, 2 echo, 3 text scene, 4 binary scene), `emu_lab_uart_baud`, `emu_lab_uart_fmt`.
+* **Pre-existing scenarios edited (row indices, the registry line and one more press where a walk crosses the new
+  row, as STARK-0702 and 0704 did).** Registry `n=15` to `n=16` (`uart` after `i2c`): `v0-boot`, `v01-hello`. Launcher
+  rows (+1 from the Device header down): `v04-nfc-absent` and `storage/v05-hotplug` (Modules 17 to 18),
+  `v02-settings-persist` (Settings 18 to 19), `storage/{v02-eject, v02-log-file}` (Storage 19 to 20). One more press
+  where a walk crosses the row, UP from About past it to IR, NFC, Sub-GHz, I2C, GPIO or Hello: `v01-hello`,
+  `v04-nfc-absent`, `v07-gpio-prod`, `v07-i2c-prod`, `v07-measure-prod`, `soak/{v03-soak, v04-soak, v06-soak}`,
+  `storage/{v03-capture-replay, v03-ir-app, v03-protocols, v03-replay, v04-dump, v04-nfc-app, v04-reads,
+  v04-write-readback, v05-hotplug, v06-capture, v06-decode, v06-replay, v06-scan}`; DOWN past it to Modules:
+  `v02-no-card` (once), `v04-nfc-absent`, `storage/v05-hotplug`, `soak/v04-soak`, `soak/v05-soak` (once each),
+  `soak/v01-soak` (twice); UP from Modules to NFC: `storage/v05-hotplug` (once; when the reader is lost the selection falls to UART, not Modules, so its expectation reads `sel=16 "UART"` there), `soak/v05-soak`.
+* **Evidence and cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM and flash per component
+  against the budgets, the host and emulator runs. The binary grows by 38.2 kB (the IDF UART driver is 14.1 kB of it, a
+  cost the plan's 12 kB did not count) and passes the V0.7 ceiling of ADR-0023 §10, which the task flags and does not move.
+* **Not here.** Anything physical, SPI and the self-test.
+
+---
+
 ## STARK-0706 — SPI probe on a leased module slot
 
 **Goal.** A probe sends one bounded, confirmed SPI transaction to a device on a module slot

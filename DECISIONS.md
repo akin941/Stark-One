@@ -1583,3 +1583,118 @@ firmware's alone) and no acceptance criterion depends on more than they show.
    inspection), `test_fake_lab`, and the independent Python reference for the sweep, the fingerprint (FNV-1a),
    the refusal table and the hex text; `lab_i2c.c`, `lab_i2c_hints.c`, `i2c_views.c` and `fake_lab.c` run at
    100 % lines. Nothing here shows a device answering on a wire (ROADMAP V1 exit 13).
+
+**Addendum (2026-11-24, STARK-0705).** The UART tool. The plan was silent or ambiguous on the points
+below; each is the smallest sound choice and none changes a rule above. The probes of the 0701 addendum
+still hold, and the probe this task owns ran first.
+
+1. **The `--uart1-tcp` probe passed on the S3 model, so the production scenario exists.** A throwaway task on
+   the production image (not committed) installed UART1 (`uart_driver_install`, 115 200 8N1, pins 38 and 39)
+   and echoed, with a host peer on esp-emu 0.44.0's `--uart1-tcp` bridge (the emulator listens, the peer
+   connects). The device's 64 bytes `00..3f` reached the peer intact; the peer's 1 000, 3 000 and 20 000 bytes
+   came back identical, none lost; the first 256 bytes of a reply arrived 174 µs of emulated time after the
+   device sent. The emulated UART has **no baud timing**: 20 000 bytes returned in 0.08 s of wall time, where
+   115 200 baud needs 1.7 s each way, so bytes arrive at once whatever baud is configured, and the pins are not
+   part of the bridge. `v07-uart-prod` therefore shows the real ESP-IDF driver, the real transport and the
+   service working end to end; it never shows a baud rate or a level (every row is in docs/VALIDATION.md §2).
+   The harness gains `uart1_peer = "echo"` (a thread in `scripts/test_emu.py`: it connects to the port the run
+   opened, sends back every byte and nothing of its own, and fails the scenario if it cannot connect; the test
+   image refuses the key, its UART is the model's) and three pokes.
+2. **Three pure files and one session, no sixth substitution.** `lab_uart.c` (the baud and format lists, the
+   byte ring, the loopback pattern and its judgement, the send file's grammar, log names, CRC-32, hex and ASCII
+   rows), `lab_autobaud.c` and `lab_uart_svc.c` (the session over an injected I/O table: which pins it holds, the
+   ring and counters, send, loopback, auto-baud) are pure and run at 100 % lines; `stark_lab.c` binds the session to
+   the pin hold, the transport, two locks (one operation at a time; a short one around the ring and counters, so the
+   UI can read them while the worker waits on the line), the log and the event bus. The UART group goes through
+   the same `stark_lab_transport` as everything else: still five substitutions. The text helpers the app needs
+   are the `stark_lab_uart_*()` functions of `stark_lab.h`, so the app includes one header.
+3. **The monitor drives nothing; TX is armed like any lab output.** The plan's `uart_open(baud, fmt, rx_buf)` gains
+   a `tx` flag: a session opens receive-only (the TX pad is never touched), and `stark_lab_uart_tx_enable()`,
+   which the app calls only after the confirmation naming `LAB_UART_TX`, arms the pin (the arm of §3, per pin,
+   cleared by release) and installs the driver again with TX routed at the weakest drive strength
+   (`stark_hal_gpio_drive_weak()`). Send and the loopback test are `STARK_ERR_STATE` without it. The pad is not
+   read back (a line a peripheral drives has no one level, like the PWM's, 0702 addendum 7): the confirmation
+   is the guard. The confirmation is asked once per view (Send, Loopback test): the session, and with it the arm,
+   lives from entering the view to leaving it, and the pins are held only while a view or a job needs them.
+4. **The driver has an event queue, not none.** The plan installed it with no queue "so no driver task"; the
+   driver has no task either way (it is interrupt driven), and without a queue ESP-IDF reports a framing error, a
+   parity error or an overrun nowhere, which the spec requires counted and shown. The transport therefore
+   installs a 32-event queue and every read drains it into the caller's counters; a storm faster than the
+   reads (11 520 framing errors a second at 115 200 baud against a read every 10 ms) counts a lower bound,
+   never zero. `set_baud` is in the API as specified; a change of baud alone uses it, a change of format installs
+   the driver again (so TX, if routed, is released and routed again once; on the production image ESP-IDF
+   logs `GPIO 38 is not usable, maybe used by others` there, its own reservation of the previous install; a
+   glitch on a TX line that is wired is a V1 check).
+5. **Buffers.** Driver 2 kB, ring 4 kB, edge buffer of one auto-baud 2 kB (512 stamps), log buffer 2 kB, a poll
+   takes at most 64 bytes, a send 32, a write to the driver 64, the file 1 kB, the log 1 MiB: all heap, held from
+   open to close (the log's from start to stop). Events `STARK_LAB_EVT_UART_DATA` (4) and `_UART_ERROR` (5) are
+   published at most ten times a second each; 3 stays the reserved `_SCAN_DONE`, 6 is `_SPI_DONE`.
+6. **The loopback test.** It empties the receive buffer (at most eight reads of 64), sends the pattern as two
+   writes of 32 (each waits for its last character to leave: at 1 200 baud 0.27 s), and listens in slices of at most
+   10 ms for twice the wire time of 64 characters plus 20 ms, never longer even if the clock stops. The judgement has
+   one more outcome than the plan's: `ok` (every byte back, no error counted), `mismatch first <n>` (a byte differs or
+   is missing, the offset of the first), `errors <n>` (the bytes match but the receiver counted framing, parity or
+   overrun errors) and `no data`. The log line is `lab: uart loop <received>/<sent> <outcome>`: a slow peer that
+   answers after the window gives `36/64 mismatch first 0`, not a success. BACK cancels it (a flag the loop reads, no
+   lock); a transport failure ends the session.
+7. **Auto-baud refines the shortest pulse, which alone cannot meet the plan's own vectors.** With edge jitter of
+   ±1 µs the shortest of many 1-bit pulses is shorter than the bit by up to 2 µs, 23 % of a bit at 115 200: snapping
+   that to the list says `unknown`. The rule is the plan's (pulses under 1 µs are glitches; the shortest of the rest
+   is the one-bit pulse; the nearest standard bit time within 35 % is accepted; the result snaps to the list within
+   3 %, else `unknown`) with one step added: the bit time is refined, twice, as the total time of all pulses up to
+   twelve bits long over the total number of bits they hold (each rounded to the nearest whole number of the current
+   estimate), which averages jitter out. A line with fewer than 16 edges, no pulse over 1 µs or a bit time near no
+   listed baud is a status, never a number. The capture is 512 stamps from the RX pad for up to 2 s (it ends as soon
+   as the buffer is full), through `pad_edges()` with the pin held, the pad an input, the pin released before
+   anything opens the driver on it. The vectors' jitter is ±1 µs or a tenth of a bit, whichever is less; the
+   real capture's jitter and the highest baud the interrupt can follow (the bit at 921 600 is 1.09 µs) are V1
+   measurements.
+8. **The send file is `uart_send.txt` in the card's `apps` directory.** The card has four directories and no
+   subdirectories (ADR-0018), so the plan's `uart/send.txt` cannot exist. Its grammar, strict and whole: a file
+   starting with `hex:` is pairs of hex digits separated by white space; any other file is printable ASCII
+   (0x20 to 0x7e) with one trailing LF or CRLF allowed, so `AT\r\n` is written `hex:41 54 0d 0a`; at most 1 kB in and
+   32 bytes out; anything else is rejected whole and nothing is sent. It is read and sent on the app worker.
+9. **The card log** is `logs/uart_NNNN.log` (`STARK_DIR_LOGS`, the next free four-digit number, so 9 999 files at
+   most), written on the worker through a 2 kB buffer: flushed when it fills and after a byte has waited a
+   second, synced every 4 kB (a close and an append reopen, since the storage service syncs on close and has no
+   other sync) and closed at 1 MiB, when it says `log full` and the monitor goes on. The card is never held open
+   past the log's end, so it can be ejected. A card that goes away ends the log (`Log stopped`, the buffer is
+   lost, the monitor goes on). The CRC-32 the log reports at its close, `uartapp: log closed uart_0001.log 1300 bytes
+   crc 0x...`, is over the bytes it handed to the storage service; the storage service's own tests are what show
+   they reached the card, and nothing reads the file back. The console log carries names and counts only.
+10. **The app.** Home: Monitor, Send, Loopback test, Auto-baud, Log (on or off, used by the next monitor), Baud,
+    Format (LEFT and RIGHT, stopping at the ends of the lists). The monitor is a screen of its own pushed over the
+    menu (so BACK pops it and its `on_exit` closes the session, and a long BACK from anywhere closes it too): a
+    header, the counters (`rx 1234  err 0  lost 0`, red when anything was lost or counted), the log's state and 17
+    rows of the ring in the 6 x 10 font, 16 bytes of hex or 48 characters of ASCII, rows aligned to the newest
+    byte; OK toggles, UP and DOWN scroll a row, LEFT and RIGHT a page. The Send view is the canned sends
+    (`\r\n`, `AT\r\n`, `?\r\n`, Ctrl-C, Ctrl-D), the file, and a byte editor of rows as the I2C app's. The loopback
+    test is a view of its own (Run test, Baud, Format, the line errors) so the settings are next to the button.
+    Auto-baud is a home action that sets the Baud row.
+11. **The test image's peer** (`fake_lab.c`, pokes `emu_lab_uart`, `emu_lab_uart_baud`, `emu_lab_uart_fmt`): 0 silent,
+    1 TX wired to RX, 2 an echo peer at its own baud and format (a baud more than 3 % off or another format garbles
+    each byte through a fixed bijection that never returns to the original and counts a framing error, or a parity
+    error where the receiver checks parity), 3 a peer that talks (the text scene of 50 lines, 1 300 bytes, once from
+    the moment the driver opens) and 4 the binary scene (1 024 bytes; the plan's three modes plus one). The same
+    peer is what auto-baud sees on the RX pad: the scene again and again from the start of a capture, edge by edge at the
+    peer's baud, with the jitter the edge capture is given. Characters that have not crossed the wire by "now" have not
+    arrived, so the loopback window is exercised for real; the host shim and the test image wait in model time.
+    `storage/v07-uart` (loop, mismatch at 9 600 against 115 200, auto-baud at 38 400, monitor, send),
+    `v07-uart-bauds` (every baud), `v07-uart-formats` (every format) and `v07-uart-log` (the scene logged, its
+    CRC-32, the pins free for the GPIO app) each stay inside 20 s of emulated time.
+12. **Evidence.** *Host:* `test_lab_uart`, `test_lab_autobaud` (72 edge sets: every baud, format, pattern, jitter, gap,
+    spike, the 3 % boundary from both sides, hostile input), `test_lab_uart_svc` (the session over the real pin hold
+    and the shim: every baud and format in the loopback and in auto-baud, every failure), `test_uart_views`,
+    `test_uart_log` (1 MiB exactly, a card that goes away, every card error), `test_ui_uart` (37 frames pinned after
+    inspection) and an independent Python reference (`scripts/gen_lab_vectors.py`, `fake_lab_uart_vectors.h`) for
+    the wire times, the ring, the loopback judgement, the rows, the file grammar, the names, zlib's CRC-32 and the
+    estimator. `lab_uart.c`, `lab_autobaud.c`, `lab_uart_svc.c`, `uart_views.c`, `uart_log.c` and `fake_lab.c` run at
+    100 % lines. *Production image:* `v07-uart-prod` (the monitor opens receive-only; the loopback pattern comes
+    back through the real driver and a host peer at 115 200, 230 400 and 230 400 8E1; both pins released). *Test image:*
+    the four scenarios above. Nothing here shows a baud on a wire, a level on a pin or a real adapter answering
+    (ROADMAP V1 exit 13).
+13. **Cost.** The binary grows by 38.2 kB, 14.1 kB of it ESP-IDF's UART driver (`libesp_driver_uart.a`, which no
+    earlier task linked), against a per-task flash budget of 12 kB that did not count it. The 52 kB ceiling of §10
+    for the whole of V0.7 is passed (the binary is 549 kB; the partition is 4 MB, 87 % free): this task flags it and
+    does not move it, and STARK-0708 restates the ceiling from what V0.7 actually costs. The boot-heap cost is in
+    docs/measurements.md; the V0.7 total stays inside the 16 kB.

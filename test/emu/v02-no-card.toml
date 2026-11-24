@@ -5,7 +5,7 @@
 # changed back, committed) and Storage (shows no card; the write test refuses). No drops,
 # heap above the gate. NFC is dimmed with no reader, so the walk skips it (STARK-0505).
 name = "emu-v02-no-card"
-end_ms = 14300
+end_ms = 14600
 heap_min = 200000
 presses = [
     { key = "OK", at_ms = 400, hold_ms = 60 },
@@ -33,20 +33,21 @@ presses = [
     { key = "DOWN", at_ms = 8490, hold_ms = 60 },   # IR (STARK-0305)
     { key = "OK", at_ms = 8700, hold_ms = 60 },
     { key = "BACK", at_ms = 9000, hold_ms = 60 },
-    { key = "DOWN", at_ms = 9300, hold_ms = 60 },   # Modules: NFC is dimmed, skipped
-    { key = "OK", at_ms = 9600, hold_ms = 60 },
-    { key = "BACK", at_ms = 9900, hold_ms = 60 },
-    { key = "DOWN", at_ms = 10200, hold_ms = 60 },
-    { key = "OK", at_ms = 10500, hold_ms = 60 },
-    { key = "LEFT", at_ms = 10800, hold_ms = 60 },
-    { key = "RIGHT", at_ms = 11100, hold_ms = 60 },
-    { key = "BACK", at_ms = 11400, hold_ms = 60 },
-    { key = "DOWN", at_ms = 11700, hold_ms = 60 },
-    { key = "OK", at_ms = 12000, hold_ms = 60 },
-    { key = "DOWN", at_ms = 12300, hold_ms = 60 },
-    { key = "DOWN", at_ms = 12500, hold_ms = 60 },
-    { key = "OK", at_ms = 12800, hold_ms = 60 },
-    { key = "BACK", at_ms = 13100, hold_ms = 60 },
+    { key = "DOWN", at_ms = 9300, hold_ms = 60 },  # UART (STARK-0705): not opened here, skipped
+    { key = "DOWN", at_ms = 9600, hold_ms = 60 },   # Modules: NFC is dimmed, skipped
+    { key = "OK", at_ms = 9900, hold_ms = 60 },
+    { key = "BACK", at_ms = 10200, hold_ms = 60 },
+    { key = "DOWN", at_ms = 10500, hold_ms = 60 },
+    { key = "OK", at_ms = 10800, hold_ms = 60 },
+    { key = "LEFT", at_ms = 11100, hold_ms = 60 },
+    { key = "RIGHT", at_ms = 11400, hold_ms = 60 },
+    { key = "BACK", at_ms = 11700, hold_ms = 60 },
+    { key = "DOWN", at_ms = 12000, hold_ms = 60 },
+    { key = "OK", at_ms = 12300, hold_ms = 60 },
+    { key = "DOWN", at_ms = 12600, hold_ms = 60 },
+    { key = "DOWN", at_ms = 12800, hold_ms = 60 },
+    { key = "OK", at_ms = 13100, hold_ms = 60 },
+    { key = "BACK", at_ms = 13400, hold_ms = 60 },
 ]
 expect = [
     "storage: no card",

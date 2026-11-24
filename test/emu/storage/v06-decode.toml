@@ -13,7 +13,7 @@
 # exit 12).
 name = "emu-v06-decode"
 image = "storage"
-end_ms = 25000
+end_ms = 25200
 heap_min = 200000
 pokes = [
     { at_ms = 500, var = "emu_mod_slot0", value = 32 },
@@ -24,31 +24,32 @@ presses = [
     { key = "UP", at_ms = 5300, hold_ms = 60 },      # Storage
     { key = "UP", at_ms = 5500, hold_ms = 60 },      # Settings
     { key = "UP", at_ms = 5700, hold_ms = 60 },      # Modules
-    { key = "UP", at_ms = 5900, hold_ms = 60 },      # Sub-GHz
-    { key = "OK", at_ms = 6300, hold_ms = 60 },
-    { key = "DOWN", at_ms = 7000, hold_ms = 60 },    # Band scan
-    { key = "DOWN", at_ms = 7300, hold_ms = 60 },    # Capture
-    { key = "OK", at_ms = 7600, hold_ms = 60 },      # the setup: Frequency, Modulation, Start
-    { key = "DOWN", at_ms = 8300, hold_ms = 60 },
-    { key = "DOWN", at_ms = 8600, hold_ms = 60 },    # Start
-    { key = "OK", at_ms = 8900, hold_ms = 60 },      # captures the scene
-    { key = "OK", at_ms = 11000, hold_ms = 60 },     # Stop
-    { key = "DOWN", at_ms = 12000, hold_ms = 60 },   # Capture again
-    { key = "DOWN", at_ms = 12300, hold_ms = 60 },   # Decode
-    { key = "OK", at_ms = 12600, hold_ms = 60 },     # the analysis
-    { key = "BACK", at_ms = 14000, hold_ms = 60 },   # the finished capture again
-    { key = "OK", at_ms = 15000, hold_ms = 60 },     # Save: rf_0001.rf
-    { key = "BACK", at_ms = 16500, hold_ms = 60 },   # capture -> home (the radio idles)
-    { key = "DOWN", at_ms = 17000, hold_ms = 60 },
-    { key = "DOWN", at_ms = 17300, hold_ms = 60 },
-    { key = "DOWN", at_ms = 17600, hold_ms = 60 },   # Saved
-    { key = "OK", at_ms = 18000, hold_ms = 60 },     # the list: rf_0001.rf
-    { key = "OK", at_ms = 19000, hold_ms = 60 },     # reads it back
-    { key = "OK", at_ms = 20500, hold_ms = 60 },     # Decode, the first row of the file view
-    { key = "BACK", at_ms = 22000, hold_ms = 60 },   # analysis -> file
-    { key = "BACK", at_ms = 22500, hold_ms = 60 },   # file -> list
-    { key = "BACK", at_ms = 23000, hold_ms = 60 },   # list -> home
-    { key = "BACK", at_ms = 23500, hold_ms = 60 },   # home -> launcher
+    { key = "UP", at_ms = 5900, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
+    { key = "UP", at_ms = 6100, hold_ms = 60 },      # Sub-GHz
+    { key = "OK", at_ms = 6500, hold_ms = 60 },
+    { key = "DOWN", at_ms = 7200, hold_ms = 60 },    # Band scan
+    { key = "DOWN", at_ms = 7500, hold_ms = 60 },    # Capture
+    { key = "OK", at_ms = 7800, hold_ms = 60 },      # the setup: Frequency, Modulation, Start
+    { key = "DOWN", at_ms = 8500, hold_ms = 60 },
+    { key = "DOWN", at_ms = 8800, hold_ms = 60 },    # Start
+    { key = "OK", at_ms = 9100, hold_ms = 60 },      # captures the scene
+    { key = "OK", at_ms = 11200, hold_ms = 60 },     # Stop
+    { key = "DOWN", at_ms = 12200, hold_ms = 60 },   # Capture again
+    { key = "DOWN", at_ms = 12500, hold_ms = 60 },   # Decode
+    { key = "OK", at_ms = 12800, hold_ms = 60 },     # the analysis
+    { key = "BACK", at_ms = 14200, hold_ms = 60 },   # the finished capture again
+    { key = "OK", at_ms = 15200, hold_ms = 60 },     # Save: rf_0001.rf
+    { key = "BACK", at_ms = 16700, hold_ms = 60 },   # capture -> home (the radio idles)
+    { key = "DOWN", at_ms = 17200, hold_ms = 60 },
+    { key = "DOWN", at_ms = 17500, hold_ms = 60 },
+    { key = "DOWN", at_ms = 17800, hold_ms = 60 },   # Saved
+    { key = "OK", at_ms = 18200, hold_ms = 60 },     # the list: rf_0001.rf
+    { key = "OK", at_ms = 19200, hold_ms = 60 },     # reads it back
+    { key = "OK", at_ms = 20700, hold_ms = 60 },     # Decode, the first row of the file view
+    { key = "BACK", at_ms = 22200, hold_ms = 60 },   # analysis -> file
+    { key = "BACK", at_ms = 22700, hold_ms = 60 },   # file -> list
+    { key = "BACK", at_ms = 23200, hold_ms = 60 },   # list -> home
+    { key = "BACK", at_ms = 23700, hold_ms = 60 },   # home -> launcher
 ]
 expect = [
     "subghz: cc1101 version 0x14",

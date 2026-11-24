@@ -7,66 +7,67 @@
 name = "emu-v04-reads"
 image = "storage"
 heap_min = 200000
-end_ms = 40200
+end_ms = 40300
 pokes = [
-    { at_ms = 1500, var = "emu_nfc_tag", value = 1 },  # read 1 of 20
-    { at_ms = 2100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 3000, var = "emu_nfc_tag", value = 1 },  # read 2 of 20
-    { at_ms = 3600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 4500, var = "emu_nfc_tag", value = 1 },  # read 3 of 20
-    { at_ms = 5100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 6000, var = "emu_nfc_tag", value = 1 },  # read 4 of 20
-    { at_ms = 6600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 7500, var = "emu_nfc_tag", value = 1 },  # read 5 of 20
-    { at_ms = 8100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 9000, var = "emu_nfc_tag", value = 1 },  # read 6 of 20
-    { at_ms = 9600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 10500, var = "emu_nfc_tag", value = 1 },  # read 7 of 20
-    { at_ms = 11100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 12000, var = "emu_nfc_tag", value = 1 },  # read 8 of 20
-    { at_ms = 12600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 13500, var = "emu_nfc_tag", value = 1 },  # read 9 of 20
-    { at_ms = 14100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 15000, var = "emu_nfc_tag", value = 1 },  # read 10 of 20
-    { at_ms = 15600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 16500, var = "emu_nfc_tag", value = 1 },  # read 11 of 20
-    { at_ms = 17100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 18000, var = "emu_nfc_tag", value = 1 },  # read 12 of 20
-    { at_ms = 18600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 19500, var = "emu_nfc_tag", value = 1 },  # read 13 of 20
-    { at_ms = 20100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 21000, var = "emu_nfc_tag", value = 1 },  # read 14 of 20
-    { at_ms = 21600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 22500, var = "emu_nfc_tag", value = 1 },  # read 15 of 20
-    { at_ms = 23100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 24000, var = "emu_nfc_tag", value = 1 },  # read 16 of 20
-    { at_ms = 24600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 25500, var = "emu_nfc_tag", value = 1 },  # read 17 of 20
-    { at_ms = 26100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 27000, var = "emu_nfc_tag", value = 1 },  # read 18 of 20
-    { at_ms = 27600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 28500, var = "emu_nfc_tag", value = 1 },  # read 19 of 20
-    { at_ms = 29100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 30000, var = "emu_nfc_tag", value = 1 },  # read 20 of 20
-    { at_ms = 30600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 31500, var = "emu_nfc_tag", value = 2 },  # NTAG215
-    { at_ms = 32100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 33000, var = "emu_nfc_tag", value = 4 },  # NTAG213
-    { at_ms = 33600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 34500, var = "emu_nfc_tag", value = 5 },  # ULTRALIGHT
-    { at_ms = 35100, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 36000, var = "emu_nfc_tag", value = 3 },  # CLASSIC_1K
-    { at_ms = 36600, var = "emu_nfc_tag", value = 0 },
-    { at_ms = 37500, var = "emu_nfc_tag", value = 6 },  # ISO_DEP
-    { at_ms = 38100, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 1600, var = "emu_nfc_tag", value = 1 },  # read 1 of 20
+    { at_ms = 2200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 3100, var = "emu_nfc_tag", value = 1 },  # read 2 of 20
+    { at_ms = 3700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 4600, var = "emu_nfc_tag", value = 1 },  # read 3 of 20
+    { at_ms = 5200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 6100, var = "emu_nfc_tag", value = 1 },  # read 4 of 20
+    { at_ms = 6700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 7600, var = "emu_nfc_tag", value = 1 },  # read 5 of 20
+    { at_ms = 8200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 9100, var = "emu_nfc_tag", value = 1 },  # read 6 of 20
+    { at_ms = 9700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 10600, var = "emu_nfc_tag", value = 1 },  # read 7 of 20
+    { at_ms = 11200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 12100, var = "emu_nfc_tag", value = 1 },  # read 8 of 20
+    { at_ms = 12700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 13600, var = "emu_nfc_tag", value = 1 },  # read 9 of 20
+    { at_ms = 14200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 15100, var = "emu_nfc_tag", value = 1 },  # read 10 of 20
+    { at_ms = 15700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 16600, var = "emu_nfc_tag", value = 1 },  # read 11 of 20
+    { at_ms = 17200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 18100, var = "emu_nfc_tag", value = 1 },  # read 12 of 20
+    { at_ms = 18700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 19600, var = "emu_nfc_tag", value = 1 },  # read 13 of 20
+    { at_ms = 20200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 21100, var = "emu_nfc_tag", value = 1 },  # read 14 of 20
+    { at_ms = 21700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 22600, var = "emu_nfc_tag", value = 1 },  # read 15 of 20
+    { at_ms = 23200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 24100, var = "emu_nfc_tag", value = 1 },  # read 16 of 20
+    { at_ms = 24700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 25600, var = "emu_nfc_tag", value = 1 },  # read 17 of 20
+    { at_ms = 26200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 27100, var = "emu_nfc_tag", value = 1 },  # read 18 of 20
+    { at_ms = 27700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 28600, var = "emu_nfc_tag", value = 1 },  # read 19 of 20
+    { at_ms = 29200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 30100, var = "emu_nfc_tag", value = 1 },  # read 20 of 20
+    { at_ms = 30700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 31600, var = "emu_nfc_tag", value = 2 },  # NTAG215
+    { at_ms = 32200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 33100, var = "emu_nfc_tag", value = 4 },  # NTAG213
+    { at_ms = 33700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 34600, var = "emu_nfc_tag", value = 5 },  # ULTRALIGHT
+    { at_ms = 35200, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 36100, var = "emu_nfc_tag", value = 3 },  # CLASSIC_1K
+    { at_ms = 36700, var = "emu_nfc_tag", value = 0 },
+    { at_ms = 37600, var = "emu_nfc_tag", value = 6 },  # ISO_DEP
+    { at_ms = 38200, var = "emu_nfc_tag", value = 0 },
 ]
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },  # Storage
     { key = "UP", at_ms = 400, hold_ms = 60 },  # Settings
     { key = "UP", at_ms = 500, hold_ms = 60 },  # Modules (STARK-0505)
-    { key = "UP", at_ms = 600, hold_ms = 60 },  # NFC (Lab: IR 13, NFC 14)
-    { key = "OK", at_ms = 800, hold_ms = 60 },
-    { key = "BACK", at_ms = 39200, hold_ms = 60 },
+    { key = "UP", at_ms = 600, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
+    { key = "UP", at_ms = 700, hold_ms = 60 },  # NFC (Lab: IR 13, NFC 14)
+    { key = "OK", at_ms = 900, hold_ms = 60 },
+    { key = "BACK", at_ms = 39300, hold_ms = 60 },
 ]
 expect = [
     "nfc: pn532 fw 1.6",

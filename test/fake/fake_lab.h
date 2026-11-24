@@ -166,3 +166,69 @@ unsigned fake_lab_i2c_calls(void);
 unsigned fake_lab_i2c_writes(void);
 uint8_t fake_lab_i2c_reg(uint8_t addr, uint8_t reg); /* 0x68 and 0x76 only; 0 otherwise */
 uint16_t fake_lab_i2c_word(uint8_t reg);             /* 0x48, reg 0..3 */
+
+/* ---- the UART peer (STARK-0705, ADR-0023 §7) -----------------------------------------------
+ *
+ * What is on the other end of the lab UART, selected by a mode, in model time (fake_lab_time_us():
+ * the fake never waits, so a character that has not finished crossing the wire by "now" has not
+ * arrived). The device's own settings come from fake_lab_uart_open(); the peer has settings of its
+ * own (fake_lab_uart_peer()):
+ *   SILENT  nothing answers and nothing talks
+ *   LOOP    TX is wired to RX: every character comes back when it has crossed the wire, at the
+ *           device's own settings, so it always matches
+ *   ECHO    a peer that sends every character back, at its own baud and format: a baud more than
+ *           3 % off or a different format garbles it in both directions (a deterministic bijection)
+ *           and counts a framing error (a parity error when the receiver checks parity)
+ *   TEXT    the peer talks, unasked: 50 lines "stark uart scene line NN\r\n" (1 300 bytes), once
+ * from the moment the device opens, then silence; BINARY the same with 1 024 bytes (j * 7 + 3) &
+ * 0xFF. The same peer is what auto-baud sees on the RX pad: the scene again and again from the
+ * start of a capture (fake_lab_pad_edges() on the RX pin), its edges built bit by bit at the peer's
+ * baud, with the jitter configured for the edge capture. The receiver's buffer is the one the
+ * device opened with: a stream that outruns it loses its oldest characters and counts an overrun
+ * (the model's choice; the hardware loses the newest). Nothing here knows a pin policy: the
+ * transport's guard is the policy.
+ */
+typedef enum {
+    FAKE_LAB_UART_SILENT,
+    FAKE_LAB_UART_LOOP,
+    FAKE_LAB_UART_ECHO,
+    FAKE_LAB_UART_TEXT,
+    FAKE_LAB_UART_BINARY,
+    FAKE_LAB_UART_MODES
+} fake_lab_uart_mode_t;
+
+/* Which pads are the lab UART's (the RX pad is where the stream's edges appear); -1 for none. The
+ * reset forgets them. */
+void fake_lab_uart_pins(int tx, int rx);
+
+/* The peer's mode and, for ECHO, TEXT and BINARY, its baud and format index (0 8N1, 1 8E1, 2 8O1,
+ * 3 8N2, 4 7E1). A mode past the list or a format past it is ignored. */
+void fake_lab_uart_peer(fake_lab_uart_mode_t mode, uint32_t baud, uint8_t fmt);
+
+/* The device's side: `tx` routes TX (writes work only then). STARK_ERR_INVALID_ARG for a zero baud,
+ * a format past 4 or a zero buffer, STARK_ERR_STATE when already open. Opening restarts the scene.
+ */
+stark_err_t fake_lab_uart_open(uint32_t baud, uint8_t fmt, size_t rx_buf, bool tx);
+void fake_lab_uart_close(void);
+/* A new device baud, the format and the characters in flight unchanged. STARK_ERR_STATE when not
+ * open, STARK_ERR_INVALID_ARG for zero. */
+stark_err_t fake_lab_uart_set_baud(uint32_t baud);
+bool fake_lab_uart_is_open(void);
+bool fake_lab_uart_tx(void);
+
+/* Sends `n` characters at the device's settings: returns n, or 0 unless open with TX. The wire time
+ * is fake_lab_uart_wire_us(): the caller advances the model clock by it if it means to wait. */
+size_t fake_lab_uart_write(const uint8_t *buf, size_t n);
+uint32_t fake_lab_uart_wire_us(size_t n);
+
+/* The characters that have arrived by now, up to `max`; the errors that came with them are added to
+ * the counters (any may be NULL). */
+size_t fake_lab_uart_read(uint8_t *buf, size_t max, uint32_t *framing, uint32_t *parity,
+                          uint32_t *overrun);
+
+/* The scene of a TEXT or BINARY peer, for tests; the bits on the wire per character of a format
+ * (0 past 4); characters dropped because more than 256 were in flight. */
+size_t fake_lab_uart_scene_len(fake_lab_uart_mode_t mode);
+uint8_t fake_lab_uart_scene_byte(fake_lab_uart_mode_t mode, size_t j);
+uint32_t fake_lab_uart_bits(uint8_t fmt);
+unsigned fake_lab_uart_dropped(void);

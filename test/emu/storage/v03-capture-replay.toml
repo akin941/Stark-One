@@ -8,43 +8,44 @@
 # durations. Baseband only: no carrier, LED, light or receiver is proven.
 name = "emu-v03-capture-replay"
 image = "storage"
-end_ms = 12000
+end_ms = 12100
 heap_min = 200000
 rmt_loopback = "0:2"
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },     # Storage
     { key = "UP", at_ms = 400, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 500, hold_ms = 60 },     # Modules (STARK-0505)
-    { key = "UP", at_ms = 600, hold_ms = 60 },     # NFC (STARK-0404)
-    { key = "UP", at_ms = 700, hold_ms = 60 },     # IR
-    { key = "OK", at_ms = 800, hold_ms = 60 },
-    { key = "DOWN", at_ms = 1100, hold_ms = 60 },  # Browse saved
-    { key = "OK", at_ms = 1300, hold_ms = 60 },    # 9 files, on lab_nec.ir
-    { key = "DOWN", at_ms = 1700, hold_ms = 60 },  # lab_necx
-    { key = "DOWN", at_ms = 1850, hold_ms = 60 },  # lab_raw
-    { key = "DOWN", at_ms = 2000, hold_ms = 60 },  # lab_rc5
-    { key = "DOWN", at_ms = 2150, hold_ms = 60 },  # lab_rc6
-    { key = "OK", at_ms = 2400, hold_ms = 60 },
-    { key = "OK", at_ms = 2800, hold_ms = 60 },    # confirm: the "remote"
-    { key = "BACK", at_ms = 3600, hold_ms = 60 },  # receive view
-    { key = "OK", at_ms = 3900, hold_ms = 60 },    # Save last -> ir_0001.ir
-    { key = "DOWN", at_ms = 4400, hold_ms = 60 },
-    { key = "OK", at_ms = 4600, hold_ms = 60 },    # 10 files, on ir_0001.ir
-    { key = "OK", at_ms = 5100, hold_ms = 60 },
-    { key = "OK", at_ms = 5500, hold_ms = 60 },    # confirm: replay the capture
-    { key = "DOWN", at_ms = 6300, hold_ms = 60 },  # lab_nec (lab_bad skipped)
-    { key = "DOWN", at_ms = 6450, hold_ms = 60 },  # lab_necx
-    { key = "DOWN", at_ms = 6600, hold_ms = 60 },  # lab_raw
-    { key = "OK", at_ms = 6900, hold_ms = 60 },
-    { key = "OK", at_ms = 7300, hold_ms = 60 },    # confirm: the unknown "remote"
-    { key = "BACK", at_ms = 8100, hold_ms = 60 },
-    { key = "OK", at_ms = 8400, hold_ms = 60 },    # Save last -> ir_0002.ir
-    { key = "DOWN", at_ms = 8900, hold_ms = 60 },
-    { key = "OK", at_ms = 9100, hold_ms = 60 },    # 11 files, on ir_0002.ir
-    { key = "OK", at_ms = 9600, hold_ms = 60 },
-    { key = "OK", at_ms = 10000, hold_ms = 60 },   # confirm: replay the RAW capture
-    { key = "BACK", at_ms = 10800, hold_ms = 60 }, # list -> view
-    { key = "BACK", at_ms = 11200, hold_ms = 60 }, # leave the app
+    { key = "UP", at_ms = 600, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
+    { key = "UP", at_ms = 700, hold_ms = 60 },     # NFC (STARK-0404)
+    { key = "UP", at_ms = 800, hold_ms = 60 },     # IR
+    { key = "OK", at_ms = 900, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1200, hold_ms = 60 },  # Browse saved
+    { key = "OK", at_ms = 1400, hold_ms = 60 },    # 9 files, on lab_nec.ir
+    { key = "DOWN", at_ms = 1800, hold_ms = 60 },  # lab_necx
+    { key = "DOWN", at_ms = 1950, hold_ms = 60 },  # lab_raw
+    { key = "DOWN", at_ms = 2100, hold_ms = 60 },  # lab_rc5
+    { key = "DOWN", at_ms = 2250, hold_ms = 60 },  # lab_rc6
+    { key = "OK", at_ms = 2500, hold_ms = 60 },
+    { key = "OK", at_ms = 2900, hold_ms = 60 },    # confirm: the "remote"
+    { key = "BACK", at_ms = 3700, hold_ms = 60 },  # receive view
+    { key = "OK", at_ms = 4000, hold_ms = 60 },    # Save last -> ir_0001.ir
+    { key = "DOWN", at_ms = 4500, hold_ms = 60 },
+    { key = "OK", at_ms = 4700, hold_ms = 60 },    # 10 files, on ir_0001.ir
+    { key = "OK", at_ms = 5200, hold_ms = 60 },
+    { key = "OK", at_ms = 5600, hold_ms = 60 },    # confirm: replay the capture
+    { key = "DOWN", at_ms = 6400, hold_ms = 60 },  # lab_nec (lab_bad skipped)
+    { key = "DOWN", at_ms = 6550, hold_ms = 60 },  # lab_necx
+    { key = "DOWN", at_ms = 6700, hold_ms = 60 },  # lab_raw
+    { key = "OK", at_ms = 7000, hold_ms = 60 },
+    { key = "OK", at_ms = 7400, hold_ms = 60 },    # confirm: the unknown "remote"
+    { key = "BACK", at_ms = 8200, hold_ms = 60 },
+    { key = "OK", at_ms = 8500, hold_ms = 60 },    # Save last -> ir_0002.ir
+    { key = "DOWN", at_ms = 9000, hold_ms = 60 },
+    { key = "OK", at_ms = 9200, hold_ms = 60 },    # 11 files, on ir_0002.ir
+    { key = "OK", at_ms = 9700, hold_ms = 60 },
+    { key = "OK", at_ms = 10100, hold_ms = 60 },   # confirm: replay the RAW capture
+    { key = "BACK", at_ms = 10900, hold_ms = 60 }, # list -> view
+    { key = "BACK", at_ms = 11300, hold_ms = 60 }, # leave the app
 ]
 expect = [
     "storage: mounted emu-flashfat",

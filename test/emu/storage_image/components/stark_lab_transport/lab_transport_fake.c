@@ -28,8 +28,16 @@
  *   emu_lab_i2c_devs   a bitmask over the five lab devices (0x1F at boot: all of them)
  *   emu_lab_i2c_fault  0 none, 1 NACK_ALL, 2 TIMEOUT at 0x48 (the sweep goes on without it), 3
  * STUCK (every call times out, which ends the sweep after three), 4 DROP_DEVICE at 0x68 (it answers
- * once and vanishes); until it changes again Integration evidence only: nothing here shows a level
- * on a pad (docs/VALIDATION.md §2).
+ * once and vanishes); until it changes again
+ * The UART group (STARK-0705) is the model's UART peer behind the production header's guard
+ * (stark_lab_uart_args_ok(), stark_lab_uart_pins_ok()); reads and writes wait in emulated time like
+ * a wire (a write for its characters' wire time, a read up to its timeout). Pokes: emu_lab_uart 0
+ * silent, 1 TX looped to RX, 2 an echo peer, 3 a peer that talks (the text scene of 1 300 bytes,
+ * once from the moment the driver opens, and the same scene again and again on the RX pad for
+ * auto-baud), 4 the binary scene emu_lab_uart_baud  the peer's baud (a mismatch of more than 3 %
+ * garbles and counts errors) emu_lab_uart_fmt   the peer's format index (0 8N1, 1 8E1, 2 8O1, 3
+ * 8N2, 4 7E1) Integration evidence only: nothing here shows a level on a pad (docs/VALIDATION.md
+ * §2).
  */
 #include "esp_timer.h"
 #include "fake_lab.h"
@@ -48,6 +56,9 @@ volatile uint16_t emu_lab_wire;
 volatile uint8_t emu_lab_fault;
 volatile uint8_t emu_lab_i2c_devs = FAKE_LAB_I2C_ALL;
 volatile uint8_t emu_lab_i2c_fault;
+volatile uint8_t emu_lab_uart;
+volatile uint32_t emu_lab_uart_baud = 115200;
+volatile uint8_t emu_lab_uart_fmt;
 
 #define LAB_PROBE_MS 5u /* what the other fakes are asked with; they do not wait */
 
@@ -61,6 +72,11 @@ static uint16_t s_wire_applied;
 static uint8_t s_fault_applied;
 static uint8_t s_i2c_devs_applied = FAKE_LAB_I2C_ALL;
 static uint8_t s_i2c_fault_applied;
+static uint8_t s_uart_applied = 0xFF;
+static uint32_t s_uart_baud_applied;
+static uint8_t s_uart_fmt_applied = 0xFF;
+static bool s_uart_installed;
+static bool s_uart_tx;
 
 static void follow_pokes(void)
 {
@@ -123,6 +139,22 @@ static void follow_i2c_pokes(void)
     }
 }
 
+/* The UART pokes, applied before each UART call after they change; the model's clock is the
+ * emulated one. */
+static void follow_uart_pokes(void)
+{
+    fake_lab_time_us((uint64_t)esp_timer_get_time());
+    uint8_t mode = emu_lab_uart;
+    uint32_t baud = emu_lab_uart_baud;
+    uint8_t fmt = emu_lab_uart_fmt;
+    if (mode != s_uart_applied || baud != s_uart_baud_applied || fmt != s_uart_fmt_applied) {
+        fake_lab_uart_peer((fake_lab_uart_mode_t)mode, baud, fmt);
+        s_uart_applied = mode;
+        s_uart_baud_applied = baud;
+        s_uart_fmt_applied = fmt;
+    }
+}
+
 /* The module ID EEPROMs and the PN532 are the other fakes' (their transports), asked here. */
 static stark_err_t i2c_ext_probe(uint8_t addr)
 {
@@ -182,6 +214,8 @@ stark_err_t stark_lab_transport_open(void)
     if (!s_open) {
         fake_lab_reset();
         fake_lab_i2c_ext(i2c_ext_probe, i2c_ext_xfer);
+        fake_lab_uart_pins(stark_board_pins()->lab_uart_tx, stark_board_pins()->lab_uart_rx);
+        s_uart_applied = 0xFF; /* the reset forgot the peer: follow the pokes again */
         s_open = true;
     }
     return STARK_OK;
@@ -303,6 +337,7 @@ stark_err_t stark_lab_transport_pad_edges(int pin, uint32_t window_us, uint32_t 
         return STARK_ERR_INVALID_ARG;
     }
     follow_pokes();
+    follow_uart_pokes(); /* auto-baud listens to the UART peer's stream on the RX pad */
     s_edges_cancel = false;
     stark_err_t err = fake_lab_pad_edges(pin, window_us, ts, cap, n, seen, first_level);
     if (err != STARK_OK) {
@@ -351,4 +386,106 @@ stark_err_t stark_lab_transport_i2c_xfer(uint8_t addr, uint32_t hz, const uint8_
     }
     follow_i2c_pokes();
     return fake_lab_i2c_xfer(addr, w, wn, r, rn);
+}
+
+/* ---- the lab UART (STARK-0705) -----------------------------------------------------------------
+ */
+
+stark_err_t stark_lab_transport_uart_open(uint32_t baud, uint8_t fmt, size_t rx_buf, bool tx)
+{
+    if (!stark_lab_uart_args_ok(baud, fmt, rx_buf)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (!s_open) {
+        return STARK_ERR_STATE;
+    }
+    if (!stark_lab_uart_pins_ok(stark_board_pins())) {
+        return STARK_ERR_NOT_SUPPORTED;
+    }
+    if (s_uart_installed) {
+        return STARK_ERR_STATE;
+    }
+    follow_uart_pokes();
+    stark_err_t err = fake_lab_uart_open(baud, fmt, rx_buf, tx);
+    if (err == STARK_OK) {
+        s_uart_installed = true;
+        s_uart_tx = tx;
+    }
+    return err;
+}
+
+/* Waits up to the timeout for a character, a tick at a time, like the driver's blocking read. */
+int stark_lab_transport_uart_read(uint8_t *buf, size_t max, uint32_t timeout_ms,
+                                  stark_lab_uart_err_t *errs)
+{
+    if (errs != NULL) {
+        *errs = (stark_lab_uart_err_t){0};
+    }
+    if (buf == NULL || max == 0u || max > STARK_LAB_UART_READ_MAX ||
+        timeout_ms > STARK_LAB_UART_TIMEOUT_MS_MAX) {
+        return -(int)STARK_ERR_INVALID_ARG;
+    }
+    if (!s_uart_installed) {
+        return -(int)STARK_ERR_STATE;
+    }
+    int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;
+    uint32_t fe = 0;
+    uint32_t pe = 0;
+    uint32_t ov = 0;
+    size_t n;
+    for (;;) {
+        follow_uart_pokes();
+        n = fake_lab_uart_read(buf, max, &fe, &pe, &ov);
+        if (n > 0u || esp_timer_get_time() >= deadline) {
+            break;
+        }
+        vTaskDelay(1);
+    }
+    if (errs != NULL) {
+        *errs = (stark_lab_uart_err_t){.framing = fe, .parity = pe, .overrun = ov};
+    }
+    return (int)n;
+}
+
+/* The call returns when the last character has left: the wire time, in slices. */
+int stark_lab_transport_uart_write(const uint8_t *buf, size_t n, uint32_t timeout_ms)
+{
+    if (buf == NULL || n == 0u || n > STARK_LAB_UART_WRITE_MAX ||
+        timeout_ms > STARK_LAB_UART_TIMEOUT_MS_MAX) {
+        return -(int)STARK_ERR_INVALID_ARG;
+    }
+    if (!s_uart_installed || !s_uart_tx) {
+        return -(int)STARK_ERR_STATE;
+    }
+    follow_uart_pokes();
+    size_t sent = fake_lab_uart_write(buf, n);
+    uint32_t wire_us = fake_lab_uart_wire_us(sent);
+    if (wire_us / 1000u > timeout_ms) {
+        return -(int)STARK_ERR_TIMEOUT;
+    }
+    int64_t until = esp_timer_get_time() + (int64_t)wire_us;
+    while (esp_timer_get_time() < until) {
+        vTaskDelay(1);
+    }
+    return (int)sent;
+}
+
+stark_err_t stark_lab_transport_uart_set_baud(uint32_t baud)
+{
+    if (baud < STARK_LAB_UART_BAUD_MIN || baud > STARK_LAB_UART_BAUD_MAX) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (!s_uart_installed) {
+        return STARK_ERR_STATE;
+    }
+    return fake_lab_uart_set_baud(baud);
+}
+
+void stark_lab_transport_uart_close(void)
+{
+    if (s_uart_installed) {
+        fake_lab_uart_close();
+        s_uart_installed = false;
+        s_uart_tx = false;
+    }
 }

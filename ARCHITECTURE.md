@@ -338,7 +338,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
 | 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
 | 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602), `_CAPTURE` / `_CAPTURE_DONE` (STARK-0603), `_TX_DONE` (6) / `_TX_FAILED` (7) / `_TX_REFUSED` (8) (STARK-0605) |
-| 8 | `STARK_SYS_LAB` | `stark_lab` (STARK-0701) | `STARK_LAB_EVT_PINS` (the offer changed or a held pin was withdrawn); later `_MEASURE_DONE` (STARK-0703); later `_UART_DATA`, `_UART_ERROR`, `_SPI_DONE` (STARK-0705, 0706); `_SCAN_DONE` stays reserved, the I²C sweep being a synchronous call (STARK-0704) |
+| 8 | `STARK_SYS_LAB` | `stark_lab` (STARK-0701) | `STARK_LAB_EVT_PINS` (the offer changed or a held pin was withdrawn); later `_MEASURE_DONE` (STARK-0703); `_UART_DATA` (4) and `_UART_ERROR` (5), each at most ten times a second while the UART monitor runs (STARK-0705); later `_SPI_DONE` (6, STARK-0706); `_SCAN_DONE` (3) stays reserved, the I²C sweep being a synchronous call (STARK-0704) |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -1125,7 +1125,7 @@ applying each pull for 2 ms and leaves it an input with no pull.
 **The transport** (`stark_lab_transport.h`) is the seam and the fifth and last test-image
 substitution: today the pad group (`pad_in`, `pad_out`, `pad_read`, `pad_hiz`) and the PWM and
 pulse outputs (`pwm_start`, `pwm_stop`, `pulse`, `pulse_cancel`; STARK-0702); later V0.7 tasks
-append edge capture, the shared I²C bus (STARK-0704), SPI on a leased slot and the lab UART. It re-checks
+append edge capture, the shared I²C bus (STARK-0704), the lab UART (STARK-0705) and, later, SPI on a leased slot. It re-checks
 the pin on every call (`stark_lab_pad_ok()`: stark_board's class and, for a slot line, the module
 table), so no caller can reach a pin the board does not offer even by bypassing the service; the
 policy is an inline function in the header, shared by the production transport
@@ -1208,6 +1208,29 @@ table of at most 48 generic phrases; nothing is probed to confirm it), and per d
 editors made of rows (register, width, nibble, length or byte count, bytes) with the confirmations of §5. The
 rows are `i2c_views.c` (pure, 100 % lines).
 
+**The UART tool (STARK-0705).** UART1 on the two lab pins (`LAB_UART_TX` 38, `LAB_UART_RX` 39; 3.3 V TTL only) gets a
+monitor, bounded sends, a loopback "bridge", auto-baud and a card log (ADR-0023 §7 and its 0705 addendum). *Pure
+files* (100 % lines): `lab_uart.c` (the baud list 1 200 to 921 600 and the formats 8N1, 8E1, 8O1, 8N2, 7E1, the 4 kB byte ring
+that counts what it overwrites, the 64-byte pattern `00..3f` and its judgement, the strict grammar of the send file, the
+log names, CRC-32, hex and ASCII rows), `lab_autobaud.c` (timestamped edges in, a listed baud or a status out: the
+shortest pulse picks the bit time, which is refined over the whole stream and snapped within 3 %) and `lab_uart_svc.c`
+(the session over an injected I/O table: it holds both pins through the same pin hold as the GPIO app, so the two exclude
+each other, opens **receive-only** so a monitor drives nothing, routes TX only after the app's confirmation armed the pin,
+and gives the driver and both pins back on close and on every failure). `stark_lab.c` binds it to the transport, the log, two
+locks (one operation at a time; a short one around the ring and counters) and the event bus. *Transport:* the UART group of
+`stark_lab_transport` (`uart_open` with a `tx` flag, `_read` with a timeout and error counts, `_write`, `_set_baud`,
+`_close`) is `lab_transport_uart.c` on ESP-IDF's UART driver (interrupt driven, no task, a 32-event queue that is the only
+place the driver reports framing, parity and overrun errors) and returns both pads to hi-Z on close; the host builds a shim
+over `test/fake/fake_lab.c`'s UART peer, the test image's transport carries the same group (still the fifth and last
+substitution), and the pin guard (`stark_lab_uart_pins_ok()`) is one inline function all three share. *Threading:* the
+monitor, the loopback test, a send from the file and the auto-baud capture run on the app's worker (no task is added); the
+UI task reads the ring and counters under the short lock and closes the session when the monitor screen leaves. The log
+(`logs/uart_NNNN.log`, 2 kB buffer, synced every 4 kB, 1 MiB at most) is written on that worker. *App:* `apps/app_uart` (Lab
+category, title "UART", launcher row 16 between Sub-GHz and the Device header; no capability required): Monitor, Send,
+Loopback test, Auto-baud, Log, Baud, Format; the monitor is a screen of its own over the 4 kB ring, hex (16 per row) or ASCII
+(48); rows and texts are `uart_views.c` (pure, 100 % lines), the card log is `uart_log.c` (host-tested over an in-memory
+`stark_storage`).
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -1218,7 +1241,7 @@ rows are `i2c_views.c` (pure, 100 % lines).
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); the fixed transmit policy and the gated replay of a saved capture implemented (§6.9g, STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
-| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C scanner implemented (§6.9h, STARK-0704); the UART and SPI tools and the self-test are planned (ADR-0023, TASKS STARK-0705…0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
+| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C scanner implemented (§6.9h, STARK-0704); the UART tool implemented (§6.9h, STARK-0705); the SPI probe and the self-test are planned (ADR-0023, TASKS STARK-0706, 0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 

@@ -12,10 +12,18 @@
 #include "ui_port.h"
 
 static bool s_inline;
+static unsigned
+    s_stop_after; /* should_stop() turns true after this many calls of one run (0: never) */
+static unsigned s_calls;
 
 void ui_port_worker_inline(bool on)
 {
     s_inline = on;
+}
+
+void ui_port_worker_stop_after(unsigned calls)
+{
+    s_stop_after = calls;
 }
 
 stark_err_t stark_app_worker_start(stark_app_worker_fn fn, void *ctx)
@@ -23,13 +31,14 @@ stark_err_t stark_app_worker_start(stark_app_worker_fn fn, void *ctx)
     if (!s_inline || fn == NULL) {
         return fn == NULL ? STARK_ERR_INVALID_ARG : STARK_ERR_NOT_SUPPORTED;
     }
+    s_calls = 0;
     fn(ctx);
     return STARK_OK;
 }
 
 bool stark_app_worker_should_stop(void)
 {
-    return false;
+    return s_stop_after > 0u && ++s_calls > s_stop_after;
 }
 
 void app_worker_join(const char *app_id)
