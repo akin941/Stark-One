@@ -146,3 +146,28 @@ void stark_lab_transport_pulse_cancel(void)
 {
     s_cancel = true;
 }
+
+stark_err_t stark_lab_transport_pad_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap,
+                                          size_t *n, uint32_t *seen, bool *first_level)
+{
+    if (!s_open) {
+        return STARK_ERR_STATE;
+    }
+    if (!stark_lab_pad_ok(pin)) {
+        return STARK_ERR_NOT_SUPPORTED;
+    }
+    if (window_us < STARK_LAB_EDGES_WINDOW_US_MIN || window_us > STARK_LAB_EDGES_WINDOW_US_MAX) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    return stark_hal_gpio_edges(pin, window_us, ts, cap, n, seen, first_level);
+}
+
+void stark_lab_transport_edges_cancel(void)
+{
+    stark_hal_gpio_edges_cancel();
+}
+
+uint32_t stark_lab_transport_tick_hz(void)
+{
+    return stark_hal_tick_hz();
+}

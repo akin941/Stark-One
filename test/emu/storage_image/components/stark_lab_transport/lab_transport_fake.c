@@ -17,6 +17,9 @@
  * With a wire in place a PWM start is followed by the model's own check: the destination pad is
  * sampled 1000 times over four periods and `lab: wire <from> -> <to> edges=<n> high=<pct>%`
  * is logged. The model's clock is the emulated clock, so a square wave runs in emulated time.
+ * The edge capture (STARK-0703) stamps the edges of the pad's source (the external one, or a wire)
+ * at 240 MHz from that clock, and then waits the window out in 10 ms slices like the hardware, so
+ * a measurement takes the time it would; the tick is the model's, not the CPU's.
  * Integration evidence only: nothing here shows a level on a pad (docs/VALIDATION.md §2).
  */
 #include "esp_timer.h"
@@ -35,6 +38,7 @@ volatile uint8_t emu_lab_fault;
 
 static bool s_open;
 static volatile bool s_cancel;
+static volatile bool s_edges_cancel;
 static uint16_t s_ext_key = 0xFFFF; /* the ext pokes as last applied: pin, mode, hz, duty packed */
 static uint32_t s_ext_hz_applied = 0xFFFFFFFFu;
 static uint8_t s_ext_duty_applied = 0xFF;
@@ -203,4 +207,43 @@ stark_err_t stark_lab_transport_pulse(int pin, bool level, uint32_t us)
 void stark_lab_transport_pulse_cancel(void)
 {
     s_cancel = true;
+}
+
+stark_err_t stark_lab_transport_pad_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap,
+                                          size_t *n, uint32_t *seen, bool *first_level)
+{
+    if (!s_open) {
+        return STARK_ERR_STATE;
+    }
+    if (!stark_lab_pad_ok(pin)) {
+        return STARK_ERR_NOT_SUPPORTED;
+    }
+    if (window_us < STARK_LAB_EDGES_WINDOW_US_MIN || window_us > STARK_LAB_EDGES_WINDOW_US_MAX) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    follow_pokes();
+    s_edges_cancel = false;
+    stark_err_t err = fake_lab_pad_edges(pin, window_us, ts, cap, n, seen, first_level);
+    if (err != STARK_OK) {
+        return err;
+    }
+    /* The stamps cover the window; the wait is what makes the measurement take its time. A fast
+     * source ends the capture early on the hardware (the ring is full), so does it here. */
+    uint32_t limit = cap > 0u ? (uint32_t)cap + 1u : STARK_LAB_EDGES_GATE_MAX;
+    for (uint32_t left = window_us / 1000u; left > 0u && *seen < limit && !s_edges_cancel;) {
+        uint32_t slice = left < 10u ? left : 10u;
+        vTaskDelay(pdMS_TO_TICKS(slice));
+        left -= slice;
+    }
+    return s_edges_cancel ? STARK_ERR_STATE : STARK_OK;
+}
+
+void stark_lab_transport_edges_cancel(void)
+{
+    s_edges_cancel = true;
+}
+
+uint32_t stark_lab_transport_tick_hz(void)
+{
+    return FAKE_LAB_TICK_HZ;
 }

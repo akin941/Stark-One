@@ -70,6 +70,19 @@ static stark_err_t io_pulse(void *ctx, int pin, bool level, uint32_t us)
     return stark_lab_transport_pulse(pin, level, us);
 }
 
+static stark_err_t io_edges(void *ctx, int pin, uint32_t window_us, uint32_t *ts, size_t cap,
+                            size_t *n, uint32_t *seen, bool *first_level)
+{
+    (void)ctx;
+    return stark_lab_transport_pad_edges(pin, window_us, ts, cap, n, seen, first_level);
+}
+
+static uint32_t io_tick_hz(void *ctx)
+{
+    (void)ctx;
+    return stark_lab_transport_tick_hz();
+}
+
 static void io_delay_us(void *ctx, uint32_t us)
 {
     (void)ctx;
@@ -150,6 +163,8 @@ stark_err_t stark_lab_init(void)
                          .pwm_start = io_pwm_start,
                          .pwm_stop = io_pwm_stop,
                          .pulse = io_pulse,
+                         .edges = io_edges,
+                         .tick_hz = io_tick_hz,
                          .delay_us = io_delay_us,
                          .log = io_log};
     lab_pins_init(&s_pins, &io, stark_board_pins());
@@ -319,10 +334,35 @@ void stark_lab_pulse_cancel(void)
     stark_lab_transport_pulse_cancel();
 }
 
+stark_err_t stark_lab_measure(int pin, uint32_t *ring, size_t cap, stark_lab_meas_t *out)
+{
+    if (!enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_pins_measure(&s_pins, pin, ring, cap, out);
+    leave();
+    if (err == STARK_OK) {
+        char text[40];
+        stark_lab_meas_log_text(out, text, sizeof text);
+        STARK_LOGI("lab", "measure %s", text);
+        stark_event_t e = {.type = STARK_EVT_SYSTEM};
+        e.system.id = STARK_SYS_LAB;
+        e.system.arg = STARK_LAB_EVT_MEASURE_DONE;
+        (void)stark_event_publish(&e);
+    }
+    return err;
+}
+
+void stark_lab_measure_cancel(void)
+{
+    stark_lab_transport_edges_cancel();
+}
+
 void stark_lab_refresh(void)
 {
     stark_lab_transport_pulse_cancel(); /* a pulse in flight must not hold the lock past a hot-plug
                                          */
+    stark_lab_transport_edges_cancel(); /* nor a measurement, which can wait 4 s */
     if (!enter()) {
         return;
     }

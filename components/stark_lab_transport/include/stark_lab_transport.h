@@ -1,9 +1,9 @@
 /*
  * stark_lab_transport.h — the lab tools' wires (TASKS.md STARK-0701, ADR-0023 §2): the one
  * seam between the lab service and the hardware, and the fifth and last substitution of the
- * emulator test image. Today it carries the pad group (configure, read, hi-Z) and the PWM and
- * pulse outputs (STARK-0702); later V0.7 tasks append the edge capture, the shared I2C bus,
- * SPI on a leased slot and the lab UART.
+ * emulator test image. Today it carries the pad group (configure, read, hi-Z), the PWM and
+ * pulse outputs (STARK-0702) and the edge capture (STARK-0703); later V0.7 tasks append the
+ * shared I2C bus, SPI on a leased slot and the lab UART.
  *
  * Every pad call re-checks the pin against stark_board's classification, whatever the
  * caller says (defence in depth, SECURITY_SCOPE §4.6): a pin that is not offered returns
@@ -74,6 +74,31 @@ stark_err_t stark_lab_transport_pulse(int pin, bool level, uint32_t us);
 /* Ends a pulse that is waiting, early. Any task; no lock; a pulse that starts later is not
  * affected. */
 void stark_lab_transport_pulse_cancel(void);
+
+/*
+ * Edge capture (STARK-0703, ADR-0023 §4): the any-edge interrupt of one offered pad is on for
+ * `window_us` (STARK_LAB_EDGES_WINDOW_US_MIN..MAX, else STARK_ERR_INVALID_ARG) and every edge is
+ * stamped with the CPU cycle counter into `ts` (the first `cap` are stored; cap 0 only counts).
+ * `*n` is how many were stored and `*seen` how many edges came, counted up to cap + 1 (or
+ * STARK_LAB_EDGES_GATE_MAX when cap is 0): the capture ends at once when that many have come, so
+ * `*seen > cap` is a ring that overflowed. `*first_level` is the level before the first edge. The
+ * pad is not configured: it stays what it was, an input with its pull, and the interrupt is
+ * removed on every way out. A cancel ends the wait within 10 ms and returns STARK_ERR_STATE.
+ * It is an input operation (an interrupt on a pad, never a drive); the service allows it only on
+ * a pin it holds as an input. Re-checks the class like every pad call.
+ */
+#define STARK_LAB_EDGES_WINDOW_US_MIN 10000u
+#define STARK_LAB_EDGES_WINDOW_US_MAX 4000000u
+#define STARK_LAB_EDGES_GATE_MAX      4096u
+stark_err_t stark_lab_transport_pad_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap,
+                                          size_t *n, uint32_t *seen, bool *first_level);
+
+/* Ends a capture that is waiting, early. Any task; no lock; a capture that starts later is not
+ * affected. */
+void stark_lab_transport_edges_cancel(void);
+
+/* The clock the stamps count at, in hertz. */
+uint32_t stark_lab_transport_tick_hz(void);
 
 /*
  * The offer, as a pure rule: a LAB pin always, a SLOT pin only while its slot is empty

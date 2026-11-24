@@ -1,0 +1,49 @@
+# STARK-0703 on the production image (ADR-0023 §4, §9). The real transport and HAL: pin 38 is opened
+# as an input with a pull-up, which esp-emu reads as high (docs/VALIDATION.md §2), and the Measure
+# row takes the 20 ms gate through the real GPIO interrupt service (installed with the IRAM flag),
+# the IRAM edge handler, the CPU cycle counter and the window wait. Nothing drives the pad, so no
+# edge comes: the gate counts none, the 4 s window ends empty and the answer is `no signal (high)`.
+# That is all the emulator can show here (it cannot stimulate a pad from outside); the arithmetic
+# is proven on the host against the Python reference and the edges on the test image. The
+# interrupt is installed and removed again on the way, and the pin is released on leaving.
+# UP from About wraps to Storage; the walk is Storage, Settings, Modules, IR and GPIO.
+name = "emu-v07-measure-prod"
+end_ms = 10200
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 400, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 550, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 700, hold_ms = 60 },     # Modules
+    { key = "UP", at_ms = 850, hold_ms = 60 },     # IR
+    { key = "UP", at_ms = 1000, hold_ms = 60 },    # GPIO
+    { key = "OK", at_ms = 1200, hold_ms = 60 },    # open the app
+    { key = "OK", at_ms = 1600, hold_ms = 60 },    # pin 38
+    { key = "RIGHT", at_ms = 2000, hold_ms = 60 }, # Mode: Input
+    { key = "DOWN", at_ms = 2400, hold_ms = 60 },  # Pull
+    { key = "RIGHT", at_ms = 2800, hold_ms = 60 }, # Up
+    { key = "DOWN", at_ms = 3200, hold_ms = 60 },  # Read
+    { key = "DOWN", at_ms = 3600, hold_ms = 60 },  # Measure
+    { key = "OK", at_ms = 4000, hold_ms = 60 },    # measure: a 20 ms gate, then a 4 s window
+    { key = "BACK", at_ms = 9000, hold_ms = 60 },  # release pin 38
+    { key = "BACK", at_ms = 9400, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "lab: pins 38 39",
+    'menu: sel=11 "GPIO"',
+    "gpioapp: open pin 38 LAB_UART_TX",
+    "gpioapp: pin 38 IN H",
+    "gpioapp: pin 38 measuring",
+    "lab: measure no signal (high)",
+    "gpioapp: pin 38 measure no signal (high)",
+    "lab: released pin 38",
+    "lab: released all",
+    "app: stop gpio",
+]
+forbid = [
+    "gpioapp: open pin 39",
+    "dialog: open",
+    "armed",
+    "contention",
+    "gpio: conflict",
+    "panic",
+]

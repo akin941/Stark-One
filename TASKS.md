@@ -5025,7 +5025,7 @@ their meaning).
 | 1. I²C scan finds devices at the expected addresses | five fake devices found exactly; production image finds 0x50 only | STARK-0704 |
 | 2. UART bridge round-trips at 115200 | the 64-byte loop pattern, every baud and format, mismatch reported; auto-baud | STARK-0705 |
 | 3. Reserved pins cannot be configured | every GPIO -1 to 64 against every call; arm; hot-plug withdrawal; EEPROM write and radio-slot refusals | STARK-0701, 0702, 0704, 0706 |
-| 4. Frequency and duty measurement | synthetic edge sets within tolerance; PWM wired to a pad reads back | STARK-0703 |
+| 4. Frequency and duty measurement | synthetic edge sets within tolerance; a PWM wired to a pad reads back (host, ADR-0023 0703 addendum 10); an external source measured through the app (test image) | STARK-0703 |
 | 5. Self-test and export | every check passes and fails on injection; attested never `pass`; the report | STARK-0707 |
 
 **System event ids** (ARCHITECTURE §6.3): 8 `STARK_SYS_LAB` (`arg` = `STARK_LAB_EVT_PINS` /
@@ -5490,6 +5490,60 @@ exists only if the §2 probe shows an emulated pad delivers interrupts, and then
 open; static ≤ 0.5 kB, boot heap cost ≤ 0.5 kB, flash ≤ 4 kB. **Physical HIL (V1).** ISR
 latency and accuracy from 1 Hz to 50 kHz against a signal generator, and `LAB_UART_TX` PWM
 into `LAB_UART_RX`.
+
+---
+
+**As built.** Differences from the plan and the readings the spec left open, each the smallest sound
+choice (ADR-0023's STARK-0703 addendum records them; the probes of STARK-0701 still hold, so nothing
+below depends on a pad that moves in the production image):
+
+* **The arithmetic** is `lab_meas.c` (the third pure file, 100 % lines): `lab_meas_compute()` as specified,
+  with two statuses more than the plan listed in effect (`INVALID` for a stamp that goes backwards, a
+  zero clock or a ring longer than 1 024; `TOO_SLOW` also for fewer than two rising edges) and
+  `steady_high` on `NO_SIGNAL`; `lab_meas_plan()` is the pre-gate rule (gate 20 ms, about 768 of the
+  1 024 stamps, window 10 ms to 4 s, 4 s when nothing came, "too fast" above 50 kHz + 0.1 %). The range
+  limits carry a guard (50 kHz + 0.1 %, 0.99 Hz) so a signal at the limit read with its own jitter is not
+  refused. The result type is `stark_lab_meas_t` in `stark_lab.h` (`lab_meas_t` is an alias), with
+  `stark_lab_meas_text()` and `stark_lab_meas_log_text()` for the two forms of the line.
+* **Service, HAL, transport.** `stark_lab_measure(pin, ring, cap, out)` takes the caller's ring (the
+  service allocates nothing), needs the pin held in mode IN and no arm, and returns the pad to its pull;
+  `stark_lab_measure_cancel()` cuts it short (BACK, `on_exit`, the hot-plug refresh) with `STARK_ERR_STATE`;
+  a transport failure ends in hi-Z and disarms. `stark_hal_gpio_edges()` has `*seen` (counted to
+  cap + 1, or 4 096 for the ring-less gate) instead of the plan's `overflowed`; the handler switches its own
+  interrupt off at that count so a far-too-fast signal cannot hold the CPU. **The handler is in IRAM**
+  (84 B, flash operations cannot make a gap that reads as a slow signal; the IRAM was already full, so it
+  costs heap, measured below); `gpio_ll.h` is included inside one documented diagnostic pragma because it
+  does not compile under `-Wconversion -Werror`. `stark_lab_transport_pad_edges()`, `_edges_cancel()` and
+  `_tick_hz()` re-check the class like every pad call; "input-configured" is the service's rule (mode IN),
+  not the transport's. `STARK_LAB_EVT_MEASURE_DONE` (2) is published with each result.
+* **The ring** is allocated by the app on its worker for one measurement and freed before the result is
+  announced, not when the view opens: nothing is held between measurements.
+* **App.** Measure is the fourth row of the Input view (Mode, Pull, Read, Measure, Pad); its value reads
+  "50 kHz max" until a result, then `1.000 kHz duty 25.0 %` (or `250.00 Hz ...` below 1 kHz, `> 50 kHz, not
+  measured`, `< 1 Hz`, `no signal (high)`, `overflow: too many edges`, `glitches (< 1 us)`, `invalid
+  timestamps`); a new pull or mode clears it. OK on the row measures once on the worker; every key but BACK is
+  swallowed while it waits and BACK cuts it short and leaves the pin. Logs: `gpioapp: pin 39 measuring`,
+  `gpioapp: pin 39 measure <text>`, `gpioapp: pin 39 not measured: <err>`; service: `lab: measure 1000.0 Hz
+  duty 25.0 %`, `too fast`, `too slow`, `no signal (high)`, `overflow`, `glitch`, `invalid`.
+* **Pad model and vectors.** `fake_lab_pad_edges()` synthesises the stamps of an external source, a wire or the
+  pad's own PWM at 240 MHz with optional seeded jitter, glitch pairs and a counter epoch; the HAL host fake
+  returns what `hal_host_edges_set()` was given and shows the interrupt on only inside the call.
+  `scripts/gen_lab_vectors.py` writes 79 edge sets to `test/fake/fake_lab_vectors.h` (49 held to the accuracy of
+  ADR-0023 §4, 8 glitch-limited pairs the reference itself calls `GLITCH`), and `--check` is in the lint job.
+* **AC 4 and the one-pin app.** The GPIO app holds one pin and BACK from a pin releases it, so a PWM on
+  pin 38 cannot run while pin 39 is measured: a PWM wired to a measured pad is proven on the host (service
+  over the pad model, six frequency and duty pairs), and the test image measures an external source on pad
+  39 through the app. The V1 check that wires `LAB_UART_TX` PWM into `LAB_UART_RX` needs two live pins, which
+  this app cannot give: STARK-0708 restates it (ADR-0023 0703 addendum 10).
+* **Emulator.** `storage/v07-measure` (test image): 1 kHz / 25 % reads `lab: measure 1000.0 Hz duty 25.0 %`,
+  40 kHz / 50 % `40000.0 Hz duty 50.0 %`, 80 kHz `too fast` (the gate alone, no capture), a steady high line
+  `no signal (high)` after the 4 s window, and a fifth measurement cut short by BACK logs no result.
+  `v07-measure-prod` (production image): pin 38 with a pull-up, the real interrupt service, the IRAM handler and
+  the window wait run and the answer is `no signal (high)`; no pad is driven there, so no edge is ever stamped.
+  No pre-existing scenario changed (the Input view gained a row below the ones they walk).
+* **Evidence and cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM and flash per
+  component against the 0.5 kB and 4 kB budgets, the IRAM and the host and emulator runs.
+* **Not here.** Anything physical (ISR latency, accuracy against a real signal), I²C, SPI and UART.
 
 ---
 

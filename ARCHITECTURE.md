@@ -228,6 +228,10 @@ stark_err_t stark_hal_gpio_config_in(int pin, stark_hal_pull_t pull);   /* input
 stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial);      /* GPIO_DRIVE_CAP_0, read-back on */
 stark_err_t stark_hal_gpio_hiz(int pin);                                /* input, no pull, released */
 stark_err_t stark_hal_gpio_drive_weak(int pin);                         /* a pad LEDC drives (STARK-0702) */
+stark_err_t stark_hal_gpio_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap,
+                                 size_t *n, uint32_t *seen, bool *first_level); /* timestamped edges (STARK-0703) */
+void        stark_hal_gpio_edges_cancel(void);
+uint32_t    stark_hal_tick_hz(void);                                    /* the clock the stamps count at */
 void        stark_hal_delay_us(uint32_t us);                            /* busy wait, a pulse under 1 ms */
 
 /* pwm (LEDC) */
@@ -1149,6 +1153,34 @@ BACK from a pin, BACK at home and leaving the app release every pin (`lab: relea
 test image's transport has the pokes `emu_lab_ext_*`, `emu_lab_wire` and `emu_lab_fault`
 (`lab_transport_fake.c`, ADR-0023 addendum 0702).
 
+**Frequency and duty (STARK-0703).** No PCNT and no MCPWM (ADR-0023 §4): the any-edge interrupt of an
+input pad stamps every edge with the CPU cycle counter, and `lab_meas.c` (the third pure file,
+100 % lines) turns the stamps into a frequency and a duty. `stark_lab_measure(pin, ring, cap, out)`
+runs a 20 ms gate that only counts edges (no ring: `cap` 0), sizes the capture window from that
+count (`lab_meas_plan()`: about 768 of the 1024 stamps, 10 ms to 4 s, 4 s when nothing came, and
+"too fast" at once above 50 kHz + 0.1 %, so a signal far past the range costs 20 ms and no
+capture), captures it, and calls `lab_meas_compute()`. The result carries a status and a number
+only for `OK`: `TOO_FAST`, `TOO_SLOW` (below 1 Hz or fewer than two rising edges), `NO_SIGNAL` (a
+steady line, with its level), `OVERFLOW` (the ring filled: reported, never guessed), `GLITCH` (a
+pulse under 1 µs, a zero step included) and `INVALID` (a stamp that goes backwards, a zero clock, a
+ring too long). Frequency is `(rising edges − 1)` over the span of the first to the last, duty the
+complete high intervals over the complete periods they sit in; steps are unsigned 32-bit
+differences, so the counter wrapping inside a window is harmless. The ring belongs to the caller:
+the app allocates its 4 kB on the worker for one measurement and frees it before the result is
+announced. The interrupt exists for the two windows only, in IRAM, and switches itself off once the
+ring is known to have overflowed (or the gate has counted 4 096), so a fast signal cannot hold the
+CPU; `stark_hal_gpio_edges()` returns `seen` (counted to cap + 1) instead of a flag. The transport
+carries `pad_edges`, `edges_cancel` and `tick_hz` (the guard is the same `stark_lab_pad_ok()`); the
+service requires the pin held and in mode IN, publishes `STARK_LAB_EVT_MEASURE_DONE` and logs
+`lab: measure 1000.0 Hz duty 25.0 %`. A measurement holds the service's lock like a pulse and is cut
+short the same way (BACK, the screen's `on_exit`, the hot-plug refresh: `stark_lab_measure_cancel()`,
+no lock). The Measure row of the GPIO app is on the Input view (Mode, Pull, Read, Measure, Pad); its
+value is the result line (`1.000 kHz duty 25.0 %`) or the reason there is none. The pad model
+(`fake_lab_pad_edges()`) synthesises the stamps of an external source or a wire at 240 MHz, with
+optional seeded jitter, glitches and a counter epoch; the vectors are
+`scripts/gen_lab_vectors.py`, an independent Python implementation (`test/fake/fake_lab_vectors.h`,
+`--check` in the lint job).
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -1159,7 +1191,7 @@ test image's transport has the pokes `emu_lab_ext_*`, `emu_lab_wire` and `emu_la
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); the fixed transmit policy and the gated replay of a saved capture implemented (§6.9g, STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
-| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); the measurement, I²C, UART and SPI tools and the self-test are planned (ADR-0023, TASKS STARK-0703…0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
+| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C, UART and SPI tools and the self-test are planned (ADR-0023, TASKS STARK-0704…0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 

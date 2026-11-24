@@ -27,6 +27,7 @@ size_t gpioview_rows(const gpioapp_cfg_t *c, gpioview_row_t *kinds)
         case GPIOAPP_MODE_IN:
             kinds[n++] = GPIOVIEW_ROW_PULL;
             kinds[n++] = GPIOVIEW_ROW_READ;
+            kinds[n++] = GPIOVIEW_ROW_MEASURE;
             break;
         case GPIOAPP_MODE_OUT:
             kinds[n++] = GPIOVIEW_ROW_LEVEL;
@@ -72,6 +73,8 @@ const char *gpioview_label(gpioview_row_t k, bool pwm_running)
             return "Probe";
         case GPIOVIEW_ROW_READ:
             return "Read";
+        case GPIOVIEW_ROW_MEASURE:
+            return "Measure";
         case GPIOVIEW_ROW_DRIVE:
             return "Drive";
         case GPIOVIEW_ROW_TOGGLE:
@@ -154,6 +157,8 @@ const char *gpioview_value(gpioview_row_t k, const gpioview_t *v, char *buf, siz
             return v->probe != NULL && v->probe[0] != '\0' ? v->probe : NULL;
         case GPIOVIEW_ROW_READ:
             return v->level_read ? "H" : "L";
+        case GPIOVIEW_ROW_MEASURE:
+            return v->meas != NULL && v->meas[0] != '\0' ? v->meas : "50 kHz max";
         case GPIOVIEW_ROW_PAD:
             gpioview_state_text(v->info, v->level_read, buf, n);
             return buf;
@@ -216,6 +221,7 @@ bool gpioview_adjust(gpioapp_cfg_t *c, gpioview_row_t k, int dir)
         }
         case GPIOVIEW_ROW_PROBE:
         case GPIOVIEW_ROW_READ:
+        case GPIOVIEW_ROW_MEASURE:
         case GPIOVIEW_ROW_DRIVE:
         case GPIOVIEW_ROW_TOGGLE:
         case GPIOVIEW_ROW_PWM:

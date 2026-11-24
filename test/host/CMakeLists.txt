@@ -732,6 +732,7 @@ add_test(NAME stark_fake_lab_tests COMMAND run_fake_lab_tests)
 
 add_executable(run_lab_pins_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_pins.c
     ${STARK_COMPONENTS}/stark_lab/lab_pins.c ${STARK_COMPONENTS}/stark_lab/lab_pwm.c
+    ${STARK_COMPONENTS}/stark_lab/lab_meas.c
     ${FAKE_LAB} ${FAKE_24C02}
     ${STARK_COMPONENTS}/stark_err/stark_err.c ${STARK_COMPONENTS}/stark_board/stark_board.c
     ${CMAKE_CURRENT_SOURCE_DIR}/support/stark_board_host.c
@@ -741,6 +742,17 @@ target_compile_options(run_lab_pins_tests PRIVATE ${OUR_C_FLAGS})
 target_link_options(run_lab_pins_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
 target_link_libraries(run_lab_pins_tests PRIVATE unity)
 add_test(NAME stark_lab_pins_tests COMMAND run_lab_pins_tests)
+
+# The frequency and duty arithmetic (STARK-0703, ADR-0023 §4) against the edge sets of
+# scripts/gen_lab_vectors.py, an independent Python implementation.
+add_executable(run_lab_meas_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_meas.c
+    ${STARK_COMPONENTS}/stark_lab/lab_meas.c)
+target_include_directories(run_lab_meas_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+target_compile_options(run_lab_meas_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_meas_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_meas_tests PRIVATE unity)
+add_test(NAME stark_lab_meas_tests COMMAND run_lab_meas_tests)
 
 add_executable(run_lab_pwm_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_pwm.c
     ${STARK_COMPONENTS}/stark_lab/lab_pwm.c)
@@ -912,6 +924,7 @@ add_executable(run_ui_gpio_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/support/stark_board_host.c
     ${STARK_COMPONENTS}/stark_lab/lab_pins.c
     ${STARK_COMPONENTS}/stark_lab/lab_pwm.c
+    ${STARK_COMPONENTS}/stark_lab/lab_meas.c
     ${STARK_COMPONENTS}/stark_board/stark_board.c
     ${FAKE_LAB}
     ${UI_PORT_SOURCES}

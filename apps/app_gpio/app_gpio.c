@@ -1,18 +1,20 @@
 /*
- * app_gpio.c — GPIO (TASKS.md STARK-0702, ADR-0023): reads, drives, pulses and PWMs the pins
- * the lab offers (stark_lab), and leaves every pin in hi-Z with no pull when it stops. The home
- * list shows the offered pins; OK opens one, and the pin's view has a Mode (Hi-Z, Input, Output,
- * PWM, Pulse), the settings that mode needs and an action row. Nothing is driven by a setting:
- * only an action does, and the first drive of a pin in a session asks a confirmation first (the
- * pin, its name, what the pad reads, "own hardware only"); OK arms the pin for the session,
- * BACK touches nothing. BACK from a pin releases it, BACK at home and leaving the app release
- * everything. A pulse waits on the app worker (up to 1 s) and BACK cuts it short; a contention
- * ends in hi-Z with an alert; a pin that stops being offered (a module in its slot) is released
- * by the service and the view returns to the list. The row logic is gpio_views.c (pure); this
- * file binds it to the service and the screen.
+ * app_gpio.c — GPIO (TASKS.md STARK-0702, STARK-0703, ADR-0023): reads, drives, pulses, PWMs and
+ * measures the pins the lab offers (stark_lab), and leaves every pin in hi-Z with no pull when it
+ * stops. The home list shows the offered pins; OK opens one, and the pin's view has a Mode (Hi-Z,
+ * Input, Output, PWM, Pulse), the settings that mode needs and an action row. Nothing is driven by
+ * a setting: only an action does, and the first drive of a pin in a session asks a confirmation
+ * first (the pin, its name, what the pad reads, "own hardware only"); OK arms the pin for the
+ * session, BACK touches nothing. BACK from a pin releases it, BACK at home and leaving the app
+ * release everything. A pulse waits on the app worker (up to 1 s) and so does a measurement of an
+ * input's frequency and duty (up to 4.1 s, the Measure row), and BACK cuts either short; a
+ * contention ends in hi-Z with an alert; a pin that stops being offered (a module in its slot) is
+ * released by the service and the view returns to the list. The row logic is gpio_views.c (pure);
+ * this file binds it to the service and the screen.
  */
 #include "gpioapp.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "stark_app.h"
 #include "stark_caps.h"
@@ -24,10 +26,12 @@
 #include "ui_dialog.h"
 #include "ui_menu.h"
 
-#define NOTE_PULSE_DONE 300 /* STARK_APP_REQ_NOTIFY arg: the worker's pulse has ended */
+#define NOTE_PULSE_DONE   300 /* STARK_APP_REQ_NOTIFY arg: the worker's pulse has ended */
+#define NOTE_MEASURE_DONE 301 /* ... the worker's measurement has ended */
 
 typedef enum { VIEW_HOME, VIEW_PIN } view_t;
 typedef enum { ACT_NONE, ACT_DRIVE, ACT_TOGGLE, ACT_PWM, ACT_PULSE } act_t;
+typedef enum { BUSY_NONE, BUSY_PULSE, BUSY_MEASURE } busy_t;
 
 static view_t s_view;
 static ui_menu_t s_menu;
@@ -52,16 +56,19 @@ static stark_lab_info_t s_info;
 static bool s_level_read;
 static char s_probe[12];
 static char s_last_state[12];
+static char s_meas[40]; /* the Measure row's text */
 static act_t s_pending; /* the action the confirmation is for */
 
-/* the pulse on the worker: the UI task alone starts it, the worker alone writes `err` */
+/* the pulse or the measurement on the worker: the UI task alone starts it, the worker alone
+ * writes `err` (and `meas`) */
 static struct {
     int pin;
     bool level;
     uint32_t us;
     stark_err_t err;
+    stark_lab_meas_t meas;
 } s_job;
-static bool s_pulsing;
+static busy_t s_busy;
 
 static void show(view_t view);
 static bool gpio_event(stark_screen_t *self, const stark_event_t *e);
@@ -132,11 +139,11 @@ static void refresh_pin(void)
 
 /* ---- actions ----------------------------------------------------------------------------- */
 
-static void notify_done(void)
+static void notify_done(int note)
 {
     stark_event_t e = {.type = STARK_EVT_APP_REQUEST};
     e.app.id = STARK_APP_REQ_NOTIFY;
-    e.app.arg = NOTE_PULSE_DONE;
+    e.app.arg = note;
     (void)stark_event_publish(&e);
 }
 
@@ -144,7 +151,25 @@ static void pulse_worker(void *ctx)
 {
     (void)ctx;
     s_job.err = stark_lab_pulse(s_job.pin, s_job.level, s_job.us);
-    notify_done();
+    notify_done(NOTE_PULSE_DONE);
+}
+
+/*
+ * NOTE: the 4 kB edge ring (ADR-0023 §4) is heap held only while the measurement runs: it is
+ * allocated here, on the worker, and freed before the result is announced, so nothing stays
+ * behind when the user leaves the view or the app.
+ */
+static void measure_worker(void *ctx)
+{
+    (void)ctx;
+    uint32_t *ring = malloc(STARK_LAB_MEAS_RING * sizeof(uint32_t));
+    if (ring == NULL) {
+        s_job.err = STARK_ERR_NO_MEM;
+    } else {
+        s_job.err = stark_lab_measure(s_job.pin, ring, STARK_LAB_MEAS_RING, &s_job.meas);
+        free(ring);
+    }
+    notify_done(NOTE_MEASURE_DONE);
 }
 
 /*
@@ -185,10 +210,10 @@ static void perform(act_t act)
             s_job.pin = s_pin;
             s_job.level = s_cfg.level;
             s_job.us = s_cfg.width_us;
-            s_pulsing = true;
+            s_busy = BUSY_PULSE;
             err = stark_app_worker_start(pulse_worker, NULL);
             if (err != STARK_OK) {
-                s_pulsing = false;
+                s_busy = BUSY_NONE;
                 STARK_LOGW("gpioapp", "pin %d pulse refused: %s", s_pin, stark_err_str(err));
             }
             return; /* the result arrives as NOTE_PULSE_DONE */
@@ -272,10 +297,40 @@ static void probe(void)
     refresh_pin();
 }
 
+/* Measure: the worker takes the 20 ms gate and the window (up to 4.1 s); BACK cuts it short. */
+static void measure(void)
+{
+    s_job.pin = s_pin;
+    s_busy = BUSY_MEASURE;
+    stark_err_t err = stark_app_worker_start(measure_worker, NULL);
+    if (err != STARK_OK) {
+        s_busy = BUSY_NONE;
+        STARK_LOGW("gpioapp", "pin %d measure refused: %s", s_pin, stark_err_str(err));
+        return;
+    }
+    (void)snprintf(s_meas, sizeof s_meas, "measuring...");
+    STARK_LOGI("gpioapp", "pin %d measuring", s_pin);
+    stark_ui_invalidate(&s_menu.screen, stark_ui_content_rect());
+}
+
+/* The worker's measurement ended: the result is the row's text, or why there is none. */
+static void measured(void)
+{
+    if (s_job.err == STARK_OK) {
+        stark_lab_meas_text(&s_job.meas, s_meas, sizeof s_meas);
+        STARK_LOGI("gpioapp", "pin %d measure %s", s_pin, s_meas);
+    } else {
+        s_meas[0] = '\0';
+        STARK_LOGW("gpioapp", "pin %d not measured: %s", s_pin, stark_err_str(s_job.err));
+    }
+    refresh_pin();
+}
+
 /* A mode change: the pad is released first (which stops a PWM), then the mode's own rest state. */
 static void apply_mode(void)
 {
     s_probe[0] = '\0';
+    s_meas[0] = '\0';
     (void)stark_lab_hiz(s_pin);
     if (s_cfg.mode == GPIOAPP_MODE_IN) {
         (void)stark_lab_input(s_pin, s_cfg.pull);
@@ -297,6 +352,7 @@ static void open_pin(size_t index)
     gpioview_home_label(s_pin, s_name, s_pad_label, sizeof s_pad_label);
     gpioview_cfg_reset(&s_cfg);
     s_probe[0] = '\0';
+    s_meas[0] = '\0';
     s_last_state[0] = '\0';
     s_level_read = false;
     s_pending = ACT_NONE;
@@ -309,8 +365,10 @@ static void open_pin(size_t index)
 
 static void close_pin(void)
 {
-    if (s_pulsing) {
+    if (s_busy == BUSY_PULSE) {
         stark_lab_pulse_cancel();
+    } else if (s_busy == BUSY_MEASURE) {
+        stark_lab_measure_cancel();
     }
     stark_lab_release(s_pin);
     STARK_LOGI("gpioapp", "close pin %d", s_pin);
@@ -326,7 +384,7 @@ static void activate(size_t index, void *ctx)
         }
         return;
     }
-    if (index >= s_kind_count || s_pulsing) {
+    if (index >= s_kind_count || s_busy != BUSY_NONE) {
         return;
     }
     switch (s_kinds[index]) {
@@ -336,6 +394,9 @@ static void activate(size_t index, void *ctx)
         case GPIOVIEW_ROW_READ:
             refresh_pin();
             STARK_LOGI("gpioapp", "pin %d read %c", s_pin, s_level_read ? 'H' : 'L');
+            break;
+        case GPIOVIEW_ROW_MEASURE:
+            measure();
             break;
         case GPIOVIEW_ROW_DRIVE:
             request(ACT_DRIVE);
@@ -371,7 +432,7 @@ static void activate(size_t index, void *ctx)
 static bool adjust(size_t index, int dir, void *ctx)
 {
     (void)ctx;
-    if (s_view != VIEW_PIN || index >= s_kind_count || s_pulsing) {
+    if (s_view != VIEW_PIN || index >= s_kind_count || s_busy != BUSY_NONE) {
         return false;
     }
     gpioview_row_t kind = s_kinds[index];
@@ -389,6 +450,7 @@ static bool adjust(size_t index, int dir, void *ctx)
     if (kind == GPIOVIEW_ROW_PULL) {
         static const char *const k_pull[] = {"none", "up", "down"};
         (void)stark_lab_input(s_pin, s_cfg.pull);
+        s_meas[0] = '\0'; /* a result belongs to the pull it was made with */
         STARK_LOGI("gpioapp", "pin %d pull %s", s_pin, k_pull[s_cfg.pull]);
     } else if ((kind == GPIOVIEW_ROW_FREQ || kind == GPIOVIEW_ROW_DUTY) &&
                s_info.mode == STARK_LAB_MODE_PWM) {
@@ -419,8 +481,11 @@ static const char *value_of(size_t index, void *ctx)
     if (index >= s_kind_count) {
         return NULL;
     }
-    const gpioview_t v = {
-        .cfg = &s_cfg, .info = &s_info, .level_read = s_level_read, .probe = s_probe};
+    const gpioview_t v = {.cfg = &s_cfg,
+                          .info = &s_info,
+                          .level_read = s_level_read,
+                          .probe = s_probe,
+                          .meas = s_meas};
     return gpioview_value(s_kinds[index], &v, buf, sizeof buf);
 }
 
@@ -477,23 +542,32 @@ static void show(view_t view)
     stark_ui_invalidate(&s_menu.screen, stark_ui_content_rect());
 }
 
-/* Before the manager joins the worker: a pulse that is waiting ends now. */
+/* Before the manager joins the worker: a pulse or a measurement that is waiting ends now. */
 static void gpio_exit(stark_screen_t *self)
 {
     (void)self;
     stark_lab_pulse_cancel();
+    stark_lab_measure_cancel();
 }
 
 static bool gpio_event(stark_screen_t *self, const stark_event_t *e)
 {
     if (e->type == STARK_EVT_APP_REQUEST && e->app.id == STARK_APP_REQ_NOTIFY &&
         e->app.arg == NOTE_PULSE_DONE) {
-        s_pulsing = false;
+        s_busy = BUSY_NONE;
         if (s_view == VIEW_PIN && s_job.pin == s_pin) {
             if (s_job.err != STARK_OK) {
                 drive_failed(s_job.err);
             }
             refresh_pin();
+        }
+        return true;
+    }
+    if (e->type == STARK_EVT_APP_REQUEST && e->app.id == STARK_APP_REQ_NOTIFY &&
+        e->app.arg == NOTE_MEASURE_DONE) {
+        s_busy = BUSY_NONE;
+        if (s_view == VIEW_PIN && s_job.pin == s_pin) {
+            measured();
         }
         return true;
     }
@@ -512,11 +586,11 @@ static bool gpio_event(stark_screen_t *self, const stark_event_t *e)
         }
         return s_menu_event(self, e);
     }
-    if (e->type == STARK_EVT_KEY && s_pulsing) {
+    if (e->type == STARK_EVT_KEY && s_busy != BUSY_NONE) {
         if (e->key.key == STARK_KEY_BACK && e->key.action == STARK_KEY_SHORT) {
             close_pin();
         }
-        return true; /* a key can neither repeat nor stack a pulse */
+        return true; /* a key can neither repeat nor stack a pulse or a measurement */
     }
     if (s_view == VIEW_PIN && e->type == STARK_EVT_KEY && e->key.key == STARK_KEY_BACK &&
         e->key.action == STARK_KEY_SHORT) {
@@ -530,7 +604,7 @@ static stark_err_t gpio_start(void **state)
 {
     (void)state;
     s_view = VIEW_HOME;
-    s_pulsing = false;
+    s_busy = BUSY_NONE;
     s_pending = ACT_NONE;
     s_pin_count = 0;
     return STARK_OK;
@@ -539,7 +613,7 @@ static stark_err_t gpio_start(void **state)
 static void gpio_stop(void *state)
 {
     (void)state;
-    s_pulsing = false;
+    s_busy = BUSY_NONE;
     stark_lab_release_all(); /* every pin hi-Z with no pull; the worker is joined already */
 }
 

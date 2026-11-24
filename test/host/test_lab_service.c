@@ -342,6 +342,135 @@ static void test_a_closed_transport_refuses_pwm_and_pulse(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pwm_stop(38)); /* releasing is always allowed */
 }
 
+/* ---- STARK-0703: the edge capture ----------------------------------------------------------- */
+
+/* AC 3 (the pin half): every number from -1 to 64 against the capture; an unoffered pin never
+ * reaches the HAL, so no interrupt is ever installed on a pad another owner has. */
+static void edges_sweep(bool slot_pins_offered)
+{
+    for (int pin = -1; pin <= 64; pin++) {
+        bool offered = is_lab_pin(pin) || (slot_pins_offered && pin >= 40 && pin <= 42);
+        uint32_t ring[8];
+        size_t n = 0;
+        uint32_t seen = 0;
+        bool first = false;
+        unsigned before = hal_host_edges_calls();
+        stark_err_t err = stark_lab_transport_pad_edges(pin, 20000, ring, 8, &n, &seen, &first);
+        if (offered) {
+            TEST_ASSERT_EQUAL(STARK_OK, err);
+            TEST_ASSERT_EQUAL_UINT(before + 1u, hal_host_edges_calls());
+        } else {
+            TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, err);
+            TEST_ASSERT_EQUAL_UINT_MESSAGE(before, hal_host_edges_calls(),
+                                           "an unoffered pin reached the interrupt");
+        }
+    }
+}
+
+static void test_the_edge_capture_sweep(void)
+{
+    edges_sweep(true);
+    set_slot0(STARK_MODULE_GENERIC);
+    edges_sweep(false);
+    set_slot0(STARK_MODULE_KNOWN);
+    edges_sweep(false);
+    set_slot0(STARK_MODULE_CONFLICT);
+    edges_sweep(false);
+}
+
+static void test_the_capture_window_is_bounded_and_the_arguments_are_checked(void)
+{
+    TEST_ASSERT_EQUAL_UINT32(STARK_LAB_EDGES_GATE_MAX, STARK_HAL_EDGES_GATE_MAX);
+    uint32_t ring[8];
+    size_t n;
+    uint32_t seen;
+    bool first;
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_lab_transport_pad_edges(38, 9999, ring, 8, &n, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_lab_transport_pad_edges(38, 4000001u, ring, 8, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(0, hal_host_edges_calls());
+    TEST_ASSERT_EQUAL(STARK_OK,
+                      stark_lab_transport_pad_edges(38, 10000, ring, 8, &n, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_OK,
+                      stark_lab_transport_pad_edges(38, 4000000u, ring, 8, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT32(4000000u, hal_host_edges_last()->window_us);
+    /* the HAL checks the rest */
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_lab_transport_pad_edges(38, 20000, NULL, 8, &n, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_lab_transport_pad_edges(38, 20000, ring, 8, NULL, &seen, &first));
+}
+
+static int s_irq_in_window = -2;
+
+static void note_irq(int pin)
+{
+    (void)pin;
+    s_irq_in_window = hal_host_edge_irq_pin();
+}
+
+static void cancel_in_window(int pin)
+{
+    (void)pin;
+    stark_lab_transport_edges_cancel();
+}
+
+static void test_the_capture_reaches_the_hal_and_the_interrupt_is_gone_afterwards(void)
+{
+    static const uint32_t stamps[3] = {5, 6, 7};
+    uint32_t ring[8];
+    size_t n = 0;
+    uint32_t seen = 0;
+    bool first = false;
+    hal_host_edges_set(stamps, 3, 3, true);
+    hal_host_set_edges_hook(note_irq);
+    TEST_ASSERT_EQUAL(STARK_OK,
+                      stark_lab_transport_pad_edges(39, 20000, ring, 8, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_INT(39, s_irq_in_window);
+    TEST_ASSERT_EQUAL_INT(-1, hal_host_edge_irq_pin());
+    TEST_ASSERT_EQUAL_UINT(3, n);
+    TEST_ASSERT_EQUAL_UINT32(3, seen);
+    TEST_ASSERT_TRUE(first);
+    TEST_ASSERT_EQUAL_UINT32(7, ring[2]);
+    TEST_ASSERT_EQUAL_INT(39, hal_host_edges_last()->pin);
+    TEST_ASSERT_EQUAL_UINT32(20000, hal_host_edges_last()->window_us);
+    TEST_ASSERT_EQUAL_UINT32(240000000u, stark_lab_transport_tick_hz());
+    /* a pad is not touched by a capture */
+    TEST_ASSERT_EQUAL_UINT(0, hal_host_pad_calls());
+}
+
+static void test_a_capture_can_be_cut_short_and_a_fault_is_reported(void)
+{
+    uint32_t ring[8];
+    size_t n = 0;
+    uint32_t seen = 0;
+    bool first = false;
+    hal_host_set_edges_hook(cancel_in_window);
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE,
+                      stark_lab_transport_pad_edges(38, 4000000u, ring, 8, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_INT(-1, hal_host_edge_irq_pin());
+    hal_host_set_edges_hook(NULL);
+    TEST_ASSERT_EQUAL(STARK_OK,
+                      stark_lab_transport_pad_edges(38, 20000, ring, 8, &n, &seen, &first));
+    hal_host_fail(HAL_HOST_FAIL_EDGES);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO,
+                      stark_lab_transport_pad_edges(38, 20000, ring, 8, &n, &seen, &first));
+    hal_host_fail(0);
+}
+
+static void test_a_closed_transport_refuses_the_capture(void)
+{
+    uint32_t ring[8];
+    size_t n;
+    uint32_t seen;
+    bool first;
+    stark_lab_transport_close();
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE,
+                      stark_lab_transport_pad_edges(38, 20000, ring, 8, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(0, hal_host_edges_calls());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -362,5 +491,10 @@ int main(void)
     RUN_TEST(test_a_pulse_can_be_cut_short);
     RUN_TEST(test_a_failing_pulse_drive_is_reported);
     RUN_TEST(test_a_closed_transport_refuses_pwm_and_pulse);
+    RUN_TEST(test_the_edge_capture_sweep);
+    RUN_TEST(test_the_capture_window_is_bounded_and_the_arguments_are_checked);
+    RUN_TEST(test_the_capture_reaches_the_hal_and_the_interrupt_is_gone_afterwards);
+    RUN_TEST(test_a_capture_can_be_cut_short_and_a_fault_is_reported);
+    RUN_TEST(test_a_closed_transport_refuses_the_capture);
     return UNITY_END();
 }

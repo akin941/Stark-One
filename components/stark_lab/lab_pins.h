@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "stark_board.h"
+#include "lab_meas.h"
 #include "lab_pwm.h"
 #include "stark_lab.h"
 #include "stark_module.h"
@@ -35,6 +36,9 @@ typedef struct {
     stark_err_t (*pwm_start)(void *ctx, int pin, uint32_t hz, uint8_t duty_pct);
     stark_err_t (*pwm_stop)(void *ctx, int pin); /* stops the channel and releases the pad */
     stark_err_t (*pulse)(void *ctx, int pin, bool level, uint32_t us);
+    stark_err_t (*edges)(void *ctx, int pin, uint32_t window_us, uint32_t *ts, size_t cap,
+                         size_t *n, uint32_t *seen, bool *first_level);
+    uint32_t (*tick_hz)(void *ctx);
     void (*delay_us)(void *ctx, uint32_t us);
     void (*log)(void *ctx, lab_log_t what, int a, int b);
 } lab_io_t;
@@ -83,6 +87,14 @@ stark_err_t lab_pins_info(lab_pins_t *p, int pin, stark_lab_info_t *out);
 stark_err_t lab_pins_pwm_start(lab_pins_t *p, int pin, uint32_t hz, uint32_t duty_pct);
 void lab_pins_pwm_stop(lab_pins_t *p);
 stark_err_t lab_pins_pulse(lab_pins_t *p, int pin, bool level, uint32_t us);
+
+/*
+ * The measurement of stark_lab_measure(): the 20 ms pre-gate, the window the plan sizes from it,
+ * and lab_meas_compute() over what was captured. `ring` holds `cap` stamps (at most
+ * STARK_LAB_MEAS_RING are used). STARK_ERR_STATE unless the pin is held and an input, and when the
+ * transport reports a cancel (the pin is left as it is); any other transport failure ends in hi-Z.
+ */
+stark_err_t lab_pins_measure(lab_pins_t *p, int pin, uint32_t *ring, size_t cap, lab_meas_t *out);
 
 /*
  * Looks at the offer again: every held pin that is gone goes to hi-Z and is withdrawn, every
