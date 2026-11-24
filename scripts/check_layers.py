@@ -51,7 +51,7 @@ LAYERS = {
     # device, so it is classed with its consumer rather than below stark_module.
     "stark_subghz_transport": 3,
     # The lab service (STARK-0701…0707, ADR-0023): L2 pad/measurement cores + L3 service, and its
-    # one transport seam (pads now; I2C, SPI on a leased slot and the lab UART later). The
+    # one transport seam (pads, the shared I2C bus and the lab UART; SPI on a leased slot later). The
     # transport reads stark_module's table for its pin guard, so like the CC1101's it is L3.
     "stark_lab": 3,
     "stark_lab_transport": 3,

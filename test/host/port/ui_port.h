@@ -53,3 +53,6 @@ void ui_port_short(stark_key_t key);
  * reports STARK_ERR_NOT_SUPPORTED; on, it runs the worker to completion
  * inside the call (STARK-0306 host tests). */
 void ui_port_worker_inline(bool on);
+/* A worker that loops until stark_app_worker_should_stop() (the UART monitor) ends after this many
+ * calls of it in one run (STARK-0705); 0, the default, never asks it to stop. */
+void ui_port_worker_stop_after(unsigned calls);

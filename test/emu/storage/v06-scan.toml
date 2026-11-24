@@ -10,29 +10,30 @@
 # Integration evidence, not RF: no signal exists behind any of it (ROADMAP V1 exit 12).
 name = "emu-v06-scan"
 image = "storage"
-end_ms = 17000
+end_ms = 17200
 heap_min = 200000
 pokes = [
     { at_ms = 500, var = "emu_mod_slot0", value = 32 },
     { at_ms = 500, var = "emu_sg_chip", value = 1 },
     { at_ms = 500, var = "emu_sg_carrier_khz", value = 433920 },
     { at_ms = 500, var = "emu_sg_level", value = -40 },
-    { at_ms = 9500, var = "emu_sg_level", value = -70 },
-    { at_ms = 11000, var = "emu_sg_level", value = -55 },
-    { at_ms = 12900, var = "emu_sg_level", value = -40 },   # back to -40 for the sweep
+    { at_ms = 9700, var = "emu_sg_level", value = -70 },
+    { at_ms = 11200, var = "emu_sg_level", value = -55 },
+    { at_ms = 13100, var = "emu_sg_level", value = -40 },   # back to -40 for the sweep
 ]
 presses = [
     { key = "UP", at_ms = 5300, hold_ms = 60 },     # Storage
     { key = "UP", at_ms = 5500, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 5700, hold_ms = 60 },     # Modules
-    { key = "UP", at_ms = 5900, hold_ms = 60 },     # Sub-GHz (Lab: IR 13, NFC 14 dimmed here, Sub-GHz 15)
-    { key = "OK", at_ms = 6300, hold_ms = 60 },
-    { key = "OK", at_ms = 7000, hold_ms = 60 },     # RSSI meter
-    { key = "BACK", at_ms = 12500, hold_ms = 60 },  # meter -> home
-    { key = "DOWN", at_ms = 13300, hold_ms = 60 },  # Band scan
-    { key = "OK", at_ms = 13600, hold_ms = 60 },
-    { key = "BACK", at_ms = 15000, hold_ms = 60 },  # scan -> home
-    { key = "BACK", at_ms = 15700, hold_ms = 60 },  # home -> launcher
+    { key = "UP", at_ms = 5900, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
+    { key = "UP", at_ms = 6100, hold_ms = 60 },     # Sub-GHz (Lab: IR 13, NFC 14 dimmed here, Sub-GHz 15)
+    { key = "OK", at_ms = 6500, hold_ms = 60 },
+    { key = "OK", at_ms = 7200, hold_ms = 60 },     # RSSI meter
+    { key = "BACK", at_ms = 12700, hold_ms = 60 },  # meter -> home
+    { key = "DOWN", at_ms = 13500, hold_ms = 60 },  # Band scan
+    { key = "OK", at_ms = 13800, hold_ms = 60 },
+    { key = "BACK", at_ms = 15200, hold_ms = 60 },  # scan -> home
+    { key = "BACK", at_ms = 15900, hold_ms = 60 },  # home -> launcher
 ]
 expect = [
     "subghz: cc1101 version 0x14",

@@ -3,8 +3,8 @@
  * seam between the lab service and the hardware, and the fifth and last substitution of the
  * emulator test image. Today it carries the pad group (configure, read, hi-Z), the PWM and
  * pulse outputs (STARK-0702), the edge capture (STARK-0703) and the shared I2C bus (STARK-0704:
- * probe and one transaction at a time); later V0.7 tasks append SPI on a leased slot and the
- * lab UART.
+ * probe and one transaction at a time) and the lab UART (STARK-0705: UART1 on the two lab pins);
+ * STARK-0706 appends SPI on a leased slot.
  *
  * Every pad call re-checks the pin against stark_board's classification, whatever the
  * caller says (defence in depth, SECURITY_SCOPE §4.6): a pin that is not offered returns
@@ -230,3 +230,83 @@ static inline bool stark_lab_i2c_allowed(const stark_board_pins_t *pins, bool nf
     }
     return !(addr == STARK_LAB_I2C_PN532 && nfc_confirmed);
 }
+
+/* ---- the lab UART (STARK-0705, ADR-0023 §7) ----------------------------------------------------
+ *
+ * UART1 on the board's two lab pins (stark_board_pins()->lab_uart_tx / lab_uart_rx: 38 and 39),
+ * 3.3 V TTL, installed without a driver task. The pins are the lab service's to hand out (the UART
+ * tool holds them through stark_lab_acquire(), so the GPIO app cannot drive them meanwhile); the
+ * transport re-checks them against stark_board anyway (stark_lab_uart_pins_ok(), defence in depth)
+ * and touches no other pin. Callers are serialised by the service.
+ *
+ * `fmt` is an index into the format list 8N1, 8E1, 8O1, 8N2, 7E1 (lab_uart.h); `baud` is any value
+ * from STARK_LAB_UART_BAUD_MIN to STARK_LAB_UART_BAUD_MAX (the service offers the standard list).
+ * The driver is installed with a small event queue so that framing errors, parity errors and
+ * overruns can be counted (ESP-IDF's UART driver reports them nowhere else); every read drains
+ * it, and an error storm faster than the reads therefore counts a lower bound.
+ */
+#define STARK_LAB_UART_BAUD_MIN       1200u
+#define STARK_LAB_UART_BAUD_MAX       921600u
+#define STARK_LAB_UART_FORMATS        5u
+#define STARK_LAB_UART_RXBUF_MIN      256u
+#define STARK_LAB_UART_RXBUF_MAX      8192u
+#define STARK_LAB_UART_READ_MAX       256u /* one read returns at most this many bytes */
+#define STARK_LAB_UART_WRITE_MAX      64u  /* one write takes at most this many bytes */
+#define STARK_LAB_UART_TIMEOUT_MS_MAX 5000u
+
+/* Errors seen by the receiver since the previous read. */
+typedef struct {
+    uint32_t framing, parity, overrun; /* overrun: the driver's FIFO or buffer overflowed */
+} stark_lab_uart_err_t;
+
+static inline bool stark_lab_uart_args_ok(uint32_t baud, uint8_t fmt, size_t rx_buf)
+{
+    return baud >= STARK_LAB_UART_BAUD_MIN && baud <= STARK_LAB_UART_BAUD_MAX &&
+           fmt < STARK_LAB_UART_FORMATS && rx_buf >= STARK_LAB_UART_RXBUF_MIN &&
+           rx_buf <= STARK_LAB_UART_RXBUF_MAX;
+}
+
+/*
+ * The guard of the UART group, shared by the hardware transport, the test image's and the host
+ * shim: the board names both UART pins and stark_board classifies both as LAB pins (always offered;
+ * a SLOT pin or a reserved one is never the UART's).
+ */
+static inline bool stark_lab_uart_pins_ok(const stark_board_pins_t *pins)
+{
+    return pins->lab_uart_tx >= 0 && pins->lab_uart_rx >= 0 &&
+           stark_board_pin_class(pins->lab_uart_tx, NULL) == STARK_PIN_LAB &&
+           stark_board_pin_class(pins->lab_uart_rx, NULL) == STARK_PIN_LAB;
+}
+
+/*
+ * Installs UART1 at `baud` and format `fmt` with a receive buffer of `rx_buf` bytes and routes RX
+ * to the lab RX pin. `tx` also routes TX to the lab TX pin: without it the TX pad is never touched,
+ * so a monitor drives nothing (the service passes true only after the TX pin was armed).
+ * STARK_ERR_INVALID_ARG outside the ranges, STARK_ERR_STATE when the driver is already installed
+ * or the transport is closed, STARK_ERR_NO_MEM, STARK_ERR_IO. A failure leaves nothing installed.
+ */
+stark_err_t stark_lab_transport_uart_open(uint32_t baud, uint8_t fmt, size_t rx_buf, bool tx);
+
+/*
+ * Waits up to `timeout_ms` (0 to STARK_LAB_UART_TIMEOUT_MS_MAX) for up to `max` (1 to
+ * STARK_LAB_UART_READ_MAX) bytes and returns how many came: 0 on a timeout, a negative stark_err_t
+ * value when the driver is not installed or failed. `errs` (may be NULL) receives the errors seen
+ * since the previous read.
+ */
+int stark_lab_transport_uart_read(uint8_t *buf, size_t max, uint32_t timeout_ms,
+                                  stark_lab_uart_err_t *errs);
+
+/*
+ * Sends `n` (1 to STARK_LAB_UART_WRITE_MAX) bytes and waits up to `timeout_ms` for the last one to
+ * leave the shifter. Returns the bytes sent, or a negative stark_err_t value: STARK_ERR_STATE when
+ * the driver is not installed or was opened without TX, STARK_ERR_TIMEOUT when the bytes did not
+ * leave in time, STARK_ERR_INVALID_ARG for a bad length.
+ */
+int stark_lab_transport_uart_write(const uint8_t *buf, size_t n, uint32_t timeout_ms);
+
+/* Changes the baud of the installed driver (the format stays). STARK_ERR_STATE when not installed.
+ */
+stark_err_t stark_lab_transport_uart_set_baud(uint32_t baud);
+
+/* Removes the driver and returns both pads to hi-Z (input, no pull). Idempotent. */
+void stark_lab_transport_uart_close(void);

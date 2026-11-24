@@ -14,6 +14,7 @@
 #include "freertos/semphr.h"
 #include "lab_i2c.h"
 #include "lab_pins.h"
+#include "lab_uart_svc.h"
 #include "stark_caps.h"
 #include "stark_event.h"
 #include "stark_lab_transport.h"
@@ -28,6 +29,13 @@ static SemaphoreHandle_t s_lock;
 static StaticSemaphore_t
     s_i2c_lock_buf; /* the I2C bus has its own: a dump must not hold up a pin */
 static SemaphoreHandle_t s_i2c_lock;
+static lab_uart_ses_t s_uart;
+static StaticSemaphore_t
+    s_uart_lock_buf; /* one UART operation at a time (a poll, a send, a test) */
+static SemaphoreHandle_t s_uart_lock;
+static StaticSemaphore_t s_uart_data_buf; /* the ring and the counters, held for a moment */
+static SemaphoreHandle_t s_uart_data;
+static volatile bool s_uart_cancel;
 
 static size_t io_list(void *ctx, stark_module_entry_t *out, size_t max)
 {
@@ -133,6 +141,121 @@ static uint32_t io_now_ms(void *ctx)
     return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 }
 
+/* The UART session's I/O (STARK-0705): the pin hold of the GPIO app, the transport's UART group. */
+static stark_err_t uio_pin_acquire(void *ctx, int pin)
+{
+    (void)ctx;
+    return stark_lab_acquire(pin, "uart");
+}
+
+static void uio_pin_release(void *ctx, int pin)
+{
+    (void)ctx;
+    stark_lab_release(pin);
+}
+
+static stark_err_t uio_pin_arm(void *ctx, int pin)
+{
+    (void)ctx;
+    return stark_lab_arm(pin);
+}
+
+static stark_err_t uio_pad_in(void *ctx, int pin)
+{
+    (void)ctx;
+    return stark_lab_input(pin, STARK_LAB_PULL_NONE);
+}
+
+static stark_err_t uio_open(void *ctx, uint32_t baud, uint8_t fmt, size_t rx_buf, bool tx)
+{
+    (void)ctx;
+    return stark_lab_transport_uart_open(baud, fmt, rx_buf, tx);
+}
+
+static stark_err_t uio_set_baud(void *ctx, uint32_t baud)
+{
+    (void)ctx;
+    return stark_lab_transport_uart_set_baud(baud);
+}
+
+static int uio_read(void *ctx, uint8_t *buf, size_t max, uint32_t timeout_ms,
+                    stark_lab_uart_err_t *errs)
+{
+    (void)ctx;
+    return stark_lab_transport_uart_read(buf, max, timeout_ms, errs);
+}
+
+static int uio_write(void *ctx, const uint8_t *buf, size_t n, uint32_t timeout_ms)
+{
+    (void)ctx;
+    return stark_lab_transport_uart_write(buf, n, timeout_ms);
+}
+
+static void uio_close(void *ctx)
+{
+    (void)ctx;
+    stark_lab_transport_uart_close();
+}
+
+static bool uio_cancelled(void *ctx)
+{
+    (void)ctx;
+    return s_uart_cancel;
+}
+
+static void uio_data_lock(void *ctx)
+{
+    (void)ctx;
+    (void)xSemaphoreTake(s_uart_data, portMAX_DELAY);
+}
+
+static void uio_data_unlock(void *ctx)
+{
+    (void)ctx;
+    (void)xSemaphoreGive(s_uart_data);
+}
+
+/* Counts and settings only: received bytes are never logged (ADR-0023 §7). */
+static void uio_log(void *ctx, lab_uart_log_t what, const void *p, uint32_t a, uint32_t b)
+{
+    (void)ctx;
+    char text[48];
+    switch (what) {
+        case LAB_UART_LOG_OPEN:
+            STARK_LOGI("lab", "uart open %u %s", (unsigned)a, stark_lab_uart_fmt_name(b));
+            break;
+        case LAB_UART_LOG_TX_ON:
+            STARK_LOGI("lab", "uart tx on");
+            break;
+        case LAB_UART_LOG_CLOSED:
+            STARK_LOGI("lab", "uart closed");
+            break;
+        case LAB_UART_LOG_SEND:
+            STARK_LOGI("lab", "uart send %u bytes", (unsigned)a);
+            break;
+        case LAB_UART_LOG_LOOP:
+            stark_lab_loop_log_text(p, text, sizeof text);
+            STARK_LOGI("lab", "uart loop %s", text);
+            break;
+        case LAB_UART_LOG_AUTOBAUD:
+            STARK_LOGI("lab", "autobaud %s", stark_lab_autobaud_text(p, text, sizeof text));
+            break;
+        case LAB_UART_LOG_FAILED:
+        default:
+            STARK_LOGW("lab", "uart failed: %s", stark_err_str((stark_err_t)a));
+            break;
+    }
+}
+
+static void uio_note(void *ctx, lab_uart_note_t what)
+{
+    (void)ctx;
+    stark_event_t e = {.type = STARK_EVT_SYSTEM};
+    e.system.id = STARK_SYS_LAB;
+    e.system.arg = what == LAB_UART_NOTE_ERROR ? STARK_LAB_EVT_UART_ERROR : STARK_LAB_EVT_UART_DATA;
+    (void)stark_event_publish(&e);
+}
+
 /* `lab: pins <the pins on offer now>`, one number each. */
 static void log_pins(void)
 {
@@ -206,6 +329,26 @@ stark_err_t stark_lab_init(void)
                                  .now_ms = io_now_ms};
     lab_i2c_init(&s_i2c, &i2c_io, stark_board_pins());
     s_i2c_lock = xSemaphoreCreateMutexStatic(&s_i2c_lock_buf);
+    s_uart_lock = xSemaphoreCreateMutexStatic(&s_uart_lock_buf);
+    s_uart_data = xSemaphoreCreateMutexStatic(&s_uart_data_buf);
+    const lab_uart_io_t uart_io = {.pin_acquire = uio_pin_acquire,
+                                   .pin_release = uio_pin_release,
+                                   .pin_arm = uio_pin_arm,
+                                   .pad_in = uio_pad_in,
+                                   .pad_edges = io_edges,
+                                   .tick_hz = io_tick_hz,
+                                   .open = uio_open,
+                                   .set_baud = uio_set_baud,
+                                   .read = uio_read,
+                                   .write = uio_write,
+                                   .close = uio_close,
+                                   .now_ms = io_now_ms,
+                                   .cancelled = uio_cancelled,
+                                   .data_lock = uio_data_lock,
+                                   .data_unlock = uio_data_unlock,
+                                   .log = uio_log,
+                                   .note = uio_note};
+    lab_uartsvc_init(&s_uart, &uart_io, stark_board_pins());
     s_inited = true;
     log_pins();
     return STARK_OK;
@@ -564,4 +707,130 @@ const char *stark_lab_i2c_refusal(uint8_t addr, bool reg16, bool write)
     lab_i2c_refusal_t why = lab_i2c_refusal(&s_i2c, addr, reg16 ? 2u : 1u, write ? 0u : 1u);
     i2c_leave();
     return why == LAB_I2C_REFUSE_NONE ? NULL : lab_i2c_refusal_text(why);
+}
+
+/* ---- the lab UART (STARK-0705) -------------------------------------------------------------- */
+
+/* Takes the UART operation lock; false before init. */
+static bool uart_enter(void)
+{
+    if (!s_inited) {
+        return false;
+    }
+    (void)xSemaphoreTake(s_uart_lock, portMAX_DELAY);
+    return true;
+}
+
+static void uart_leave(void)
+{
+    (void)xSemaphoreGive(s_uart_lock);
+}
+
+stark_err_t stark_lab_uart_open(size_t baud_index, size_t fmt_index)
+{
+    if (!uart_enter()) {
+        return STARK_ERR_STATE;
+    }
+    s_uart_cancel = false;
+    stark_err_t err = lab_uartsvc_open(&s_uart, baud_index, fmt_index);
+    uart_leave();
+    return err;
+}
+
+stark_err_t stark_lab_uart_tx_enable(void)
+{
+    if (!uart_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_uartsvc_tx_enable(&s_uart);
+    uart_leave();
+    return err;
+}
+
+stark_err_t stark_lab_uart_set_format(size_t baud_index, size_t fmt_index)
+{
+    if (!uart_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_uartsvc_set_format(&s_uart, baud_index, fmt_index);
+    uart_leave();
+    return err;
+}
+
+stark_err_t stark_lab_uart_poll(uint8_t *chunk, size_t max, uint32_t timeout_ms, size_t *got)
+{
+    if (!uart_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_uartsvc_poll(&s_uart, chunk, max, timeout_ms, got);
+    uart_leave();
+    return err;
+}
+
+size_t stark_lab_uart_ring_read(size_t skip, uint8_t *out, size_t max)
+{
+    return s_inited ? lab_uartsvc_ring_read(&s_uart, skip, out, max) : 0u;
+}
+
+void stark_lab_uart_stats(stark_lab_uart_stats_t *out)
+{
+    if (s_inited) {
+        lab_uartsvc_stats(&s_uart, out);
+    } else {
+        *out = (stark_lab_uart_stats_t){0};
+    }
+}
+
+void stark_lab_uart_clear(void)
+{
+    if (uart_enter()) {
+        lab_uartsvc_clear(&s_uart);
+        uart_leave();
+    }
+}
+
+stark_err_t stark_lab_uart_send(const uint8_t *buf, size_t n)
+{
+    if (!uart_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_uartsvc_send(&s_uart, buf, n);
+    uart_leave();
+    return err;
+}
+
+stark_err_t stark_lab_uart_loop_test(stark_lab_loop_t *out)
+{
+    if (!uart_enter()) {
+        return STARK_ERR_STATE;
+    }
+    s_uart_cancel = false;
+    stark_err_t err = lab_uartsvc_loop_test(&s_uart, out);
+    uart_leave();
+    return err;
+}
+
+stark_err_t stark_lab_uart_autobaud(stark_lab_autobaud_t *out)
+{
+    if (!uart_enter()) {
+        return STARK_ERR_STATE;
+    }
+    s_uart_cancel = false;
+    stark_err_t err = lab_uartsvc_autobaud(&s_uart, out);
+    uart_leave();
+    return err;
+}
+
+void stark_lab_uart_cancel(void)
+{
+    s_uart_cancel = true;
+    stark_lab_transport_edges_cancel(); /* an auto-baud capture waits in the transport */
+}
+
+void stark_lab_uart_close(void)
+{
+    if (uart_enter()) {
+        lab_uartsvc_close(&s_uart);
+        uart_leave();
+    }
 }

@@ -18,7 +18,7 @@
 # it. Integration evidence, not RF: no signal exists behind any of it (ROADMAP V1 exit 12).
 name = "emu-v06-soak"
 image = "storage"
-end_ms = 62500
+end_ms = 62700
 wall_limit_s = 1500
 heap_min = 200000
 heap_delta_max = 1024
@@ -28,81 +28,82 @@ pokes = [
     { at_ms = 500, var = "emu_sg_carrier_khz", value = 433920 },   # the air: one carrier at 433.920 MHz ...
     { at_ms = 500, var = "emu_sg_level", value = -40 },   # ... at -40 dBm
     { at_ms = 500, var = "emu_sg_scene", value = 1 },   # GDO2 plays the pulse-width scene each time the chip enters RX
-    { at_ms = 7500, var = "emu_sg_level", value = -70 },   # the meter follows: -70 dBm
-    { at_ms = 8300, var = "emu_sg_level", value = -55 },   # -55 dBm
-    { at_ms = 9300, var = "emu_mod_slot0", value = 0 },   # the module is pulled: the app falls back to its home list
-    { at_ms = 12100, var = "emu_mod_slot0", value = 32 },   # plugged back in: found, claimed and identified again
-    { at_ms = 31600, var = "emu_sg_level", value = -40 },   # the air is back at -40 dBm for the next pass
-    { at_ms = 33600, var = "emu_sg_level", value = -70 },   # the meter follows: -70 dBm
-    { at_ms = 34400, var = "emu_sg_level", value = -55 },   # -55 dBm
-    { at_ms = 35400, var = "emu_mod_slot0", value = 0 },   # the module is pulled: the app falls back to its home list
-    { at_ms = 38200, var = "emu_mod_slot0", value = 32 },   # plugged back in: found, claimed and identified again
+    { at_ms = 7700, var = "emu_sg_level", value = -70 },   # the meter follows: -70 dBm
+    { at_ms = 8500, var = "emu_sg_level", value = -55 },   # -55 dBm
+    { at_ms = 9500, var = "emu_mod_slot0", value = 0 },   # the module is pulled: the app falls back to its home list
+    { at_ms = 12300, var = "emu_mod_slot0", value = 32 },   # plugged back in: found, claimed and identified again
+    { at_ms = 31800, var = "emu_sg_level", value = -40 },   # the air is back at -40 dBm for the next pass
+    { at_ms = 33800, var = "emu_sg_level", value = -70 },   # the meter follows: -70 dBm
+    { at_ms = 34600, var = "emu_sg_level", value = -55 },   # -55 dBm
+    { at_ms = 35600, var = "emu_mod_slot0", value = 0 },   # the module is pulled: the app falls back to its home list
+    { at_ms = 38400, var = "emu_mod_slot0", value = 32 },   # plugged back in: found, claimed and identified again
 ]
 presses = [
     { key = "UP", at_ms = 5300, hold_ms = 60 },   # Storage
     { key = "UP", at_ms = 5500, hold_ms = 60 },   # Settings
     { key = "UP", at_ms = 5700, hold_ms = 60 },   # Modules
-    { key = "UP", at_ms = 5900, hold_ms = 60 },   # Sub-GHz
-    { key = "OK", at_ms = 6300, hold_ms = 60 },   # open Sub-GHz: the home list
-    { key = "OK", at_ms = 7000, hold_ms = 60 },   # RSSI meter
-    { key = "DOWN", at_ms = 14900, hold_ms = 60 },   # Band scan
-    { key = "OK", at_ms = 15200, hold_ms = 60 },   # the sweep
-    { key = "BACK", at_ms = 16500, hold_ms = 60 },   # scan -> home
-    { key = "DOWN", at_ms = 17000, hold_ms = 60 },   # Band scan
-    { key = "DOWN", at_ms = 17300, hold_ms = 60 },   # Capture
-    { key = "OK", at_ms = 17600, hold_ms = 60 },   # the setup: Frequency, Modulation, Start
-    { key = "DOWN", at_ms = 18300, hold_ms = 60 },   # Modulation
-    { key = "DOWN", at_ms = 18600, hold_ms = 60 },   # Start
-    { key = "OK", at_ms = 18900, hold_ms = 60 },   # captures the scene
-    { key = "OK", at_ms = 20300, hold_ms = 60 },   # Stop
-    { key = "OK", at_ms = 21300, hold_ms = 60 },   # Save
-    { key = "BACK", at_ms = 22300, hold_ms = 60 },   # capture -> home (the radio idles)
-    { key = "DOWN", at_ms = 22800, hold_ms = 60 },   # Band scan
-    { key = "DOWN", at_ms = 23100, hold_ms = 60 },   # Capture
-    { key = "DOWN", at_ms = 23400, hold_ms = 60 },   # Saved
-    { key = "OK", at_ms = 23800, hold_ms = 60 },   # the list: the newest file
-    { key = "OK", at_ms = 24700, hold_ms = 60 },   # reads it back: Decode, Replay
-    { key = "OK", at_ms = 25500, hold_ms = 60 },   # Decode
-    { key = "BACK", at_ms = 26500, hold_ms = 60 },   # decode -> file
-    { key = "DOWN", at_ms = 27000, hold_ms = 60 },   # Replay
-    { key = "OK", at_ms = 27300, hold_ms = 60 },   # the confirmation
-    { key = "OK", at_ms = 28000, hold_ms = 60 },   # OK: one transmission
-    { key = "DOWN", at_ms = 29100, hold_ms = 60 },   # Replay again, at once
-    { key = "OK", at_ms = 29400, hold_ms = 60 },   # refused for the off-time, an alert
-    { key = "OK", at_ms = 30100, hold_ms = 60 },   # dismiss it
-    { key = "BACK", at_ms = 30600, hold_ms = 60 },   # file -> list
-    { key = "BACK", at_ms = 31000, hold_ms = 60 },   # list -> home
-    { key = "BACK", at_ms = 31400, hold_ms = 60 },   # home -> launcher (the radio idles, the buffer is freed)
-    { key = "OK", at_ms = 32400, hold_ms = 60 },   # open Sub-GHz: the home list
-    { key = "OK", at_ms = 33100, hold_ms = 60 },   # RSSI meter
-    { key = "DOWN", at_ms = 41000, hold_ms = 60 },   # Band scan
-    { key = "OK", at_ms = 41300, hold_ms = 60 },   # the sweep
-    { key = "BACK", at_ms = 42600, hold_ms = 60 },   # scan -> home
-    { key = "DOWN", at_ms = 43100, hold_ms = 60 },   # Band scan
-    { key = "DOWN", at_ms = 43400, hold_ms = 60 },   # Capture
-    { key = "OK", at_ms = 43700, hold_ms = 60 },   # the setup: Frequency, Modulation, Start
-    { key = "DOWN", at_ms = 44400, hold_ms = 60 },   # Modulation
-    { key = "DOWN", at_ms = 44700, hold_ms = 60 },   # Start
-    { key = "OK", at_ms = 45000, hold_ms = 60 },   # captures the scene
-    { key = "OK", at_ms = 46400, hold_ms = 60 },   # Stop
-    { key = "OK", at_ms = 47400, hold_ms = 60 },   # Save
-    { key = "BACK", at_ms = 48400, hold_ms = 60 },   # capture -> home (the radio idles)
-    { key = "DOWN", at_ms = 48900, hold_ms = 60 },   # Band scan
-    { key = "DOWN", at_ms = 49200, hold_ms = 60 },   # Capture
-    { key = "DOWN", at_ms = 49500, hold_ms = 60 },   # Saved
-    { key = "OK", at_ms = 49900, hold_ms = 60 },   # the list: the newest file
-    { key = "OK", at_ms = 50800, hold_ms = 60 },   # reads it back: Decode, Replay
-    { key = "OK", at_ms = 51600, hold_ms = 60 },   # Decode
-    { key = "BACK", at_ms = 52600, hold_ms = 60 },   # decode -> file
-    { key = "DOWN", at_ms = 53100, hold_ms = 60 },   # Replay
-    { key = "OK", at_ms = 53400, hold_ms = 60 },   # the confirmation
-    { key = "OK", at_ms = 54100, hold_ms = 60 },   # OK: one transmission
-    { key = "DOWN", at_ms = 55200, hold_ms = 60 },   # Replay again, at once
-    { key = "OK", at_ms = 55500, hold_ms = 60 },   # refused for the off-time, an alert
-    { key = "OK", at_ms = 56200, hold_ms = 60 },   # dismiss it
-    { key = "BACK", at_ms = 56700, hold_ms = 60 },   # file -> list
-    { key = "BACK", at_ms = 57100, hold_ms = 60 },   # list -> home
-    { key = "BACK", at_ms = 57500, hold_ms = 60 },   # home -> launcher (the radio idles, the buffer is freed)
+    { key = "UP", at_ms = 5900, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
+    { key = "UP", at_ms = 6100, hold_ms = 60 },   # Sub-GHz
+    { key = "OK", at_ms = 6500, hold_ms = 60 },   # open Sub-GHz: the home list
+    { key = "OK", at_ms = 7200, hold_ms = 60 },   # RSSI meter
+    { key = "DOWN", at_ms = 15100, hold_ms = 60 },   # Band scan
+    { key = "OK", at_ms = 15400, hold_ms = 60 },   # the sweep
+    { key = "BACK", at_ms = 16700, hold_ms = 60 },   # scan -> home
+    { key = "DOWN", at_ms = 17200, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 17500, hold_ms = 60 },   # Capture
+    { key = "OK", at_ms = 17800, hold_ms = 60 },   # the setup: Frequency, Modulation, Start
+    { key = "DOWN", at_ms = 18500, hold_ms = 60 },   # Modulation
+    { key = "DOWN", at_ms = 18800, hold_ms = 60 },   # Start
+    { key = "OK", at_ms = 19100, hold_ms = 60 },   # captures the scene
+    { key = "OK", at_ms = 20500, hold_ms = 60 },   # Stop
+    { key = "OK", at_ms = 21500, hold_ms = 60 },   # Save
+    { key = "BACK", at_ms = 22500, hold_ms = 60 },   # capture -> home (the radio idles)
+    { key = "DOWN", at_ms = 23000, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 23300, hold_ms = 60 },   # Capture
+    { key = "DOWN", at_ms = 23600, hold_ms = 60 },   # Saved
+    { key = "OK", at_ms = 24000, hold_ms = 60 },   # the list: the newest file
+    { key = "OK", at_ms = 24900, hold_ms = 60 },   # reads it back: Decode, Replay
+    { key = "OK", at_ms = 25700, hold_ms = 60 },   # Decode
+    { key = "BACK", at_ms = 26700, hold_ms = 60 },   # decode -> file
+    { key = "DOWN", at_ms = 27200, hold_ms = 60 },   # Replay
+    { key = "OK", at_ms = 27500, hold_ms = 60 },   # the confirmation
+    { key = "OK", at_ms = 28200, hold_ms = 60 },   # OK: one transmission
+    { key = "DOWN", at_ms = 29300, hold_ms = 60 },   # Replay again, at once
+    { key = "OK", at_ms = 29600, hold_ms = 60 },   # refused for the off-time, an alert
+    { key = "OK", at_ms = 30300, hold_ms = 60 },   # dismiss it
+    { key = "BACK", at_ms = 30800, hold_ms = 60 },   # file -> list
+    { key = "BACK", at_ms = 31200, hold_ms = 60 },   # list -> home
+    { key = "BACK", at_ms = 31600, hold_ms = 60 },   # home -> launcher (the radio idles, the buffer is freed)
+    { key = "OK", at_ms = 32600, hold_ms = 60 },   # open Sub-GHz: the home list
+    { key = "OK", at_ms = 33300, hold_ms = 60 },   # RSSI meter
+    { key = "DOWN", at_ms = 41200, hold_ms = 60 },   # Band scan
+    { key = "OK", at_ms = 41500, hold_ms = 60 },   # the sweep
+    { key = "BACK", at_ms = 42800, hold_ms = 60 },   # scan -> home
+    { key = "DOWN", at_ms = 43300, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 43600, hold_ms = 60 },   # Capture
+    { key = "OK", at_ms = 43900, hold_ms = 60 },   # the setup: Frequency, Modulation, Start
+    { key = "DOWN", at_ms = 44600, hold_ms = 60 },   # Modulation
+    { key = "DOWN", at_ms = 44900, hold_ms = 60 },   # Start
+    { key = "OK", at_ms = 45200, hold_ms = 60 },   # captures the scene
+    { key = "OK", at_ms = 46600, hold_ms = 60 },   # Stop
+    { key = "OK", at_ms = 47600, hold_ms = 60 },   # Save
+    { key = "BACK", at_ms = 48600, hold_ms = 60 },   # capture -> home (the radio idles)
+    { key = "DOWN", at_ms = 49100, hold_ms = 60 },   # Band scan
+    { key = "DOWN", at_ms = 49400, hold_ms = 60 },   # Capture
+    { key = "DOWN", at_ms = 49700, hold_ms = 60 },   # Saved
+    { key = "OK", at_ms = 50100, hold_ms = 60 },   # the list: the newest file
+    { key = "OK", at_ms = 51000, hold_ms = 60 },   # reads it back: Decode, Replay
+    { key = "OK", at_ms = 51800, hold_ms = 60 },   # Decode
+    { key = "BACK", at_ms = 52800, hold_ms = 60 },   # decode -> file
+    { key = "DOWN", at_ms = 53300, hold_ms = 60 },   # Replay
+    { key = "OK", at_ms = 53600, hold_ms = 60 },   # the confirmation
+    { key = "OK", at_ms = 54300, hold_ms = 60 },   # OK: one transmission
+    { key = "DOWN", at_ms = 55400, hold_ms = 60 },   # Replay again, at once
+    { key = "OK", at_ms = 55700, hold_ms = 60 },   # refused for the off-time, an alert
+    { key = "OK", at_ms = 56400, hold_ms = 60 },   # dismiss it
+    { key = "BACK", at_ms = 56900, hold_ms = 60 },   # file -> list
+    { key = "BACK", at_ms = 57300, hold_ms = 60 },   # list -> home
+    { key = "BACK", at_ms = 57700, hold_ms = 60 },   # home -> launcher (the radio idles, the buffer is freed)
 ]
 expect = [
     "module: slot 0 CC1101 433 MHz id=0x0a01 rev=1 caps=0x00000038",

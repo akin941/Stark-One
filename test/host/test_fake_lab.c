@@ -713,6 +713,291 @@ static void test_a_command_write_to_the_light_sensor_counts_and_a_pointer_alone_
     TEST_ASSERT_EQUAL_UINT(writes + 1u, fake_lab_i2c_writes());
 }
 
+/* ---- the UART peer (STARK-0705) ----------------------------------------------------------------
+ */
+
+static size_t uart_read(uint8_t *buf, size_t max, uint32_t *fe, uint32_t *pe, uint32_t *ov)
+{
+    return fake_lab_uart_read(buf, max, fe, pe, ov);
+}
+
+static void test_the_uart_bits_per_character(void)
+{
+    TEST_ASSERT_EQUAL_UINT32(10, fake_lab_uart_bits(0)); /* 8N1 */
+    TEST_ASSERT_EQUAL_UINT32(11, fake_lab_uart_bits(1)); /* 8E1 */
+    TEST_ASSERT_EQUAL_UINT32(11, fake_lab_uart_bits(2)); /* 8O1 */
+    TEST_ASSERT_EQUAL_UINT32(11, fake_lab_uart_bits(3)); /* 8N2 */
+    TEST_ASSERT_EQUAL_UINT32(10, fake_lab_uart_bits(4)); /* 7E1 */
+    TEST_ASSERT_EQUAL_UINT32(0, fake_lab_uart_bits(5));
+}
+
+static void test_the_uart_opens_closes_and_refuses_bad_settings(void)
+{
+    uint8_t b[4] = {1, 2, 3, 4};
+    TEST_ASSERT_FALSE(fake_lab_uart_is_open());
+    TEST_ASSERT_FALSE(fake_lab_uart_tx());
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_uart_write(b, 4)); /* closed */
+    TEST_ASSERT_EQUAL_UINT(0, uart_read(b, 4, NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, fake_lab_uart_set_baud(9600));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_uart_open(0, 0, 256, false));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_uart_open(9600, 5, 256, false));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_uart_open(9600, 0, 0, false));
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(9600, 0, 256, false));
+    TEST_ASSERT_TRUE(fake_lab_uart_is_open());
+    TEST_ASSERT_FALSE(fake_lab_uart_tx());
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, fake_lab_uart_open(9600, 0, 256, false));
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_uart_write(b, 4)); /* open without TX: nothing goes out */
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_uart_set_baud(0));
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_set_baud(115200));
+    TEST_ASSERT_EQUAL_UINT32(87, fake_lab_uart_wire_us(1)); /* 10 bits at 115 200: 86.8 us */
+    fake_lab_uart_close();
+    TEST_ASSERT_FALSE(fake_lab_uart_is_open());
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(9600, 0, 256, true));
+    TEST_ASSERT_TRUE(fake_lab_uart_tx());
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_uart_write(NULL, 4));
+    TEST_ASSERT_EQUAL_UINT(0, uart_read(NULL, 4, NULL, NULL, NULL));
+    fake_lab_uart_peer(FAKE_LAB_UART_MODES, 9600, 0); /* ignored */
+    fake_lab_uart_peer(FAKE_LAB_UART_LOOP, 9600, 5);  /* ignored */
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_uart_write(NULL, 0));
+}
+
+static void test_a_loopback_returns_each_character_after_it_crossed_the_wire(void)
+{
+    fake_lab_uart_peer(FAKE_LAB_UART_LOOP, 0, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(9600, 0, 256, true));
+    fake_lab_time_us(1000);
+    const uint8_t out[5] = {10, 20, 30, 40, 50};
+    TEST_ASSERT_EQUAL_UINT(5, fake_lab_uart_write(out, 5));
+    uint8_t in[8];
+    uint32_t fe = 0;
+    uint32_t pe = 0;
+    uint32_t ov = 0;
+    TEST_ASSERT_EQUAL_UINT(0, uart_read(in, 8, &fe, &pe, &ov)); /* nothing has crossed yet */
+    TEST_ASSERT_EQUAL_UINT32(5209, fake_lab_uart_wire_us(5));   /* 5 x 1041.7 us */
+    fake_lab_time_us(1000 + 2084);                              /* two characters */
+    TEST_ASSERT_EQUAL_UINT(2, uart_read(in, 8, &fe, &pe, &ov));
+    TEST_ASSERT_EQUAL_UINT8(10, in[0]);
+    TEST_ASSERT_EQUAL_UINT8(20, in[1]);
+    fake_lab_time_us(1000 + 5300);
+    TEST_ASSERT_EQUAL_UINT(2, uart_read(in, 2, &fe, &pe, &ov)); /* the caller's room */
+    TEST_ASSERT_EQUAL_UINT(1, uart_read(in, 8, &fe, &pe, &ov));
+    TEST_ASSERT_EQUAL_UINT8(50, in[0]);
+    TEST_ASSERT_EQUAL_UINT32(0, fe + pe + ov);
+    /* a second write while the line is busy queues behind the first */
+    TEST_ASSERT_EQUAL_UINT(2, fake_lab_uart_write(out, 2));
+    TEST_ASSERT_EQUAL_UINT(2, fake_lab_uart_write(out, 2));
+    fake_lab_time_us(1000 + 5300 + 2100);
+    TEST_ASSERT_EQUAL_UINT(2, uart_read(in, 8, &fe, &pe, &ov));
+    fake_lab_time_us(1000 + 5300 + 4300);
+    TEST_ASSERT_EQUAL_UINT(2, uart_read(in, 8, &fe, &pe, &ov));
+}
+
+static void test_the_loopback_queue_is_bounded_and_counts_what_it_drops(void)
+{
+    fake_lab_uart_peer(FAKE_LAB_UART_LOOP, 0, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(115200, 0, 4096, true));
+    uint8_t out[100] = {0};
+    for (int i = 0; i < 3; i++) {
+        TEST_ASSERT_EQUAL_UINT(100, fake_lab_uart_write(out, 100));
+    }
+    TEST_ASSERT_EQUAL_UINT(44, fake_lab_uart_dropped());
+    fake_lab_time_us(100000);
+    uint8_t in[300];
+    TEST_ASSERT_EQUAL_UINT(256, uart_read(in, 300, NULL, NULL, NULL));
+}
+
+static void test_an_echo_peer_matches_within_3_percent_and_garbles_beyond(void)
+{
+    uint8_t out[256];
+    for (size_t i = 0; i < sizeof out; i++) {
+        out[i] = (uint8_t)i;
+    }
+    uint8_t in[256];
+    uint32_t fe = 0;
+    uint32_t pe = 0;
+    uint32_t ov = 0;
+    /* the same settings: back unchanged */
+    fake_lab_uart_peer(FAKE_LAB_UART_ECHO, 115200, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(115200, 0, 4096, true));
+    TEST_ASSERT_EQUAL_UINT(100, fake_lab_uart_write(out, 100));
+    fake_lab_time_us(100000);
+    TEST_ASSERT_EQUAL_UINT(100, uart_read(in, sizeof in, &fe, &pe, &ov));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(out, in, 100);
+    TEST_ASSERT_EQUAL_UINT32(0, fe + pe + ov);
+    fake_lab_uart_close();
+    /* 3 % off is the edge of what it takes; 4 % is garbage, with a framing error for each */
+    fake_lab_uart_peer(FAKE_LAB_UART_ECHO, 118656, 0); /* +3 % */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(115200, 0, 4096, true));
+    TEST_ASSERT_EQUAL_UINT(50, fake_lab_uart_write(out, 50));
+    fake_lab_time_us(200000);
+    TEST_ASSERT_EQUAL_UINT(50, uart_read(in, sizeof in, &fe, &pe, &ov));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(out, in, 50);
+    TEST_ASSERT_EQUAL_UINT32(0, fe + pe + ov);
+    fake_lab_uart_close();
+    fake_lab_uart_peer(FAKE_LAB_UART_ECHO, 119808, 0); /* +4 % */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(115200, 0, 4096, true));
+    TEST_ASSERT_EQUAL_UINT(256, fake_lab_uart_write(out, 256));
+    fake_lab_time_us(400000);
+    TEST_ASSERT_EQUAL_UINT(256, uart_read(in, sizeof in, &fe, &pe, &ov));
+    TEST_ASSERT_EQUAL_UINT32(256, fe);
+    TEST_ASSERT_EQUAL_UINT32(0, pe);
+    for (size_t i = 0; i < 256; i++) {
+        TEST_ASSERT_NOT_EQUAL(out[i], in[i]); /* no byte survives a mismatched peer */
+    }
+    fake_lab_uart_close();
+    /* the peer slower than the line: the echo is later than the writes by its own pace */
+    fake_lab_uart_peer(FAKE_LAB_UART_ECHO, 9600, 0);
+    fe = pe = ov = 0;
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(115200, 0, 4096, true));
+    fake_lab_time_us(500000);
+    TEST_ASSERT_EQUAL_UINT(8, fake_lab_uart_write(out, 8));
+    fake_lab_time_us(500000 + 800 + 3000);
+    TEST_ASSERT_EQUAL_UINT(3, uart_read(in, sizeof in, &fe, &pe, &ov));
+}
+
+static void test_a_format_mismatch_is_a_parity_error_where_parity_is_checked(void)
+{
+    uint8_t out[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    uint8_t in[8];
+    uint32_t fe = 0;
+    uint32_t pe = 0;
+    uint32_t ov = 0;
+    fake_lab_uart_peer(FAKE_LAB_UART_ECHO, 115200, 1);                     /* 8E1 */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(115200, 0, 256, true)); /* 8N1 */
+    TEST_ASSERT_EQUAL_UINT(8, fake_lab_uart_write(out, 8));
+    fake_lab_time_us(100000);
+    TEST_ASSERT_EQUAL_UINT(8, uart_read(in, sizeof in, &fe, &pe, &ov));
+    TEST_ASSERT_EQUAL_UINT32(8, fe); /* 8E1 sent to a receiver that checks none: the peer is the */
+    TEST_ASSERT_EQUAL_UINT32(0, pe); /* receiver of the first leg, the tool of the second */
+    fake_lab_uart_close();
+    fake_lab_uart_peer(FAKE_LAB_UART_ECHO, 115200, 0); /* 8N1 */
+    fe = pe = 0;
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(115200, 1, 256, true)); /* 8E1 */
+    TEST_ASSERT_EQUAL_UINT(8, fake_lab_uart_write(out, 8));
+    fake_lab_time_us(200000);
+    TEST_ASSERT_EQUAL_UINT(8, uart_read(in, sizeof in, &fe, &pe, &ov));
+    TEST_ASSERT_EQUAL_UINT32(8, pe); /* the tool checks parity on what the 8N1 peer sends back */
+}
+
+static void test_the_scenes(void)
+{
+    TEST_ASSERT_EQUAL_UINT(1300, fake_lab_uart_scene_len(FAKE_LAB_UART_TEXT));
+    TEST_ASSERT_EQUAL_UINT(1024, fake_lab_uart_scene_len(FAKE_LAB_UART_BINARY));
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_uart_scene_len(FAKE_LAB_UART_SILENT));
+    const char *first = "stark uart scene line 00\r\n";
+    for (size_t j = 0; j < 26; j++) {
+        TEST_ASSERT_EQUAL_UINT8((uint8_t)first[j], fake_lab_uart_scene_byte(FAKE_LAB_UART_TEXT, j));
+    }
+    TEST_ASSERT_EQUAL_UINT8('4', fake_lab_uart_scene_byte(FAKE_LAB_UART_TEXT, 49 * 26 + 22));
+    TEST_ASSERT_EQUAL_UINT8('9', fake_lab_uart_scene_byte(FAKE_LAB_UART_TEXT, 49 * 26 + 23));
+    TEST_ASSERT_EQUAL_UINT8(3, fake_lab_uart_scene_byte(FAKE_LAB_UART_BINARY, 0));
+    TEST_ASSERT_EQUAL_UINT8(10, fake_lab_uart_scene_byte(FAKE_LAB_UART_BINARY, 1));
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)(1023u * 7u + 3u),
+                            fake_lab_uart_scene_byte(FAKE_LAB_UART_BINARY, 1023));
+}
+
+static void test_a_talking_peer_says_its_scene_once_at_its_own_pace(void)
+{
+    fake_lab_uart_peer(FAKE_LAB_UART_TEXT, 9600, 0);
+    fake_lab_time_us(5000);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(9600, 0, 4096, false));
+    uint8_t in[64];
+    uint32_t fe = 0;
+    uint32_t pe = 0;
+    uint32_t ov = 0;
+    TEST_ASSERT_EQUAL_UINT(0, uart_read(in, sizeof in, &fe, &pe, &ov));
+    fake_lab_time_us(5000 + 10000); /* 10 ms: nine characters */
+    TEST_ASSERT_EQUAL_UINT(9, uart_read(in, sizeof in, &fe, &pe, &ov));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY("stark uar", in, 9);
+    fake_lab_time_us(5000 + 10000000); /* long after the end of the scene */
+    uint32_t total = 9;
+    size_t n;
+    while ((n = uart_read(in, sizeof in, &fe, &pe, &ov)) > 0u) {
+        total += (uint32_t)n;
+    }
+    TEST_ASSERT_EQUAL_UINT32(1300, total);
+    TEST_ASSERT_EQUAL_UINT(0, uart_read(in, sizeof in, &fe, &pe, &ov)); /* once, then silence */
+    TEST_ASSERT_EQUAL_UINT32(0, fe + pe + ov);
+    /* a binary scene, with a peer at another baud: framing errors, counted */
+    fake_lab_uart_close();
+    fake_lab_uart_peer(FAKE_LAB_UART_BINARY, 19200, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(9600, 0, 4096, false));
+    fake_lab_time_us(5000 + 10000000 + 100000);
+    TEST_ASSERT_EQUAL_UINT(64, uart_read(in, sizeof in, &fe, &pe, NULL));
+    TEST_ASSERT_EQUAL_UINT32(64, fe);
+    TEST_ASSERT_EQUAL_UINT(64,
+                           uart_read(in, sizeof in, NULL, NULL, NULL)); /* NULL counters are fine */
+    fake_lab_uart_close();
+    /* the parity flag of a format mismatch with a checking receiver */
+    fake_lab_uart_peer(FAKE_LAB_UART_BINARY, 9600, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(9600, 1, 4096, false));
+    fake_lab_time_us(5000 + 10000000 + 100000 + 100000);
+    fe = pe = 0;
+    TEST_ASSERT_TRUE(uart_read(in, sizeof in, &fe, &pe, NULL) > 0u);
+    TEST_ASSERT_TRUE(pe > 0u);
+    TEST_ASSERT_EQUAL_UINT32(0, fe);
+}
+
+static void
+test_a_stream_that_outruns_the_receive_buffer_loses_its_oldest_and_counts_an_overrun(void)
+{
+    fake_lab_uart_peer(FAKE_LAB_UART_TEXT, 921600, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(921600, 0, 256, false));
+    fake_lab_time_us(100000); /* the whole scene came, nobody read */
+    uint8_t in[300];
+    uint32_t ov = 0;
+    TEST_ASSERT_EQUAL_UINT(256, uart_read(in, sizeof in, NULL, NULL, &ov));
+    TEST_ASSERT_EQUAL_UINT32(1, ov);
+    TEST_ASSERT_EQUAL_UINT8(fake_lab_uart_scene_byte(FAKE_LAB_UART_TEXT, 1300 - 256), in[0]);
+    TEST_ASSERT_EQUAL_UINT8('\n', in[255]);
+    TEST_ASSERT_EQUAL_UINT(0, uart_read(in, sizeof in, NULL, NULL, &ov));
+    TEST_ASSERT_EQUAL_UINT32(1, ov);
+    fake_lab_uart_close();
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(921600, 0, 256, false));
+    fake_lab_time_us(100000 + 100000);
+    TEST_ASSERT_EQUAL_UINT(256, uart_read(in, sizeof in, NULL, NULL, NULL)); /* NULL overrun */
+}
+
+static void test_the_rx_pad_shows_the_peers_stream_and_other_pads_do_not(void)
+{
+    fake_lab_uart_pins(38, 39);
+    fake_lab_uart_peer(FAKE_LAB_UART_TEXT, 9600, 0);
+    uint32_t ts[64];
+    size_t n = 0;
+    uint32_t seen = 0;
+    bool first = false;
+    fake_lab_time_us(1000);
+    /* a short window: the stream ends by the clock, not by the ring */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pad_edges(39, 10000, ts, 64, &n, &seen, &first));
+    TEST_ASSERT_TRUE(first);
+    TEST_ASSERT_TRUE(n > 10u && n < 64u);
+    TEST_ASSERT_EQUAL_UINT32(n, seen);
+    TEST_ASSERT_EQUAL_UINT32(1000u * 240u,
+                             ts[0]); /* the first start bit falls at the capture's start */
+    /* the TX pad and any other pad are not the peer's line */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pad_edges(38, 10000, ts, 64, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(0, n);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pad_edges(5, 10000, ts, 64, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(0, n);
+    /* a peer with no baud has nothing to say */
+    fake_lab_uart_peer(FAKE_LAB_UART_TEXT, 0, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pad_edges(39, 10000, ts, 64, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(0, n);
+    TEST_ASSERT_TRUE(first);
+    /* a peer that talks only to the tool, not on the RX pad until it is told which pad that is */
+    fake_lab_reset();
+    fake_lab_uart_peer(FAKE_LAB_UART_TEXT, 9600, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pad_edges(39, 10000, ts, 64, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(0, n);
+    /* the reset forgets the pins, the peer and an open session */
+    fake_lab_uart_pins(38, 39);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_uart_open(9600, 0, 256, true));
+    fake_lab_reset();
+    TEST_ASSERT_FALSE(fake_lab_uart_is_open());
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_pad_edges(39, 10000, ts, 64, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(0, n);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -747,5 +1032,15 @@ int main(void)
     RUN_TEST(test_other_addresses_belong_to_the_bound_fakes);
     RUN_TEST(test_i2c_faults);
     RUN_TEST(test_a_command_write_to_the_light_sensor_counts_and_a_pointer_alone_does_not);
+    RUN_TEST(test_the_uart_bits_per_character);
+    RUN_TEST(test_the_uart_opens_closes_and_refuses_bad_settings);
+    RUN_TEST(test_a_loopback_returns_each_character_after_it_crossed_the_wire);
+    RUN_TEST(test_the_loopback_queue_is_bounded_and_counts_what_it_drops);
+    RUN_TEST(test_an_echo_peer_matches_within_3_percent_and_garbles_beyond);
+    RUN_TEST(test_a_format_mismatch_is_a_parity_error_where_parity_is_checked);
+    RUN_TEST(test_the_scenes);
+    RUN_TEST(test_a_talking_peer_says_its_scene_once_at_its_own_pace);
+    RUN_TEST(test_a_stream_that_outruns_the_receive_buffer_loses_its_oldest_and_counts_an_overrun);
+    RUN_TEST(test_the_rx_pad_shows_the_peers_stream_and_other_pads_do_not);
     return UNITY_END();
 }

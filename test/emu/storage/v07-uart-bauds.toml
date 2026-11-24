@@ -1,0 +1,116 @@
+# STARK-0705 on the test image (ADR-0023 §7): the loopback bridge at every baud of the list (1 200 to
+# 921 600, 8N1; the formats are storage/v07-uart-formats), through the real
+# service and app over the pad model's UART peer wired TX to RX (emu_lab_uart = 1). Each run sends the
+# 64-byte pattern 00..3f and reads it back whole with no error: 64/64 ok. The confirmation of the TX
+# pin is asked once, at the first run of the view, and the baud and format changes keep it. Integration
+# evidence for the rules and the log lines (the peer is spec-derived); nothing here shows a baud on a
+# wire (docs/VALIDATION.md §2).
+name = "emu-v07-uart-bauds"
+image = "storage"
+end_ms = 18743
+heap_min = 200000
+pokes = [
+    { at_ms = 400, var = "emu_lab_uart", value = 1 },  # TX looped to RX
+]
+presses = [
+    { key = "UP", at_ms = 500, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 650, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 800, hold_ms = 60 },  # Modules
+    { key = "UP", at_ms = 950, hold_ms = 60 },  # UART
+    { key = "OK", at_ms = 1400, hold_ms = 60 },  # open the app
+    { key = "DOWN", at_ms = 1900, hold_ms = 60 },  # Send
+    { key = "DOWN", at_ms = 2050, hold_ms = 60 },  # Loopback test
+    { key = "OK", at_ms = 2200, hold_ms = 60 },  # the view
+    { key = "DOWN", at_ms = 2700, hold_ms = 60 },  # Baud
+    { key = "LEFT", at_ms = 2850, hold_ms = 60 },  # down to 1 200 (1 of 7)
+    { key = "LEFT", at_ms = 3000, hold_ms = 60 },  # down to 1 200 (2 of 7)
+    { key = "LEFT", at_ms = 3150, hold_ms = 60 },  # down to 1 200 (3 of 7)
+    { key = "LEFT", at_ms = 3300, hold_ms = 60 },  # down to 1 200 (4 of 7)
+    { key = "LEFT", at_ms = 3450, hold_ms = 60 },  # down to 1 200 (5 of 7)
+    { key = "LEFT", at_ms = 3600, hold_ms = 60 },  # down to 1 200 (6 of 7)
+    { key = "LEFT", at_ms = 3750, hold_ms = 60 },  # down to 1 200 (7 of 7)
+    { key = "UP", at_ms = 3900, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 4200, hold_ms = 60 },  # Run test: the confirmation first
+    { key = "OK", at_ms = 4700, hold_ms = 60 },  # confirm: 1 200 baud (the pattern takes 0.5 s)
+    { key = "DOWN", at_ms = 6200, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 6350, hold_ms = 60 },  # 2400
+    { key = "UP", at_ms = 6500, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 6700, hold_ms = 60 },  # 2400 baud
+    { key = "DOWN", at_ms = 7417, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 7567, hold_ms = 60 },  # 4800
+    { key = "UP", at_ms = 7717, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 7917, hold_ms = 60 },  # 4800 baud
+    { key = "DOWN", at_ms = 8501, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 8651, hold_ms = 60 },  # 9600
+    { key = "UP", at_ms = 8801, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 9001, hold_ms = 60 },  # 9600 baud
+    { key = "DOWN", at_ms = 9518, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 9668, hold_ms = 60 },  # 19200
+    { key = "UP", at_ms = 9818, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 10018, hold_ms = 60 },  # 19200 baud
+    { key = "DOWN", at_ms = 10502, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 10652, hold_ms = 60 },  # 38400
+    { key = "UP", at_ms = 10802, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 11002, hold_ms = 60 },  # 38400 baud
+    { key = "DOWN", at_ms = 11469, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 11619, hold_ms = 60 },  # 57600
+    { key = "UP", at_ms = 11769, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 11969, hold_ms = 60 },  # 57600 baud
+    { key = "DOWN", at_ms = 12431, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 12581, hold_ms = 60 },  # 115200
+    { key = "UP", at_ms = 12731, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 12931, hold_ms = 60 },  # 115200 baud
+    { key = "DOWN", at_ms = 13387, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 13537, hold_ms = 60 },  # 230400
+    { key = "UP", at_ms = 13687, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 13887, hold_ms = 60 },  # 230400 baud
+    { key = "DOWN", at_ms = 14340, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 14490, hold_ms = 60 },  # 460800
+    { key = "UP", at_ms = 14640, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 14840, hold_ms = 60 },  # 460800 baud
+    { key = "DOWN", at_ms = 15292, hold_ms = 60 },  # Baud
+    { key = "RIGHT", at_ms = 15442, hold_ms = 60 },  # 921600
+    { key = "UP", at_ms = 15592, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 15792, hold_ms = 60 },  # 921600 baud
+    { key = "BACK", at_ms = 16243, hold_ms = 60 },  # leave the view
+    { key = "BACK", at_ms = 16743, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "lab: uart open 115200 8N1",
+    "lab: uart open 1200 8N1",
+    'dialog: open "Drive LAB_UART_TX?"',
+    "lab: uart tx on",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 2400 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 4800 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 9600 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 19200 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 38400 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 57600 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 115200 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 230400 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 460800 8N1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 921600 8N1",
+    "lab: uart loop 64/64 ok",
+]
+forbid = [
+    "lab: uart failed",
+    "mismatch",
+    "no data",
+    "line errors",
+    "uartapp: loop not run",
+    "dialog: cancel",
+    "panic",
+]
+forbid_after = [
+    { after = "lab: uart tx on", text = 'dialog: open "Drive LAB_UART_TX?"' },
+]

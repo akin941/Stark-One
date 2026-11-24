@@ -1,0 +1,80 @@
+# STARK-0705 on the test image (ADR-0023 §7, §9): the UART app over the pad model's UART peer (the
+# fifth substitution), whose behaviour comes from GDB pokes (emu_lab_uart: 1 TX looped to RX, 2 an
+# echo peer, 3 a peer that talks; emu_lab_uart_baud; emu_lab_uart_fmt). The real service, session, app
+# and UI run unchanged. The loopback bridge first sends the 64-byte pattern and gets it back (64/64 ok)
+# after the confirmation of the TX pin; then the peer is an echo at 9 600 baud while the tool is at
+# 115 200, and the result is reported as a mismatch whose first byte is 0, never as success; then the
+# peer talks at 38 400 and Auto-baud names it (`lab: autobaud 38400`) and the Baud row follows, the
+# Monitor opens at that baud and receives the scene, and a send goes out. Every view ends with both
+# pins released. Integration evidence only: the model is spec-derived, never a recording, and nothing
+# here shows a level on a pin (docs/VALIDATION.md §2).
+name = "emu-v07-uart"
+image = "storage"
+end_ms = 16850
+heap_min = 200000
+pokes = [
+    { at_ms = 400, var = "emu_lab_uart", value = 1 },  # TX looped to RX
+    { at_ms = 4100, var = "emu_lab_uart_baud", value = 9600 },  # the peer is at 9 600 while the tool is at 115 200
+    { at_ms = 4100, var = "emu_lab_uart", value = 2 },  # an echo peer
+    { at_ms = 6400, var = "emu_lab_uart_baud", value = 38400 },  # a peer that talks at 38 400
+    { at_ms = 6400, var = "emu_lab_uart", value = 3 },  # the text scene
+]
+presses = [
+    { key = "UP", at_ms = 500, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 650, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 800, hold_ms = 60 },  # Modules
+    { key = "UP", at_ms = 950, hold_ms = 60 },  # UART
+    { key = "OK", at_ms = 1400, hold_ms = 60 },  # open the app
+    { key = "DOWN", at_ms = 1900, hold_ms = 60 },  # Send
+    { key = "DOWN", at_ms = 2050, hold_ms = 60 },  # Loopback test
+    { key = "OK", at_ms = 2200, hold_ms = 60 },  # the view
+    { key = "OK", at_ms = 2700, hold_ms = 60 },  # Run test: the confirmation first
+    { key = "OK", at_ms = 3200, hold_ms = 60 },  # confirm: TX on, the pattern goes out and comes back
+    { key = "OK", at_ms = 4500, hold_ms = 60 },  # Run test again (armed): the echo is too slow and garbled
+    { key = "BACK", at_ms = 5700, hold_ms = 60 },  # leave the view: the pins are released
+    { key = "DOWN", at_ms = 6800, hold_ms = 60 },  # Send
+    { key = "DOWN", at_ms = 7000, hold_ms = 60 },  # Loopback test
+    { key = "DOWN", at_ms = 7200, hold_ms = 60 },  # Auto-baud
+    { key = "OK", at_ms = 7500, hold_ms = 60 },  # listen to the RX pad: 38 400
+    { key = "UP", at_ms = 8500, hold_ms = 60 },  # toward Monitor
+    { key = "UP", at_ms = 8650, hold_ms = 60 },  # toward Monitor
+    { key = "UP", at_ms = 8800, hold_ms = 60 },  # toward Monitor
+    { key = "OK", at_ms = 9150, hold_ms = 60 },  # Monitor at the detected baud: the scene arrives
+    { key = "BACK", at_ms = 11650, hold_ms = 60 },  # close it
+    { key = "DOWN", at_ms = 12350, hold_ms = 60 },  # Send
+    { key = "OK", at_ms = 12650, hold_ms = 60 },  # the Send view
+    { key = "OK", at_ms = 13150, hold_ms = 60 },  # \r\n: the confirmation first
+    { key = "OK", at_ms = 13650, hold_ms = 60 },  # confirm: TX on, two bytes out
+    { key = "BACK", at_ms = 14350, hold_ms = 60 },  # leave the view
+    { key = "BACK", at_ms = 14850, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "lab: pins 38 39",
+    'menu: sel=16 "UART"',
+    "lab: uart open 115200 8N1",
+    "uartapp: loop view",
+    'dialog: open "Drive LAB_UART_TX?"',
+    "lab: uart tx on",
+    "lab: uart loop 64/64 ok",
+    "uartapp: loop 64/64 ok",
+    "/64 mismatch first 0",
+    "differs at 0",
+    "lab: released pin 39",
+    "lab: released pin 38",
+    "lab: uart closed",
+    "lab: autobaud 38400",
+    "uartapp: autobaud 38400",
+    "uartapp: monitor 38400 8N1",
+    "uartapp: monitor closed",
+    "uartapp: send view",
+    "lab: uart send 2 bytes",
+    "app: stop uart",
+]
+forbid = [
+    "lab: uart failed",
+    "uartapp: not opened",
+    "uartapp: loop not run",
+    "uartapp: autobaud unknown",
+    "uartapp: autobaud not run",
+    "panic",
+]

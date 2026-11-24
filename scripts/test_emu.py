@@ -57,6 +57,11 @@ Scenario files (test/emu/*.toml):
                                         # first RMT TX channel's baseband into the
                                         # first RX channel (verified pair on
                                         # esp32s3; ADR-0019 §2: no carrier, no light)
+  uart1_peer = "echo"                   # optional, production image only: esp-emu
+                                        # --uart1-tcp on a free port, and a host-side
+                                        # peer that connects to it and sends back every
+                                        # byte it receives (STARK-0705). The scenario
+                                        # fails if the peer cannot connect
   image = "storage"                     # optional; the firmware it needs (below)
   pokes = [ { at_ms = 2500, var = "emu_medium_present", value = 0 } ]
                                         # optional, storage image only: a global
@@ -85,6 +90,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 from pathlib import Path
@@ -125,7 +131,8 @@ POKE_VARS = ("emu_medium_present", "emu_medium_formatted",  # the test medium's 
              "emu_sg_fault",  # the fake CC1101's (ADR-0022 §3)
              "emu_lab_ext_pin", "emu_lab_ext_mode", "emu_lab_ext_hz", "emu_lab_ext_duty",
              "emu_lab_wire", "emu_lab_fault",  # the test pad model's (ADR-0023 §9)
-             "emu_lab_i2c_devs", "emu_lab_i2c_fault")  # ... and its I2C bus's (STARK-0704)
+             "emu_lab_i2c_devs", "emu_lab_i2c_fault",  # ... and its I2C bus's (STARK-0704)
+             "emu_lab_uart", "emu_lab_uart_baud", "emu_lab_uart_fmt")  # ... and its UART peer's
 
 
 def control_shell(port, command):
@@ -213,7 +220,67 @@ def split_phases(scenario):
     return phases
 
 
-def emu_command(args, scenario, firmware, port, control_port, wall, save_state):
+def validate_uart1(scenario):
+    """`uart1_peer` is "echo" and needs the production image (the test image's lab transport has
+    its own UART peer, so nothing would be on the bridge). Returns the peer's kind or None."""
+    kind = scenario.get("uart1_peer")
+    if kind is None:
+        return None
+    if kind != "echo":
+        raise SystemExit("%s: uart1_peer must be \"echo\"" % scenario["name"])
+    if scenario.get("image", "production") != "production":
+        raise SystemExit("%s: uart1_peer needs the production image" % scenario["name"])
+    return kind
+
+
+class Uart1Peer(threading.Thread):
+    """The host side of esp-emu's --uart1-tcp bridge: connects to the port the emulator listens
+    on, and sends back every byte it receives. It never sends anything of its own, so a round trip
+    is the firmware's own doing. `connected` stays False when the emulator never accepted."""
+
+    def __init__(self, port, connect_s=60.0):
+        super().__init__(daemon=True)
+        self.port = port
+        self.connect_s = connect_s
+        self.connected = False
+        self.echoed = 0
+        self._stop_flag = threading.Event()
+        self._sock = None
+
+    def run(self):
+        deadline = time.monotonic() + self.connect_s
+        while not self._stop_flag.is_set() and time.monotonic() < deadline:
+            try:
+                self._sock = socket.create_connection(("127.0.0.1", self.port), timeout=1.0)
+                break
+            except OSError:
+                time.sleep(0.05)
+        if self._sock is None:
+            return
+        self.connected = True
+        self._sock.settimeout(0.2)
+        while not self._stop_flag.is_set():
+            try:
+                data = self._sock.recv(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not data:
+                break
+            try:
+                self._sock.sendall(data)
+            except OSError:
+                break
+            self.echoed += len(data)
+        self._sock.close()
+
+    def stop(self):
+        self._stop_flag.set()
+        self.join(timeout=5)
+
+
+def emu_command(args, scenario, firmware, port, control_port, wall, save_state, uart1_port=None):
     """The esp-emu command line for one phase."""
     cmd = [args.emu, "--chip", "esp32s3", "--firmware", firmware,
            "--log-color", "never", "--gdb", str(port), "--gdb-halt",
@@ -223,6 +290,8 @@ def emu_command(args, scenario, firmware, port, control_port, wall, save_state):
         if not re.match(r"^\d+:\d+$", str(loop)):
             raise SystemExit("%s: rmt_loopback must be \"TX:RX\"" % scenario["name"])
         cmd += ["--rmt-loopback", str(loop)]
+    if uart1_port is not None:
+        cmd += ["--uart1-tcp", "127.0.0.1:%d" % uart1_port]
     if save_state:
         cmd.append("--save-state")
     return cmd
@@ -335,6 +404,7 @@ def run_scenario(path, args):
     gdb_path = Path(args.log_dir) / (name + ".gdb.log")
     wall = int(scenario.get("wall_limit_s", WALL_LIMIT_S))
     phases = split_phases(scenario)
+    validate_uart1(scenario)
     firmware = args.firmware
     if len(phases) > 1:
         # One flash image for every phase: esp-emu --save-state writes the
@@ -345,12 +415,20 @@ def run_scenario(path, args):
     started = time.monotonic()
     log_path.write_text("")
     gdb_path.write_text("")
+    peer_failures = []
     for k, phase in enumerate(phases):
         port = free_port()
         control_port = free_port()
         script_path = Path(args.log_dir) / ("%s.%d.gdb" % (name, k))
         script_path.write_text(gdb_script(phase, port, control_port))
-        cmd = emu_command(args, scenario, firmware, port, control_port, wall, len(phases) > 1)
+        peer = None
+        uart1_port = None
+        if scenario.get("uart1_peer"):
+            uart1_port = free_port()
+            peer = Uart1Peer(uart1_port)
+            peer.start()
+        cmd = emu_command(args, scenario, firmware, port, control_port, wall, len(phases) > 1,
+                          uart1_port)
         with open(log_path, "a") as log_f, open(gdb_path, "a") as gdb_f:
             log_f.write("--- phase %d ---\n" % k)
             log_f.flush()
@@ -370,9 +448,17 @@ def run_scenario(path, args):
                     emu.wait(timeout=20)
                 except subprocess.TimeoutExpired:
                     emu.kill()
+                if peer is not None:
+                    peer.stop()
+        if peer is not None:
+            print("    uart1 peer: %s, echoed %d bytes (phase %d)" % (
+                "connected" if peer.connected else "NOT connected", peer.echoed, k), flush=True)
+            if not peer.connected:
+                peer_failures.append("the uart1 peer never connected to port %d (phase %d)" % (
+                    uart1_port, k))
     log = log_path.read_text(errors="replace")
     gdb_log = gdb_path.read_text(errors="replace")
-    failures = check_log(scenario, log, gdb_log)
+    failures = check_log(scenario, log, gdb_log) + peer_failures
     if len(phases) > 1 and gdb_log.count(END_MARK) != len(phases):
         failures.append("only %d of %d phases reached their end" % (gdb_log.count(END_MARK),
                                                                      len(phases)))

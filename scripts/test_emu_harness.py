@@ -2,7 +2,9 @@
 """Unit tests for scripts/test_emu.py's pure parts (no emulator needed)."""
 import os
 import re
+import socket
 import sys
+import threading
 import tomllib
 import unittest
 from pathlib import Path
@@ -115,6 +117,7 @@ class Scenarios(unittest.TestCase):
                 self.assertIn(p["key"].upper(), emu.KEYS, f)
                 self.assertLess(p["at_ms"] + p.get("hold_ms", 60), s["end_ms"], f)
             emu.gdb_script(s, 1)  # generates without error
+            emu.validate_uart1(s)  # a uart1 peer only where it can work
             # storage-image scenarios live in test/emu/storage/ (or soak/),
             # and nothing in storage/ runs on the production image
             image = s.get("image", "production")
@@ -223,6 +226,85 @@ class EmuCommand(unittest.TestCase):
     def test_bad_loopback(self):
         with self.assertRaises(SystemExit):
             emu.emu_command(self.A, {"name": "t", "rmt_loopback": "zero"}, "fw", 1, 2, 60, False)
+
+
+class Uart1(unittest.TestCase):
+    """STARK-0705: the host side of esp-emu's --uart1-tcp bridge."""
+
+    class A:
+        emu = "/emu"
+
+    def test_the_flag_names_the_port_and_is_off_by_default(self):
+        cmd = emu.emu_command(self.A, {"name": "t"}, "fw", 1, 2, 60, False, 5556)
+        self.assertEqual(cmd[cmd.index("--uart1-tcp") + 1], "127.0.0.1:5556")
+        self.assertNotIn("--uart1-tcp", emu.emu_command(self.A, {"name": "t"}, "fw", 1, 2, 60,
+                                                        False))
+
+    def test_only_an_echo_peer_on_the_production_image(self):
+        self.assertIsNone(emu.validate_uart1({"name": "t"}))
+        self.assertEqual(emu.validate_uart1({"name": "t", "uart1_peer": "echo"}), "echo")
+        with self.assertRaises(SystemExit):
+            emu.validate_uart1({"name": "t", "uart1_peer": "talk"})
+        with self.assertRaises(SystemExit):
+            emu.validate_uart1({"name": "t", "uart1_peer": "echo", "image": "storage"})
+
+    def test_the_peer_sends_back_every_byte_and_nothing_of_its_own(self):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        peer = emu.Uart1Peer(srv.getsockname()[1])
+        peer.start()
+        conn, _ = srv.accept()
+        conn.settimeout(5)
+        conn.sendall(bytes(range(256)) * 4)
+        got = b""
+        while len(got) < 1024:
+            got += conn.recv(4096)
+        self.assertEqual(got, bytes(range(256)) * 4)
+        conn.settimeout(0.3)
+        with self.assertRaises(socket.timeout):  # it said nothing unasked
+            conn.recv(1)
+        peer.stop()
+        self.assertTrue(peer.connected)
+        self.assertEqual(peer.echoed, 1024)
+        conn.close()
+        srv.close()
+
+    def test_a_peer_that_cannot_connect_says_so(self):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        port = srv.getsockname()[1]
+        srv.close()  # nothing listens here
+        peer = emu.Uart1Peer(port, connect_s=0.3)
+        peer.start()
+        peer.join(timeout=5)
+        self.assertFalse(peer.connected)
+        self.assertEqual(peer.echoed, 0)
+
+    def test_a_peer_stopped_while_waiting_gives_up(self):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        port = srv.getsockname()[1]
+        srv.close()
+        peer = emu.Uart1Peer(port, connect_s=30)
+        peer.start()
+        threading.Event().wait(0.1)
+        peer.stop()
+        self.assertFalse(peer.is_alive())
+        self.assertFalse(peer.connected)
+
+    def test_the_peer_ends_when_the_emulator_closes_the_bridge(self):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        peer = emu.Uart1Peer(srv.getsockname()[1])
+        peer.start()
+        conn, _ = srv.accept()
+        conn.close()
+        peer.join(timeout=5)
+        self.assertFalse(peer.is_alive())
+        self.assertTrue(peer.connected)
+        srv.close()
 
 
 class Images(unittest.TestCase):

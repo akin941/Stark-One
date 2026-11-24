@@ -1,0 +1,79 @@
+# STARK-0705 on the test image (ADR-0023 §7): the monitor logs what it receives to the card. The peer
+# talks (emu_lab_uart = 3: the text scene of 50 lines, 1 300 bytes, once from the moment the driver
+# opens) and the Log row is on, so the monitor writes logs/uart_0001.log through its 2 kB buffer
+# and, when it closes, says `log closed uart_0001.log 1300 bytes crc 0xdd1ba36f`: the CRC-32 of the bytes
+# it wrote is the one scripts/gen_lab_vectors.py computes for the scene (and test_gen_lab_vectors
+# checks this line against it). The second run, with the binary scene (1 024 bytes), is the next
+# file, uart_0002.log. The console log carries names and counts only, never received bytes. After the
+# tool is left, the GPIO app can open pin 38: AC 4, both pins are released on every exit. Integration
+# evidence only (docs/VALIDATION.md §2).
+name = "emu-v07-uart-log"
+image = "storage"
+end_ms = 16600
+heap_min = 200000
+pokes = [
+    { at_ms = 400, var = "emu_lab_uart", value = 3 },  # the text scene: 50 lines, 1 300 bytes
+    { at_ms = 8000, var = "emu_lab_uart", value = 4 },  # the binary scene: 1 024 bytes
+]
+presses = [
+    { key = "UP", at_ms = 500, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 650, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 800, hold_ms = 60 },  # Modules
+    { key = "UP", at_ms = 950, hold_ms = 60 },  # UART
+    { key = "OK", at_ms = 1400, hold_ms = 60 },  # open the app
+    { key = "DOWN", at_ms = 1900, hold_ms = 60 },  # toward Log (1 of 4)
+    { key = "DOWN", at_ms = 2050, hold_ms = 60 },  # toward Log (2 of 4)
+    { key = "DOWN", at_ms = 2200, hold_ms = 60 },  # toward Log (3 of 4)
+    { key = "DOWN", at_ms = 2350, hold_ms = 60 },  # toward Log (4 of 4)
+    { key = "OK", at_ms = 2500, hold_ms = 60 },  # Log: on
+    { key = "UP", at_ms = 3000, hold_ms = 60 },  # toward Monitor (1 of 4)
+    { key = "UP", at_ms = 3150, hold_ms = 60 },  # toward Monitor (2 of 4)
+    { key = "UP", at_ms = 3300, hold_ms = 60 },  # toward Monitor (3 of 4)
+    { key = "UP", at_ms = 3450, hold_ms = 60 },  # toward Monitor (4 of 4)
+    { key = "OK", at_ms = 3800, hold_ms = 60 },  # Monitor: the scene arrives and is logged
+    { key = "OK", at_ms = 6300, hold_ms = 60 },  # ASCII
+    { key = "UP", at_ms = 6800, hold_ms = 60 },  # back in time
+    { key = "BACK", at_ms = 7300, hold_ms = 60 },  # close it: the log is closed and synced
+    { key = "OK", at_ms = 8200, hold_ms = 60 },  # Monitor again: the next file
+    { key = "BACK", at_ms = 10700, hold_ms = 60 },  # close it
+    { key = "BACK", at_ms = 11400, hold_ms = 60 },  # leave the app
+    { key = "UP", at_ms = 12100, hold_ms = 60 },  # NFC
+    { key = "UP", at_ms = 12250, hold_ms = 60 },  # IR
+    { key = "UP", at_ms = 12400, hold_ms = 60 },  # I2C
+    { key = "UP", at_ms = 12550, hold_ms = 60 },  # GPIO
+    { key = "OK", at_ms = 12900, hold_ms = 60 },  # GPIO: both lab pins are free again
+    { key = "OK", at_ms = 13500, hold_ms = 60 },  # open pin 38 (LAB_UART_TX): the tool released it
+    { key = "BACK", at_ms = 14100, hold_ms = 60 },  # release it
+    { key = "BACK", at_ms = 14600, hold_ms = 60 },  # leave the app
+]
+expect = [
+    'menu: sel=16 "UART"',
+    "uartapp: log on",
+    "lab: uart open 115200 8N1",
+    "uartapp: monitor 115200 8N1",
+    "uartapp: log started uart_0001.log",
+    "uartapp: view ascii",
+    "lab: uart closed",
+    "uartapp: monitor closed",
+    "uartapp: log closed uart_0001.log 1300 bytes crc 0xdd1ba36f",
+    "uartapp: log started uart_0002.log",
+    "uartapp: monitor closed",
+    "uartapp: log closed uart_0002.log 1024 bytes crc 0x5d3de8ed",
+    "app: stop uart",
+    'menu: sel=11 "GPIO"',
+    "app: start gpio",
+    "gpioapp: open pin 38 LAB_UART_TX",
+    "lab: released pin 38",
+    "gpioapp: close pin 38",
+    "app: stop gpio",
+]
+forbid = [
+    "uartapp: log failed",
+    "uartapp: log not started",
+    "uartapp: log refused",
+    "stark uart scene",
+    "lab: uart failed",
+    "uartapp: not opened",
+    "gpioapp: pin 38 not available",
+    "panic",
+]

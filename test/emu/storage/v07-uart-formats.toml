@@ -1,0 +1,77 @@
+# STARK-0705 on the test image (ADR-0023 §7): the loopback bridge in every format of the list (8N1,
+# 8E1, 8O1, 8N2, 7E1) at 115 200, through the real service and app over the pad model's UART peer wired
+# TX to RX (emu_lab_uart = 1). Each run sends the 64-byte pattern 00..3f and reads it back whole with no
+# error: 64/64 ok. A change of format installs the driver again with TX still routed, so the
+# confirmation of the TX pin is asked once. Integration evidence for the rules and the log lines (the
+# peer is spec-derived); nothing here shows a format on a wire (docs/VALIDATION.md §2).
+name = "emu-v07-uart-formats"
+image = "storage"
+end_ms = 11600
+heap_min = 200000
+pokes = [
+    { at_ms = 400, var = "emu_lab_uart", value = 1 },  # TX looped to RX
+]
+presses = [
+    { key = "UP", at_ms = 500, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 650, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 800, hold_ms = 60 },  # Modules
+    { key = "UP", at_ms = 950, hold_ms = 60 },  # UART
+    { key = "OK", at_ms = 1400, hold_ms = 60 },  # open the app
+    { key = "DOWN", at_ms = 1900, hold_ms = 60 },  # Send
+    { key = "DOWN", at_ms = 2050, hold_ms = 60 },  # Loopback test
+    { key = "OK", at_ms = 2200, hold_ms = 60 },  # the view
+    { key = "OK", at_ms = 2700, hold_ms = 60 },  # Run test: the confirmation first
+    { key = "OK", at_ms = 3200, hold_ms = 60 },  # confirm: 115 200 8N1
+    { key = "DOWN", at_ms = 3900, hold_ms = 60 },  # Baud
+    { key = "DOWN", at_ms = 4050, hold_ms = 60 },  # Format
+    { key = "RIGHT", at_ms = 4200, hold_ms = 60 },  # 8E1
+    { key = "UP", at_ms = 4350, hold_ms = 60 },  # Baud
+    { key = "UP", at_ms = 4500, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 4700, hold_ms = 60 },  # 115 200 8E1
+    { key = "DOWN", at_ms = 5200, hold_ms = 60 },  # Baud
+    { key = "DOWN", at_ms = 5350, hold_ms = 60 },  # Format
+    { key = "RIGHT", at_ms = 5500, hold_ms = 60 },  # 8O1
+    { key = "UP", at_ms = 5650, hold_ms = 60 },  # Baud
+    { key = "UP", at_ms = 5800, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 6000, hold_ms = 60 },  # 115 200 8O1
+    { key = "DOWN", at_ms = 6500, hold_ms = 60 },  # Baud
+    { key = "DOWN", at_ms = 6650, hold_ms = 60 },  # Format
+    { key = "RIGHT", at_ms = 6800, hold_ms = 60 },  # 8N2
+    { key = "UP", at_ms = 6950, hold_ms = 60 },  # Baud
+    { key = "UP", at_ms = 7100, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 7300, hold_ms = 60 },  # 115 200 8N2
+    { key = "DOWN", at_ms = 7800, hold_ms = 60 },  # Baud
+    { key = "DOWN", at_ms = 7950, hold_ms = 60 },  # Format
+    { key = "RIGHT", at_ms = 8100, hold_ms = 60 },  # 7E1
+    { key = "UP", at_ms = 8250, hold_ms = 60 },  # Baud
+    { key = "UP", at_ms = 8400, hold_ms = 60 },  # Run test
+    { key = "OK", at_ms = 8600, hold_ms = 60 },  # 115 200 7E1
+    { key = "BACK", at_ms = 9100, hold_ms = 60 },  # leave the view
+    { key = "BACK", at_ms = 9600, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "lab: uart open 115200 8N1",
+    'dialog: open "Drive LAB_UART_TX?"',
+    "lab: uart tx on",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 115200 8E1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 115200 8O1",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 115200 8N2",
+    "lab: uart loop 64/64 ok",
+    "lab: uart open 115200 7E1",
+    "lab: uart loop 64/64 ok",
+]
+forbid = [
+    "lab: uart failed",
+    "mismatch",
+    "no data",
+    "line errors",
+    "uartapp: loop not run",
+    "dialog: cancel",
+    "panic",
+]
+forbid_after = [
+    { after = "lab: uart tx on", text = 'dialog: open "Drive LAB_UART_TX?"' },
+]

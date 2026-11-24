@@ -3,8 +3,9 @@
  * decides which pins a lab tool may touch and checks every pin call against it. Today the
  * pad group (STARK-0701), the PWM and pulse outputs (STARK-0702) and the frequency and duty
  * measurement (STARK-0703), whose user is the GPIO app; the shared I2C bus (STARK-0704: scan,
- * hints, register read, dump and write, whose user is the I2C app) follows; later tasks add SPI
- * and UART behind the same seam.
+ * hints, register read, dump and write, whose user is the I2C app) and the lab UART (STARK-0705:
+ * monitor, send, loopback test and auto-baud on the two lab pins, whose user is the UART app);
+ * later tasks add SPI behind the same seam.
  *
  * Pins are named only through stark_board (stark_board_pin_class(), stark_board_lab_pins()):
  * a LAB pin is always offered, a SLOT pin only while its slot reads ABSENT, everything else
@@ -17,7 +18,8 @@
  * Frequency and duty (STARK-0703) are measured from timestamped edges (stark_lab_measure(),
  * ADR-0023 §4); the arithmetic is the pure lab_meas.c.
  *
- * Any task may call; one mutex serialises, and nothing is allocated after init.
+ * Any task may call; one mutex serialises, and nothing is allocated after init (the UART session
+ * allocates its 4 kB ring when it opens and frees it when it closes).
  */
 #pragma once
 
@@ -31,6 +33,9 @@
 
 #define STARK_LAB_EVT_PINS         1 /* the offer changed, or a held pin was withdrawn */
 #define STARK_LAB_EVT_MEASURE_DONE 2 /* a stark_lab_measure() has a result (STARK-0703) */
+/* 3 stays reserved: the I2C sweep is a synchronous call (STARK-0704), so it has no SCAN_DONE */
+#define STARK_LAB_EVT_UART_DATA    4 /* the UART monitor received bytes (at most 10 a second) */
+#define STARK_LAB_EVT_UART_ERROR   5 /* ... or counted a framing, parity or overrun error */
 
 typedef enum { STARK_LAB_PULL_NONE, STARK_LAB_PULL_UP, STARK_LAB_PULL_DOWN } stark_lab_pull_t;
 
@@ -309,6 +314,192 @@ uint32_t stark_lab_i2c_dump_fingerprint(uint8_t addr);
  * length. Pure. */
 size_t stark_lab_i2c_hex(const uint8_t *b, size_t n, char *buf, size_t sz);
 size_t stark_lab_i2c_hex_packed(const uint8_t *b, size_t n, char *buf, size_t sz);
+
+/* ---- the lab UART (lab_uart.c, lab_autobaud.c, lab_uart_svc.c; STARK-0705, ADR-0023 §7) -------
+ *
+ * UART1 on the two lab pins (stark_board's `lab_uart_tx` / `lab_uart_rx`), 3.3 V TTL only. The
+ * tool holds both pins through the same hold the GPIO app uses (owner "uart"), so the two exclude
+ * each other: while one holds a pin the other's stark_lab_acquire() is STARK_ERR_BUSY. A session
+ * opens receive-only (the TX pad is never touched, so a monitor drives nothing); sending needs the
+ * TX pin armed after the app's confirmation, and arming switches TX on. The ring, the driver's
+ * buffer and the session exist from stark_lab_uart_open() to stark_lab_uart_close() only, and
+ * every exit path closes: the driver is removed and both pads return to hi-Z.
+ *
+ * Calls may come from any task, but one operation at a time: the app's worker polls, the UI task
+ * reads the ring and the counters (a short lock) and closes. Received bytes never reach the console
+ * log: it carries counts only.
+ */
+#define STARK_LAB_UART_BAUDS    11u             /* 1 200 to 921 600 */
+#define STARK_LAB_UART_FMTS     5u              /* 8N1 8E1 8O1 8N2 7E1 */
+#define STARK_LAB_UART_RING     4096u           /* bytes of received data kept for the monitor */
+#define STARK_LAB_UART_SEND_MAX 32u             /* bytes of one send */
+#define STARK_LAB_UART_FILE_MAX 1024u           /* bytes of the send file */
+#define STARK_LAB_UART_LOOP_LEN 64u             /* the loopback pattern: 00 01 ... 3f */
+#define STARK_LAB_UART_LOG_MAX  (1024u * 1024u) /* bytes of one log file */
+#define STARK_LAB_UART_LOG_BUF  2048u           /* the log's write buffer */
+#define STARK_LAB_UART_LOG_SYNC 4096u           /* bytes between two flushes to the medium */
+#define STARK_LAB_UART_CHUNK    64u             /* the most one poll takes */
+
+/* The baud list by index (0 past the end) and the format names (NULL past the end). */
+uint32_t stark_lab_uart_baud(size_t index);
+const char *stark_lab_uart_fmt_name(size_t index);
+
+typedef enum {
+    STARK_LAB_LOOP_OK,          /* every byte came back unchanged and the line reported nothing */
+    STARK_LAB_LOOP_MISMATCH,    /* bytes differ, or fewer came back than were sent */
+    STARK_LAB_LOOP_LINE_ERRORS, /* the bytes match but the receiver counted errors */
+    STARK_LAB_LOOP_NO_DATA      /* nothing came back */
+} stark_lab_loop_status_t;
+
+typedef struct {
+    stark_lab_loop_status_t status;
+    uint32_t sent;
+    uint32_t received;
+    uint32_t errors;        /* differing bytes, missing bytes, and the receiver's own counts */
+    int32_t first_mismatch; /* offset of the first differing or missing byte, -1 for none */
+    uint32_t framing, parity, overrun; /* what the receiver counted during the test */
+} stark_lab_loop_t;
+
+typedef enum {
+    STARK_LAB_BAUD_OK,       /* `baud` is a listed baud */
+    STARK_LAB_BAUD_TOO_FEW,  /* fewer than 16 edges: a steady line or no stream */
+    STARK_LAB_BAUD_NO_PULSE, /* every pulse was a glitch */
+    STARK_LAB_BAUD_UNKNOWN,  /* a stream, but its bit time is near no listed baud */
+    STARK_LAB_BAUD_INVALID   /* stamps that go backwards, no clock, too many edges */
+} stark_lab_autobaud_status_t;
+
+typedef struct {
+    stark_lab_autobaud_status_t status;
+    uint32_t baud;      /* the listed baud, 0 unless OK */
+    uint32_t raw_baud;  /* what the refined bit time gives, 0 when none was found */
+    uint32_t bit_ticks; /* the refined bit time in clock ticks, 0 when none was found */
+    uint32_t edges;     /* edges captured */
+} stark_lab_autobaud_t;
+
+typedef struct {
+    bool open;
+    bool tx; /* TX is routed to its pad (armed) */
+    size_t baud_index, fmt_index;
+    uint32_t rx;   /* bytes received since the session opened or was cleared */
+    uint32_t lost; /* of those, bytes the ring overwrote before they were looked at */
+    uint32_t framing, parity, overrun; /* what the receiver counted since then */
+    size_t buffered;                   /* bytes in the ring */
+} stark_lab_uart_stats_t;
+
+/*
+ * Opens a receive-only session at the listed baud and format (indices): holds both lab pins,
+ * installs the driver (a 2 kB buffer) and allocates the 4 kB ring. STARK_ERR_INVALID_ARG for an
+ * index past its list, STARK_ERR_STATE when open already, STARK_ERR_BUSY when the GPIO app (or
+ * anything) holds either pin, STARK_ERR_NO_MEM. A failure holds nothing. Logs `lab: uart open
+ * 115200 8N1`.
+ */
+stark_err_t stark_lab_uart_open(size_t baud_index, size_t fmt_index);
+
+/*
+ * Arms the TX pin and routes TX to its pad: the app calls it only after the user pressed OK on a
+ * dialog naming the pin and "connected hardware may be damaged" (the same arm as stark_lab_arm(),
+ * ADR-0023 §3). The driver is reinstalled with TX; the ring and the counters stay. Idempotent.
+ * STARK_ERR_STATE unless open. Logs `lab: uart tx on`.
+ */
+stark_err_t stark_lab_uart_tx_enable(void);
+
+/*
+ * A new baud and/or format: the driver is reinstalled (or only its baud changed), the ring and the
+ * counters are cleared. STARK_ERR_STATE unless open, STARK_ERR_INVALID_ARG for a bad index.
+ */
+stark_err_t stark_lab_uart_set_format(size_t baud_index, size_t fmt_index);
+
+/*
+ * Waits up to `timeout_ms` for bytes (at most min(max, STARK_LAB_UART_CHUNK)), appends them to the
+ * ring, counts errors, and copies them to `chunk` for the caller's own use (the log) with `*got`
+ * their number: 0 on a timeout. STARK_ERR_STATE unless open; a transport failure closes the session
+ * (pins released) and returns STARK_ERR_IO. Publishes STARK_LAB_EVT_UART_DATA and _ERROR, each at
+ * most ten times a second. Runs on the app worker.
+ */
+stark_err_t stark_lab_uart_poll(uint8_t *chunk, size_t max, uint32_t timeout_ms, size_t *got);
+
+/* Copies up to `max` bytes of the ring starting `skip` bytes after the oldest; returns how many. A
+ * short lock: any task. */
+size_t stark_lab_uart_ring_read(size_t skip, uint8_t *out, size_t max);
+
+/* The counters and the session's settings; all zero and closed before open. Any task. */
+void stark_lab_uart_stats(stark_lab_uart_stats_t *out);
+
+/* Empties the ring and zeroes the counters, and drops what the driver holds. */
+void stark_lab_uart_clear(void);
+
+/*
+ * Sends 1 to STARK_LAB_UART_SEND_MAX bytes, once. STARK_ERR_INVALID_ARG for another length,
+ * STARK_ERR_STATE unless the session is open with TX on. A transport failure closes the session and
+ * returns STARK_ERR_IO. Logs `lab: uart send <n> bytes`. Runs on the app worker or the UI task: it
+ * waits for the bytes to leave (up to 32 characters at 1 200 baud: 0.3 s).
+ */
+stark_err_t stark_lab_uart_send(const uint8_t *buf, size_t n);
+
+/*
+ * The loopback bridge: sends the 64-byte pattern 00..3f as two writes of 32, listens for up to
+ * twice the wire time plus 20 ms for the same bytes back (TX wired to RX, or an echoing peer) and
+ * judges them. The receive buffer is emptied first. STARK_ERR_STATE unless open with TX on, or when
+ * cancelled; STARK_ERR_IO on a transport failure (the session is closed). Logs
+ * `lab: uart loop 64/64 ok`, `... mismatch first <n>`, `... errors <n>`, `0/64 no data`. At most
+ * about 1.6 s (1 200 baud): call it from the app worker.
+ */
+stark_err_t stark_lab_uart_loop_test(stark_lab_loop_t *out);
+
+/*
+ * Auto-baud: captures the edges of the RX pad for up to 2 s and names the standard baud they fit
+ * within 3 %, else `unknown`. Needs the session closed: it holds the RX pin only, releases it
+ * before it returns, and so leaves the pins as it found them. STARK_ERR_STATE when a session is
+ * open or when cancelled, STARK_ERR_BUSY when the pin is held, STARK_ERR_NO_MEM. Logs `lab:
+ * autobaud 38400` or `lab: autobaud unknown`. Runs on the app worker.
+ */
+stark_err_t stark_lab_uart_autobaud(stark_lab_autobaud_t *out);
+
+/* Ends a loopback test or an auto-baud that is waiting, early (within 10 ms). Any task, no lock. */
+void stark_lab_uart_cancel(void);
+
+/* Removes the driver, frees the ring and releases both pins to hi-Z. Idempotent. Logs `lab: uart
+ * closed`. */
+void stark_lab_uart_close(void);
+
+/* "64/64 ok", "64/64 differs at 0", "64/60 differs at 60", "64/64 line errors 2", "No data back"
+ * for the app; "64/64 ok", "64/64 mismatch first 0", "64/64 errors 2", "0/64 no data" for the log.
+ * Pure. */
+void stark_lab_loop_text(const stark_lab_loop_t *r, char *buf, size_t n);
+void stark_lab_loop_log_text(const stark_lab_loop_t *r, char *buf, size_t n);
+
+/* "38400", "unknown", "too few edges", "no pulse", "invalid": the log and the app. Pure. */
+const char *stark_lab_autobaud_text(const stark_lab_autobaud_t *r, char *buf, size_t n);
+
+/* "00 11 ab" and printable ASCII with '.' for the rest: the monitor's rows. Whole characters that
+ * fit; return the length. Pure. */
+size_t stark_lab_uart_hex_row(const uint8_t *b, size_t n, char *buf, size_t sz);
+size_t stark_lab_uart_ascii_row(const uint8_t *b, size_t n, char *buf, size_t sz);
+
+typedef enum {
+    STARK_LAB_FILE_OK,
+    STARK_LAB_FILE_EMPTY,   /* nothing to send */
+    STARK_LAB_FILE_TOO_BIG, /* more than 1 kB, or more than 32 bytes to send */
+    STARK_LAB_FILE_BAD      /* not hex pairs after `hex:` and not printable ASCII */
+} stark_lab_file_t;
+
+/*
+ * The send file, strictly: a file that starts with `hex:` holds pairs of hex digits separated by
+ * white space; any other file is printable ASCII (0x20 to 0x7e) with one trailing LF or CRLF
+ * allowed. At most STARK_LAB_UART_FILE_MAX bytes in and STARK_LAB_UART_SEND_MAX out; anything else
+ * rejects the whole file. `*count` is the bytes produced. Pure.
+ */
+stark_lab_file_t stark_lab_uart_parse_send(const uint8_t *text, size_t n, uint8_t *out,
+                                           size_t *count);
+const char *stark_lab_uart_file_text(stark_lab_file_t why);
+
+/* The log file names `uart_0001.log` (the app's directory scan): the number of a name of exactly
+ * that shape, and the next free name after `highest` (STARK_ERR_NO_SPACE past 9999). Pure. */
+bool stark_lab_uart_log_name_parse(const char *name, uint32_t *number);
+stark_err_t stark_lab_uart_log_name_next(uint32_t highest, char *buf, size_t n);
+
+/* CRC-32 (IEEE, the zlib one): start from 0, pass the result back to go on. Pure. */
+uint32_t stark_lab_uart_crc32(uint32_t crc, const uint8_t *data, size_t n);
 
 /*
  * Recomputes the offer: a held pin that is no longer offered goes to hi-Z at once, loses its

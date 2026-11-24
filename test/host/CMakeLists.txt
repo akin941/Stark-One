@@ -786,6 +786,93 @@ target_link_options(run_lab_i2c_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVER
 target_link_libraries(run_lab_i2c_tests PRIVATE unity)
 add_test(NAME stark_lab_i2c_tests COMMAND run_lab_i2c_tests)
 
+# The UART tool (STARK-0705, ADR-0023 §7): its data rules and auto-baud against the vectors of
+# scripts/gen_lab_vectors.py, and the session over the host shim of the transport's UART group and
+# the test-only peer, with the real pin hold of lab_pins.c.
+add_executable(run_lab_uart_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_uart.c
+    ${STARK_COMPONENTS}/stark_lab/lab_uart.c ${FAKE_LAB} ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_lab_uart_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+target_compile_options(run_lab_uart_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_uart_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_uart_tests PRIVATE unity)
+add_test(NAME stark_lab_uart_tests COMMAND run_lab_uart_tests)
+
+add_executable(run_lab_autobaud_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_autobaud.c
+    ${STARK_COMPONENTS}/stark_lab/lab_autobaud.c ${STARK_COMPONENTS}/stark_lab/lab_uart.c
+    ${FAKE_LAB} ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_lab_autobaud_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+target_compile_options(run_lab_autobaud_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_autobaud_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_autobaud_tests PRIVATE unity)
+add_test(NAME stark_lab_autobaud_tests COMMAND run_lab_autobaud_tests)
+
+add_executable(run_lab_uart_svc_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_uart_svc.c
+    ${STARK_COMPONENTS}/stark_lab/lab_uart_svc.c ${STARK_COMPONENTS}/stark_lab/lab_uart.c
+    ${STARK_COMPONENTS}/stark_lab/lab_autobaud.c ${STARK_COMPONENTS}/stark_lab/lab_pins.c
+    ${STARK_COMPONENTS}/stark_lab/lab_pwm.c ${STARK_COMPONENTS}/stark_lab/lab_meas.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/lab_transport_uart_host.c ${FAKE_LAB}
+    ${STARK_COMPONENTS}/stark_err/stark_err.c ${STARK_COMPONENTS}/stark_board/stark_board.c)
+target_include_directories(run_lab_uart_svc_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+target_compile_options(run_lab_uart_svc_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_uart_svc_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_uart_svc_tests PRIVATE unity)
+add_test(NAME stark_lab_uart_svc_tests COMMAND run_lab_uart_svc_tests)
+
+# The UART app (STARK-0705, ADR-0023 §7): its pure rows and texts, its card log over an in-memory
+# stark_storage, and the real app on the UI port over the real session, the pin hold and the test-only
+# peer.
+add_executable(run_uart_views_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_uart_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_uart/uart_views.c
+    ${STARK_COMPONENTS}/stark_lab/lab_uart.c ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_uart_views_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_uart)
+target_compile_options(run_uart_views_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_uart_views_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_uart_views_tests PRIVATE unity)
+add_test(NAME stark_uart_views_tests COMMAND run_uart_views_tests)
+
+add_executable(run_uart_log_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_uart_log.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_uart/uart_log.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/storage_fake.c
+    ${STARK_COMPONENTS}/stark_lab/lab_uart.c ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_uart_log_tests BEFORE PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/include ${STARK_COMPONENTS}/stark_log/include ${LAB_INCLUDES}
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_uart)
+target_compile_options(run_uart_log_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_uart_log_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_uart_log_tests PRIVATE unity)
+add_test(NAME stark_uart_log_tests COMMAND run_uart_log_tests)
+
+add_executable(run_ui_uart_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_uart.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_uart/app_uart.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_uart/uart_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_uart/uart_log.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_uart.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/lab_transport_uart_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/storage_fake.c
+    ${STARK_COMPONENTS}/stark_lab/lab_uart.c
+    ${STARK_COMPONENTS}/stark_lab/lab_autobaud.c
+    ${STARK_COMPONENTS}/stark_lab/lab_uart_svc.c
+    ${STARK_COMPONENTS}/stark_lab/lab_pins.c
+    ${STARK_COMPONENTS}/stark_lab/lab_pwm.c
+    ${STARK_COMPONENTS}/stark_lab/lab_meas.c
+    ${STARK_COMPONENTS}/stark_board/stark_board.c
+    ${FAKE_LAB}
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_uart_tests BEFORE PRIVATE ${UI_PORT_INCLUDES} ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_uart
+    ${STARK_COMPONENTS}/stark_storage/include ${STARK_COMPONENTS}/stark_storage_medium/include)
+target_compile_options(run_ui_uart_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_uart_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_uart_tests PRIVATE unity)
+add_test(NAME stark_ui_uart_tests COMMAND run_ui_uart_tests)
+
 # The I2C app (STARK-0704, ADR-0023 §5): its pure editor rows on their own.
 add_executable(run_i2c_views_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_i2c_views.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_i2c/i2c_views.c

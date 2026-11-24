@@ -27,12 +27,19 @@ the refusal table of ADR-0023 §5 (a module ID EEPROM takes a one-byte pointer a
 the PN532 takes nothing while NFC is confirmed), and ref_hex() the lower-case hex text with the
 whole-bytes-that-fit truncation.
 
+The UART vectors (STARK-0705, ADR-0023 §7) are as independent: ref_autobaud() rebuilds the edges
+of a stream bit by bit (uart_edges()) and restates the estimator of lab_autobaud.h with its own
+arithmetic, ref_loop() judges a loopback byte by byte, ref_ring() models the ring as a list,
+ref_parse_send() is the grammar of the send file, and the CRC-32 is zlib's.
+
 Usage:
-  gen_lab_vectors.py            write test/fake/fake_lab_vectors.h and fake_lab_i2c_vectors.h
+  gen_lab_vectors.py            write test/fake/fake_lab_vectors.h, fake_lab_i2c_vectors.h and
+                                fake_lab_uart_vectors.h
   gen_lab_vectors.py --check    exit 1 if a committed file differs (CI lint)
 """
 import argparse
 import sys
+import zlib
 from fractions import Fraction
 from math import floor
 from pathlib import Path
@@ -40,6 +47,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "test/fake/fake_lab_vectors.h"
 OUT_I2C = ROOT / "test/fake/fake_lab_i2c_vectors.h"
+OUT_UART = ROOT / "test/fake/fake_lab_uart_vectors.h"
 
 TICK_HZ = 240_000_000
 RING = 1024
@@ -664,11 +672,534 @@ def render_i2c():
     return "\n".join(lines)
 
 
+# ---- the UART tool (STARK-0705, ADR-0023 §7) -----------------------------------------------
+# Everything below is written from the definitions in components/stark_lab/lab_uart.h and
+# lab_autobaud.h, not from the firmware's code: the baud and format lists, the wire time, a byte
+# ring modelled as a plain list, the loopback judgement byte by byte, hex and ASCII rows, the send
+# file's grammar, the log names, zlib's CRC-32, and an auto-baud that rebuilds the edges of a
+# stream bit by bit and restates the estimator with its own arithmetic.
+
+UART_BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
+UART_FMTS = [("8N1", 8, "N", 1), ("8E1", 8, "E", 1), ("8O1", 8, "O", 1), ("8N2", 8, "N", 2),
+             ("7E1", 7, "E", 1)]
+LOOP_OK, LOOP_MISMATCH, LOOP_LINE_ERRORS, LOOP_NO_DATA = 0, 1, 2, 3
+FILE_OK, FILE_EMPTY, FILE_TOO_BIG, FILE_BAD = 0, 1, 2, 3
+BAUD_OK, BAUD_TOO_FEW, BAUD_NO_PULSE, BAUD_UNKNOWN, BAUD_INVALID = 0, 1, 2, 3, 4
+SEND_MAX = 32
+FILE_MAX = 1024
+LOOP_LEN = 64
+AUTOBAUD_MIN_EDGES = 16
+SCENE_LINES = 50
+
+
+def uart_bits(fmt):
+    _, data, parity, stop = UART_FMTS[fmt]
+    return 1 + data + (0 if parity == "N" else 1) + stop
+
+
+def ref_wire_ms(n, baud, fmt):
+    bits = n * uart_bits(fmt)
+    return -(-bits * 1000 // baud)  # rounded up
+
+
+def ref_window_ms(baud, fmt):
+    return 2 * ref_wire_ms(LOOP_LEN, baud, fmt) + 20
+
+
+def wire_vectors():
+    out = []
+    for fmt in range(len(UART_FMTS)):
+        for baud in (1200, 9600, 115200, 921600):
+            for n in (1, 32, 64):
+                out.append((n, baud, fmt, ref_wire_ms(n, baud, fmt), ref_window_ms(baud, fmt)))
+    return out
+
+
+def ref_ring(cap, total, chunk):
+    """The byte `k` pushed is k & 0xFF; the ring keeps the last `cap` of them."""
+    seq = [k & 0xFF for k in range(total)]
+    kept = seq[-cap:] if total > cap else seq
+    return len(kept), total - len(kept), kept
+
+
+def ring_vectors():
+    out = []
+    for cap, total, chunk, skip, take in (
+            (8, 0, 1, 0, 8), (8, 5, 1, 0, 8), (8, 8, 8, 0, 8), (8, 9, 1, 0, 8), (8, 9, 9, 3, 4),
+            (8, 20, 3, 2, 5), (8, 20, 20, 0, 100), (8, 1000, 7, 7, 1), (8, 16, 4, 8, 2),
+            (4096, 4095, 64, 0, 4096), (4096, 4096, 64, 0, 4096), (4096, 4097, 64, 1, 4096),
+            (4096, 9000, 64, 100, 300), (4096, 9000, 256, 4090, 100)):
+        count, lost, kept = ref_ring(cap, total, chunk)
+        peek = kept[skip:skip + take]
+        out.append((cap, total, chunk, skip, take, count, lost, zlib.crc32(bytes(kept)),
+                    len(peek), zlib.crc32(bytes(peek))))
+    return out
+
+
+def ref_loop(rx, sent, framing, parity, overrun):
+    """(status, received, errors, first) for what came back for the first `sent` pattern bytes."""
+    want = list(range(LOOP_LEN))[:sent]
+    line = framing + parity + overrun
+    if not rx:
+        return LOOP_NO_DATA, 0, sent + line, 0 if sent else -1
+    bad, first = 0, -1
+    for i in range(max(len(rx), len(want))):
+        if i >= len(rx) or i >= len(want) or rx[i] != want[i]:
+            bad += 1
+            if first < 0:
+                first = i
+    if bad:
+        return LOOP_MISMATCH, len(rx), bad + line, first
+    if line:
+        return LOOP_LINE_ERRORS, len(rx), line, -1
+    return LOOP_OK, len(rx), 0, -1
+
+
+def loop_vectors():
+    p = list(range(LOOP_LEN))
+    flip = lambda i, bit: [b ^ (1 << bit) if k == i else b for k, b in enumerate(p)]  # noqa: E731
+    cases = [
+        ("exact", p, 64, 0, 0, 0),
+        ("nothing", [], 64, 0, 0, 0),
+        ("nothing_with_line_errors", [], 64, 3, 0, 1),
+        ("one_bit_at_0", flip(0, 0), 64, 0, 0, 0),
+        ("one_bit_at_31", flip(31, 3), 64, 0, 0, 0),
+        ("one_bit_at_63", flip(63, 7), 64, 0, 0, 0),
+        ("a_byte_dropped_in_the_middle", p[:20] + p[21:], 64, 0, 0, 0),
+        ("the_last_dropped", p[:63], 64, 0, 0, 0),
+        ("truncated_at_40", p[:40], 64, 0, 0, 0),
+        ("one_byte", p[:1], 64, 0, 0, 0),
+        ("an_extra_byte", p + [0x55], 64, 0, 0, 0),
+        ("the_stream_shifted_by_one", p[1:] + [0], 64, 0, 0, 0),
+        ("all_zero", [0] * 64, 64, 0, 0, 0),
+        ("garbage", [(b * 5 + 1) & 0xFF for b in p], 64, 64, 0, 0),
+        ("match_with_framing_errors", p, 64, 2, 0, 0),
+        ("match_with_parity_errors", p, 64, 0, 5, 0),
+        ("match_with_an_overrun", p, 64, 0, 0, 1),
+        ("mismatch_with_line_errors", flip(10, 1), 64, 1, 1, 1),
+        ("a_shorter_pattern", p[:32], 32, 0, 0, 0),
+        ("a_shorter_pattern_cut", p[:31], 32, 0, 0, 0),
+        ("nothing_of_nothing", [], 0, 0, 0, 0),
+    ]
+    return [(name, rx, sent, f, pa, o) + ref_loop(rx, sent, f, pa, o)
+            for name, rx, sent, f, pa, o in cases]
+
+
+def ref_hex_row(data, sz):
+    if sz == 0:
+        return ""
+    out = ""
+    for i, b in enumerate(data):
+        piece = ("%02x" % b) if i == 0 else (" %02x" % b)
+        if len(out) + len(piece) + 1 > sz:
+            break
+        out += piece
+    return out
+
+
+def ref_ascii_row(data, sz):
+    if sz == 0:
+        return ""
+    return "".join(chr(b) if 0x20 <= b <= 0x7E else "." for b in data)[:sz - 1]
+
+
+def row_vectors():
+    out = []
+    for r in range(16):
+        data = list(range(16 * r, 16 * r + 16))
+        out.append((data, 64, ref_hex_row(data, 64), ref_ascii_row(data, 64)))
+    data = list(range(0x30, 0x40))
+    for sz in (0, 1, 2, 3, 4, 5, 6, 46, 47, 48, 49, 50):
+        out.append((data, sz, ref_hex_row(data, sz), ref_ascii_row(data, sz)))
+    out.append(([], 8, "", ""))
+    return out
+
+
+def ref_parse_send(text):
+    """(status, bytes) of the send file: `hex:` and pairs, or printable ASCII."""
+    if len(text) > FILE_MAX:
+        return FILE_TOO_BIG, []
+    if text.startswith(b"hex:"):
+        body = text[4:]
+        toks, out, i = body, [], 0
+        while i < len(toks):
+            c = toks[i]
+            if c in b" \t\r\n":
+                i += 1
+                continue
+            pair = toks[i:i + 2]
+            if len(pair) < 2 or any(ch not in b"0123456789abcdefABCDEF" for ch in pair):
+                return FILE_BAD, []
+            if len(out) == SEND_MAX:
+                return FILE_TOO_BIG, []
+            out.append(int(pair.decode(), 16))
+            i += 2
+        return (FILE_OK, out) if out else (FILE_EMPTY, [])
+    body = text
+    if body.endswith(b"\r\n"):
+        body = body[:-2]
+    elif body.endswith(b"\n"):
+        body = body[:-1]
+    if any(not 0x20 <= b <= 0x7E for b in body):
+        return FILE_BAD, []
+    if not body:
+        return FILE_EMPTY, []
+    if len(body) > SEND_MAX:
+        return FILE_TOO_BIG, []
+    return FILE_OK, list(body)
+
+
+def file_vectors():
+    texts = [
+        b"AT", b"AT\r\n", b"?\n", b"hello\r\n", b"hello\n\n", b"a\tb", b"a\x80b", b"a\x7fb",
+        b"", b"\n", b"\r\n", b"\r", b" ", b"x" * 32, b"x" * 33, b"x" * 32 + b"\n",
+        b"x" * 33 + b"\r\n", b"x" * 1024, b"x" * 1025, b"hexagon", b"HEX:41", b"hex", b"hex:",
+        b"hex:41 54 0d 0a", b"hex:4154", b"hex:41  54\n", b"hex:\n41\t54\r\n", b"hex:4A4b",
+        b"hex:4", b"hex:4g", b"hex:0x41", b"hex: 41 5", b"hex:41 5 4", b"hex:   ",
+        b"hex:" + b"41 " * 32, b"hex:" + b"41 " * 33, b"hex:" + b"41" * 32,
+        b"hex:41" + b" " * 1020, b"hex:41" + b" " * 1021, b"hex:41,42", b"hex:\x80",
+    ]
+    return [(t, ) + ref_parse_send(t) for t in texts]
+
+
+def ref_log_name(name):
+    if len(name) == 13 and name.startswith("uart_") and name.endswith(".log") \
+            and name[5:9].isdigit() and name[5:9].isascii():
+        return True, int(name[5:9])
+    return False, 0
+
+
+def name_vectors():
+    parse = ["uart_0001.log", "uart_9999.log", "uart_0000.log", "uart_0123.log", "uart_001.log",
+             "uart_00001.log", "uart_0001.txt", "Uart_0001.log", "uart_000a.log", "uart_0001.log ",
+             "uart-0001.log", "uart_0001log", "", "uart_.log", "xuart_0001.log"]
+    nxt = []
+    for highest in (0, 1, 8, 9, 98, 99, 998, 999, 1234, 9997, 9998, 9999):
+        nxt.append((highest, highest >= 9999, "" if highest >= 9999 else "uart_%04d.log"
+                    % (highest + 1)))
+    return [(p,) + ref_log_name(p) for p in parse], nxt
+
+
+def crc_vectors():
+    out = []
+    for data in (b"", b"a", b"123456789", bytes(range(256)), b"stark uart scene line 00\r\n",
+                 b"\x00" * 100, b"\xff" * 33):
+        out.append((data, zlib.crc32(data)))
+    return out
+
+
+def scene_text():
+    return b"".join(b"stark uart scene line %02d\r\n" % i for i in range(SCENE_LINES))
+
+
+def scene_binary():
+    return bytes((j * 7 + 3) & 0xFF for j in range(1024))
+
+
+def frame_bits(byte, fmt):
+    """One character as line levels: start, data (least significant first), parity, stop."""
+    _, data, parity, stop = UART_FMTS[fmt]
+    bits, ones = [0], 0
+    for d in range(data):
+        b = (byte >> d) & 1
+        ones += b
+        bits.append(b)
+    if parity == "E":
+        bits.append(ones & 1)
+    elif parity == "O":
+        bits.append(1 - (ones & 1))
+    return bits + [1] * stop
+
+
+def uart_edges(data, baud, fmt, base, jitter_ticks=0, seed=1, gap_bits=0, spikes=0):
+    """The stamps (32-bit wrapped, in a clock of TICK_HZ) of the edges of `data` sent back to back
+    (`gap_bits` idle bits after each character), bit boundaries computed from the start; edges
+    displaced by up to +-jitter_ticks and kept in order; `spikes` 0.3 us low pulses are put into
+    the idle line after every character that is followed by a gap of at least 8 bits."""
+    rng = Rng(seed)
+    edges, level, m = [], 1, 0
+    for byte in data:
+        for lv in frame_bits(byte, fmt):
+            if lv != level:
+                edges.append(m * TICK_HZ // baud)
+                level = lv
+            m += 1
+        if gap_bits:
+            if spikes and gap_bits >= 8:
+                t = m * TICK_HZ // baud + (gap_bits * TICK_HZ // baud) // 2
+                edges += [t, t + 72]
+            m += gap_bits
+    out, prev = [], None
+    for t in edges:
+        t2 = t + (rng.between(-jitter_ticks, jitter_ticks) if jitter_ticks else 0)
+        if prev is not None and t2 <= prev:
+            t2 = prev + 1
+        out.append(t2)
+        prev = t2
+    return [(t + base) & 0xFFFFFFFF for t in out]
+
+
+def ref_autobaud(ts, tick_hz):
+    """(status, baud, raw, bit_ticks) from the stamps, the rule of lab_autobaud.h restated."""
+    n = len(ts)
+    if tick_hz == 0 or n > 2048:
+        return BAUD_INVALID, 0, 0, 0
+    if n < AUTOBAUD_MIN_EDGES:
+        return BAUD_TOO_FEW, 0, 0, 0
+    glitch = max(tick_hz // 1_000_000, 1)
+    widths = [(b - a) & 0xFFFFFFFF for a, b in zip(ts, ts[1:])]
+    if any(w >= 0x80000000 for w in widths):
+        return BAUD_INVALID, 0, 0, 0
+    real = [w for w in widths if w >= glitch]
+    if not real:
+        return BAUD_NO_PULSE, 0, 0, 0
+    m = min(real)
+    raw = (tick_hz + m // 2) // m
+    best = min(UART_BAUDS, key=lambda b: (abs(m * b - tick_hz), b))
+    if abs(m * best - tick_hz) * 100 > 35 * tick_hz:
+        return BAUD_UNKNOWN, 0, raw, 0
+    bit = (tick_hz + best // 2) // best
+    for _ in range(2):
+        sw = sk = 0
+        for w in real:
+            if w <= 12 * bit:
+                sw += w
+                sk += max(1, (w + bit // 2) // bit)
+        bit = max(1, (sw + sk // 2) // sk)
+    raw = (tick_hz + bit // 2) // bit
+    for b in UART_BAUDS:
+        if abs(raw - b) * 100 <= 3 * b:
+            return BAUD_OK, b, raw, bit
+    return BAUD_UNKNOWN, 0, raw, bit
+
+
+SAMPLE = b"UART autobaud sample 0123456789\r\n"
+
+
+def autobaud_vectors():
+    out = []
+    seq = [100]
+
+    def add(name, ts, nominal=0, expect=None, tick=TICK_HZ):
+        status, baud, raw, bit = ref_autobaud(ts, tick)
+        if nominal:
+            assert (status, baud) == (BAUD_OK, nominal), "%s: the reference says %s %s" % (
+                name, status, baud)
+        if expect is not None:
+            assert status == expect, "%s: the reference says %s, wanted %s" % (name, status, expect)
+        out.append((name, tick, ts, nominal, status, baud, raw, bit))
+
+    def next_seed():
+        seq[0] += 1
+        return seq[0]
+
+    def jit(baud):
+        return min(TICK_HZ // 1_000_000, TICK_HZ // baud // 10)  # +-1 us, or a tenth of a bit
+
+    for baud in UART_BAUDS:
+        add("text_%d_8N1_clean" % baud, uart_edges(SAMPLE, baud, 0, 100_000), baud)
+        add("text_%d_8N1_jitter" % baud, uart_edges(SAMPLE, baud, 0, 0xFFFFF000 if baud == 9600
+                                                    else 1_000_000, jit(baud), next_seed()), baud)
+    for fmt in range(1, len(UART_FMTS)):
+        for baud in (9600, 115200):
+            add("text_%d_%s_jitter" % (baud, UART_FMTS[fmt][0]),
+                uart_edges(SAMPLE, baud, fmt, 2_000_000, jit(baud), next_seed()), baud)
+    for name, data in (("alternating_0x55", [0x55] * 20), ("all_ones_0xff", [0xFF] * 24),
+                       ("all_zero_0x00", [0x00] * 24), ("runs_f0_0f", [0xF0, 0x0F] * 12),
+                       ("ramp", list(range(0x20, 0x40)) * 2), ("high_bytes", [0x80 | b for b
+                                                                              in range(24)])):
+        add("pattern_%s_115200" % name, uart_edges(bytes(data), 115200, 0, 500_000, jit(115200),
+                                                   next_seed()), 115200)
+        add("pattern_%s_9600" % name, uart_edges(bytes(data), 9600, 0, 500_000, jit(9600),
+                                                 next_seed()), 9600)
+    for baud in (1200, 38400, 115200):
+        add("idle_gaps_%d" % baud, uart_edges(SAMPLE[:20], baud, 0, 700_000, jit(baud),
+                                              next_seed(), gap_bits=40), baud)
+        add("spikes_in_the_idle_%d" % baud, uart_edges(SAMPLE[:20], baud, 0, 700_000, 0,
+                                                       next_seed(), gap_bits=40, spikes=1), baud)
+    # a line that only chatters: every pulse a glitch, nothing a bit
+    add("only_glitches", [1000 + 100 * i for i in range(40)], expect=BAUD_NO_PULSE)
+    add("only_zero_length_steps", [5000] * 20, expect=BAUD_NO_PULSE)
+    add("no_edges", [], expect=BAUD_TOO_FEW)
+    add("one_edge", [777], expect=BAUD_TOO_FEW)
+    full = uart_edges(SAMPLE, 9600, 0, 100)
+    add("fifteen_edges", full[:15], expect=BAUD_TOO_FEW)
+    add("sixteen_edges", full[:16], 9600)
+    add("steps_that_go_backwards", [1000 + 5000 * i for i in range(10)] + [500] + [
+        1000 + 5000 * i for i in range(10)], expect=BAUD_INVALID)
+    # a train of 1-bit pulses whose bit time is a little off a listed baud
+    for baud in (9600, 115200):
+        for pct, ok in ((-2.9, True), (2.9, True), (-3.1, False), (3.1, False)):
+            hz = baud * (1 + pct / 100)
+            period = TICK_HZ / hz
+            ts = [int(i * period) for i in range(40)]
+            add("train_%d_%+.1fpct" % (baud, pct), ts, baud if ok else 0,
+                None if ok else BAUD_UNKNOWN)
+    for odd in (300, 14400, 28800, 76800):
+        ts = [int(i * TICK_HZ / odd) for i in range(40)]
+        add("train_%d_is_no_listed_baud" % odd, ts, expect=BAUD_UNKNOWN)
+    add("train_2_mbaud_is_all_glitch", [int(i * TICK_HZ / 2_000_000) for i in range(40)],
+        expect=BAUD_NO_PULSE)
+    add("a_slow_clock", [i * 1000 for i in range(20)], tick=1_000_000, expect=BAUD_UNKNOWN)
+    add("a_clock_under_1_mhz", [i * 500 for i in range(20)], tick=500_000, expect=BAUD_UNKNOWN)
+    add("no_clock", [i * 1000 for i in range(20)], tick=0, expect=BAUD_INVALID)
+    add("too_many_edges", [i * 2500 for i in range(2049)], expect=BAUD_INVALID)
+    return out
+
+
+def render_uart():
+    L = [
+        "/* Generated by scripts/gen_lab_vectors.py — do not edit.",
+        " * SPEC-DERIVED, NOT A RECORDING OF A REAL LINE (ADR-0023 §7): wire times, ring sequences,",
+        " * loopback judgements, hex and ASCII rows, send files, log names, CRC-32 and the edge",
+        " * stamps of made-up streams at every baud and format with the baud an independent Python",
+        " * implementation names. Test infrastructure only. */",
+        "/* clang-format off */",
+        "#pragma once",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "typedef struct { uint16_t n; uint32_t baud; uint8_t fmt; uint32_t ms; uint32_t window; }"
+        " fake_lab_uart_wire_vec_t;",
+        "/* bytes k & 0xFF pushed in pieces of `chunk` into a ring of `cap`; then `take` bytes are"
+        " peeked from `skip` */",
+        "typedef struct { uint16_t cap; uint32_t total; uint16_t chunk; uint16_t skip; uint16_t take;"
+        " uint16_t count; uint32_t lost; uint32_t crc; uint16_t peek_n; uint32_t peek_crc; }"
+        " fake_lab_uart_ring_vec_t;",
+        "/* status: 0 OK, 1 MISMATCH, 2 LINE_ERRORS, 3 NO_DATA */",
+        "typedef struct { const char *name; const uint8_t *rx; uint8_t n_rx; uint8_t sent;"
+        " uint8_t framing; uint8_t parity; uint8_t overrun; uint8_t status; uint8_t received;"
+        " uint8_t errors; int8_t first; } fake_lab_uart_loop_vec_t;",
+        "typedef struct { const uint8_t *data; uint8_t n; uint8_t sz; const char *hex;"
+        " const char *ascii; } fake_lab_uart_row_vec_t;",
+        "/* status: 0 OK, 1 EMPTY, 2 TOO_BIG, 3 BAD */",
+        "typedef struct { const uint8_t *text; uint16_t n; uint8_t status; const uint8_t *out;"
+        " uint8_t n_out; } fake_lab_uart_file_vec_t;",
+        "typedef struct { const char *name; uint8_t ok; uint16_t number; }"
+        " fake_lab_uart_parse_vec_t;",
+        "typedef struct { uint16_t highest; uint8_t no_space; const char *name; }"
+        " fake_lab_uart_next_vec_t;",
+        "typedef struct { const uint8_t *data; uint16_t n; uint32_t crc; } fake_lab_uart_crc_vec_t;",
+        "/* status: 0 OK, 1 TOO_FEW, 2 NO_PULSE, 3 UNKNOWN, 4 INVALID; nominal: the baud the stream"
+        " was made at (0: none) */",
+        "typedef struct { const char *name; uint32_t tick; const uint32_t *ts; uint16_t n;"
+        " uint32_t nominal; uint8_t status; uint32_t baud; uint32_t raw; uint32_t bit;"
+        " } fake_lab_uart_autobaud_vec_t;",
+        "",
+    ]
+
+    def arr(name, vals, fmt="0x%02x", ctype="uint8_t"):
+        L.append("static const %s %s[] = {%s};" % (ctype, name, ",".join(fmt % v for v in vals)))
+
+    def cstr(s):
+        return '"%s"' % s.replace("\\", "\\\\").replace('"', '\\"')
+
+    L.append("#define FAKE_LAB_UART_TEXT_SCENE_CRC 0x%08xu" % zlib.crc32(scene_text()))
+    L.append("#define FAKE_LAB_UART_BINARY_SCENE_CRC 0x%08xu" % zlib.crc32(scene_binary()))
+    L.append("")
+    L.append("static const fake_lab_uart_wire_vec_t fake_lab_uart_wire_vecs[] = {")
+    for n, baud, fmt, ms, win in wire_vectors():
+        L.append("    {%d, %d, %d, %d, %d}," % (n, baud, fmt, ms, win))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_WIRE_VECS (sizeof(fake_lab_uart_wire_vecs) / "
+             "sizeof(fake_lab_uart_wire_vecs[0]))")
+    L.append("")
+    L.append("static const fake_lab_uart_ring_vec_t fake_lab_uart_ring_vecs[] = {")
+    for cap, total, chunk, skip, take, count, lost, crc, pn, pcrc in ring_vectors():
+        L.append("    {%d, %d, %d, %d, %d, %d, %d, 0x%08xu, %d, 0x%08xu}," % (
+            cap, total, chunk, skip, take, count, lost, crc, pn, pcrc))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_RING_VECS (sizeof(fake_lab_uart_ring_vecs) / "
+             "sizeof(fake_lab_uart_ring_vecs[0]))")
+    L.append("")
+    lv = loop_vectors()
+    for i, v in enumerate(lv):
+        if v[1]:
+            arr("fake_lab_uart_loop_%d" % i, v[1])
+    L.append("static const fake_lab_uart_loop_vec_t fake_lab_uart_loop_vecs[] = {")
+    for i, (name, rx, sent, f, pa, o, status, received, errors, first) in enumerate(lv):
+        L.append('    {"%s", %s, %d, %d, %d, %d, %d, %d, %d, %d, %d},' % (
+            name, "fake_lab_uart_loop_%d" % i if rx else "NULL", len(rx), sent, f, pa, o, status,
+            received, errors, first))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_LOOP_VECS (sizeof(fake_lab_uart_loop_vecs) / "
+             "sizeof(fake_lab_uart_loop_vecs[0]))")
+    L.append("")
+    rv = row_vectors()
+    for i, (data, sz, hx, asc) in enumerate(rv):
+        if data:
+            arr("fake_lab_uart_row_%d" % i, data)
+    L.append("static const fake_lab_uart_row_vec_t fake_lab_uart_row_vecs[] = {")
+    for i, (data, sz, hx, asc) in enumerate(rv):
+        L.append("    {%s, %d, %d, %s, %s}," % ("fake_lab_uart_row_%d" % i if data else "NULL",
+                                                len(data), sz, cstr(hx), cstr(asc)))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_ROW_VECS (sizeof(fake_lab_uart_row_vecs) / "
+             "sizeof(fake_lab_uart_row_vecs[0]))")
+    L.append("")
+    fv = file_vectors()
+    for i, (text, status, out) in enumerate(fv):
+        if text:
+            arr("fake_lab_uart_file_%d" % i, list(text))
+        if out:
+            arr("fake_lab_uart_file_%d_out" % i, out)
+    L.append("static const fake_lab_uart_file_vec_t fake_lab_uart_file_vecs[] = {")
+    for i, (text, status, out) in enumerate(fv):
+        L.append("    {%s, %d, %d, %s, %d}," % (
+            "fake_lab_uart_file_%d" % i if text else "NULL", len(text), status,
+            "fake_lab_uart_file_%d_out" % i if out else "NULL", len(out)))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_FILE_VECS (sizeof(fake_lab_uart_file_vecs) / "
+             "sizeof(fake_lab_uart_file_vecs[0]))")
+    L.append("")
+    parse, nxt = name_vectors()
+    L.append("static const fake_lab_uart_parse_vec_t fake_lab_uart_parse_vecs[] = {")
+    for name, ok, num in parse:
+        L.append("    {%s, %d, %d}," % (cstr(name), int(ok), num))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_PARSE_VECS (sizeof(fake_lab_uart_parse_vecs) / "
+             "sizeof(fake_lab_uart_parse_vecs[0]))")
+    L.append("static const fake_lab_uart_next_vec_t fake_lab_uart_next_vecs[] = {")
+    for highest, no_space, name in nxt:
+        L.append("    {%d, %d, %s}," % (highest, int(no_space), cstr(name)))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_NEXT_VECS (sizeof(fake_lab_uart_next_vecs) / "
+             "sizeof(fake_lab_uart_next_vecs[0]))")
+    L.append("")
+    cv = crc_vectors()
+    for i, (data, crc) in enumerate(cv):
+        if data:
+            arr("fake_lab_uart_crc_%d" % i, list(data))
+    L.append("static const fake_lab_uart_crc_vec_t fake_lab_uart_crc_vecs[] = {")
+    for i, (data, crc) in enumerate(cv):
+        L.append("    {%s, %d, 0x%08xu}," % ("fake_lab_uart_crc_%d" % i if data else "NULL",
+                                              len(data), crc))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_CRC_VECS (sizeof(fake_lab_uart_crc_vecs) / "
+             "sizeof(fake_lab_uart_crc_vecs[0]))")
+    L.append("")
+    av = autobaud_vectors()
+    for i, (name, tick, ts, nominal, status, baud, raw, bit) in enumerate(av):
+        if ts:
+            arr("fake_lab_uart_ab_%d" % i, ts, "0x%08xu", "uint32_t")
+    L.append("static const fake_lab_uart_autobaud_vec_t fake_lab_uart_autobaud_vecs[] = {")
+    for i, (name, tick, ts, nominal, status, baud, raw, bit) in enumerate(av):
+        L.append('    {"%s", %d, %s, %d, %d, %d, %d, %d, %d},' % (
+            name, tick, "fake_lab_uart_ab_%d" % i if ts else "NULL", len(ts), nominal, status,
+            baud, raw, bit))
+    L.append("};")
+    L.append("#define FAKE_LAB_UART_AUTOBAUD_VECS (sizeof(fake_lab_uart_autobaud_vecs) / "
+             "sizeof(fake_lab_uart_autobaud_vecs[0]))")
+    L.append("")
+    return "\n".join(L)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args(argv)
-    outputs = ((OUT, render()), (OUT_I2C, render_i2c()))
+    outputs = ((OUT, render()), (OUT_I2C, render_i2c()), (OUT_UART, render_uart()))
     if args.check:
         stale = [path for path, text in outputs if not path.exists() or path.read_text() != text]
         for path in stale:
