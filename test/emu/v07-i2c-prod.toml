@@ -1,0 +1,94 @@
+# STARK-0704 on the production image (ADR-0023 §5, §9). The real transport (ESP-IDF's I2C master
+# driver on the shared bus) and the real rules. The scan is the verified fact of docs/VALIDATION.md
+# §2: esp-emu's built-in I2C EEPROM acknowledges 0x50 and nothing else on 0x08 to 0x77 (0x10, 0x24,
+# 0x51 and 0x52 NACK), so the whole list is `0x50`. Reading it returns zeros (the emulator's EEPROM
+# is erased to zero). A write to it is refused by the service before the bus is touched, even though
+# the emulator's EEPROM would accept it (VALIDATION §2: it stores writes): the refusal is the
+# firmware's alone, and the second read proves the register is still zero. The walk: UP from About
+# wraps to Storage, Settings, Modules, IR (NFC and Sub-GHz are dimmed without a module), I2C. Not
+# device evidence: the emulator has no second device and no waveform.
+name = "emu-v07-i2c-prod"
+end_ms = 17500
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 400, hold_ms = 60 },      # Storage
+    { key = "UP", at_ms = 550, hold_ms = 60 },      # Settings
+    { key = "UP", at_ms = 700, hold_ms = 60 },      # Modules
+    { key = "UP", at_ms = 850, hold_ms = 60 },      # IR
+    { key = "UP", at_ms = 1000, hold_ms = 60 },     # I2C
+    { key = "OK", at_ms = 1300, hold_ms = 60 },     # open the app
+    { key = "OK", at_ms = 1800, hold_ms = 60 },     # Scan: 112 probes through the real driver
+    { key = "OK", at_ms = 2800, hold_ms = 60 },     # open 0x50
+    { key = "OK", at_ms = 3300, hold_ms = 60 },     # Read
+    { key = "DOWN", at_ms = 3700, hold_ms = 60 },   # Register
+    { key = "DOWN", at_ms = 3900, hold_ms = 60 },   # Nibble
+    { key = "DOWN", at_ms = 4100, hold_ms = 60 },   # Length
+    { key = "RIGHT", at_ms = 4300, hold_ms = 60 },  # Length 2 (1 of 7)
+    { key = "RIGHT", at_ms = 4450, hold_ms = 60 },  # Length 3 (2 of 7)
+    { key = "RIGHT", at_ms = 4600, hold_ms = 60 },  # Length 4 (3 of 7)
+    { key = "RIGHT", at_ms = 4750, hold_ms = 60 },  # Length 5 (4 of 7)
+    { key = "RIGHT", at_ms = 4900, hold_ms = 60 },  # Length 6 (5 of 7)
+    { key = "RIGHT", at_ms = 5050, hold_ms = 60 },  # Length 7 (6 of 7)
+    { key = "RIGHT", at_ms = 5200, hold_ms = 60 },  # Length 8 (7 of 7)
+    { key = "DOWN", at_ms = 5500, hold_ms = 60 },   # Read
+    { key = "OK", at_ms = 5800, hold_ms = 60 },     # eight bytes from register 0: zeros
+    { key = "BACK", at_ms = 6600, hold_ms = 60 },   # to the device
+    { key = "DOWN", at_ms = 7000, hold_ms = 60 },   # Dump
+    { key = "DOWN", at_ms = 7200, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 7500, hold_ms = 60 },     # the write editor
+    { key = "DOWN", at_ms = 7900, hold_ms = 60 },   # Register
+    { key = "DOWN", at_ms = 8100, hold_ms = 60 },   # Nibble
+    { key = "DOWN", at_ms = 8300, hold_ms = 60 },   # Bytes
+    { key = "DOWN", at_ms = 8500, hold_ms = 60 },   # Byte 0
+    { key = "RIGHT", at_ms = 8700, hold_ms = 60 },  # Byte 0 = 0x01
+    { key = "DOWN", at_ms = 9000, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 9300, hold_ms = 60 },     # refused: an alert, no confirmation, no bus traffic
+    { key = "OK", at_ms = 10300, hold_ms = 60 },    # close the alert
+    { key = "BACK", at_ms = 10800, hold_ms = 60 },  # to the device
+    { key = "OK", at_ms = 11300, hold_ms = 60 },    # Read again
+    { key = "DOWN", at_ms = 11800, hold_ms = 60 },  # Register
+    { key = "DOWN", at_ms = 12000, hold_ms = 60 },  # Nibble
+    { key = "DOWN", at_ms = 12200, hold_ms = 60 },  # Length
+    { key = "DOWN", at_ms = 12400, hold_ms = 60 },  # Read
+    { key = "OK", at_ms = 12700, hold_ms = 60 },    # still zero
+    { key = "BACK", at_ms = 13500, hold_ms = 60 },  # to the device
+    { key = "BACK", at_ms = 14000, hold_ms = 60 },  # to the list
+    { key = "BACK", at_ms = 14500, hold_ms = 60 },  # home
+    { key = "BACK", at_ms = 15000, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "lab: pins 38 39",
+    'menu: sel=12 "I2C"',
+    "i2capp: home",
+    "app: start i2c",
+    "lab: i2c scan found 0x50",
+    "i2capp: scan 1 found",
+    "i2capp: open 0x50",
+    "lab: i2c read 0x50 reg 0x00 00 00 00 00 00 00 00 00",
+    "i2capp: read 0x50 reg 0x00 len 8: 00 00 00 00 00 00 00 00",
+    "lab: i2c write refused: module eeprom",
+    "i2capp: Write refused: module eeprom",
+    'dialog: open "Refused"',
+    "lab: i2c read 0x50 reg 0x00 00",
+    "app: stop i2c",
+]
+forbid = [
+    "lab: i2c scan found 0x50 ",
+    "lab: i2c scan found none",
+    "lab: i2c scan bus error",
+    "lab: i2c read refused",
+    "lab: i2c write 0x",
+    "lab: i2c dump",
+    'dialog: open "Write 0x50?"',
+    'dialog: open "Dump',
+    "i2capp: open 0x24",
+    "i2capp: open 0x51",
+    "reg 0x00 01",
+    "panic",
+]
+# The refused write opened no confirmation, armed nothing and wrote nothing: between the refusal
+# and the leaving, no write is logged and the register reads zero.
+forbid_between = [
+    { after = "lab: i2c write refused: module eeprom", before = "app: stop i2c", text = "lab: i2c write 0x" },
+    { after = "lab: i2c write refused: module eeprom", before = "app: stop i2c", text = "reg 0x00 01" },
+]

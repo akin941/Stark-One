@@ -54,7 +54,8 @@ presses = [
     { key = "DOWN", at_ms = 21630, hold_ms = 60 },  # ... Storage (STARK-0202)
     { key = "DOWN", at_ms = 21740, hold_ms = 60 },  # ... wraps to About
     { key = "DOWN", at_ms = 21850, hold_ms = 60 },  # one more: the walk crosses GPIO (STARK-0702)
-    { key = "OK", at_ms = 22000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 21960, hold_ms = 60 },  # and I2C (STARK-0704)
+    { key = "OK", at_ms = 22110, hold_ms = 60 },
     { key = "BACK", at_ms = 23620, hold_ms = 60 },
     { key = "DOWN", at_ms = 23930, hold_ms = 60 },
     { key = "OK", at_ms = 24240, hold_ms = 60 },
@@ -96,7 +97,8 @@ presses = [
     { key = "DOWN", at_ms = 43040, hold_ms = 60 },  # ... Storage (STARK-0202)
     { key = "DOWN", at_ms = 43150, hold_ms = 60 },  # ... wraps to About
     { key = "DOWN", at_ms = 43260, hold_ms = 60 },  # one more: the walk crosses GPIO (STARK-0702)
-    { key = "OK", at_ms = 43400, hold_ms = 60 },
+    { key = "DOWN", at_ms = 43370, hold_ms = 60 },  # and I2C (STARK-0704)
+    { key = "OK", at_ms = 43520, hold_ms = 60 },
     { key = "BACK", at_ms = 45030, hold_ms = 60 },
     { key = "DOWN", at_ms = 45340, hold_ms = 60 },
     { key = "OK", at_ms = 45650, hold_ms = 60 },

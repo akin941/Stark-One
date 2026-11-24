@@ -39,6 +39,43 @@ static uint32_t g_jitter_seed;
 static uint32_t g_glitch_every;
 static uint32_t g_epoch;
 
+/* the I2C bus */
+static const uint8_t k_i2c_addr[FAKE_LAB_I2C_DEVICES] = {0x23, 0x3c, 0x48, 0x68, 0x76};
+static uint8_t g_i2c_mask;
+static uint8_t g_i2c_file[2][256]; /* 0x68 and 0x76 */
+static uint16_t g_i2c_word[4];     /* 0x48 */
+static uint8_t g_i2c_ptr[FAKE_LAB_I2C_DEVICES];
+static fake_lab_i2c_fault_t g_i2c_fault;
+static int g_i2c_fault_addr;
+static int g_i2c_fault_count;
+static bool g_i2c_drop_seen;
+static unsigned g_i2c_calls;
+static unsigned g_i2c_writes;
+static fake_lab_i2c_probe_fn g_i2c_ext_probe;
+static fake_lab_i2c_xfer_fn g_i2c_ext_xfer;
+
+static void i2c_reset(void)
+{
+    g_i2c_mask = FAKE_LAB_I2C_ALL;
+    memset(g_i2c_file, 0, sizeof(g_i2c_file));
+    g_i2c_file[0][0x75] = 0x68;
+    g_i2c_file[0][0x6b] = 0x40;
+    g_i2c_file[1][0xd0] = 0x60;
+    g_i2c_word[0] = 0x1900;
+    g_i2c_word[1] = 0x60a0;
+    g_i2c_word[2] = 0x4b00;
+    g_i2c_word[3] = 0x5000;
+    memset(g_i2c_ptr, 0, sizeof(g_i2c_ptr));
+    g_i2c_fault = FAKE_LAB_I2C_FAULT_NONE;
+    g_i2c_fault_addr = -1;
+    g_i2c_fault_count = 0;
+    g_i2c_drop_seen = false;
+    g_i2c_calls = 0;
+    g_i2c_writes = 0;
+    g_i2c_ext_probe = NULL;
+    g_i2c_ext_xfer = NULL;
+}
+
 static bool valid(int pin)
 {
     return pin >= 0 && pin < FAKE_LAB_PINS;
@@ -60,6 +97,7 @@ void fake_lab_reset(void)
     g_jitter_seed = 0;
     g_glitch_every = 0;
     g_epoch = 0;
+    i2c_reset();
 }
 
 void fake_lab_time_us(uint64_t now_us)
@@ -461,4 +499,181 @@ stark_err_t fake_lab_pad_edges(int pin, uint32_t window_us, uint32_t *ts, size_t
     *seen = k.seen;
     *n = k.seen < k.cap ? k.seen : k.cap;
     return STARK_OK;
+}
+
+/* ---- the I2C bus (STARK-0704) -----------------------------------------------------------------
+ */
+
+void fake_lab_i2c_ext(fake_lab_i2c_probe_fn probe, fake_lab_i2c_xfer_fn xfer)
+{
+    g_i2c_ext_probe = probe;
+    g_i2c_ext_xfer = xfer;
+}
+
+void fake_lab_i2c_devices(uint8_t mask)
+{
+    g_i2c_mask = mask & FAKE_LAB_I2C_ALL;
+}
+
+void fake_lab_i2c_fault(fake_lab_i2c_fault_t kind, int addr, int count)
+{
+    g_i2c_fault = count == 0 ? FAKE_LAB_I2C_FAULT_NONE : kind;
+    g_i2c_fault_addr = addr;
+    g_i2c_fault_count = count;
+    g_i2c_drop_seen = false;
+}
+
+/* The device of the five at this address and on the bus, or -1. */
+static int i2c_device(uint8_t addr)
+{
+    for (int i = 0; i < FAKE_LAB_I2C_DEVICES; i++) {
+        if (k_i2c_addr[i] == addr && (g_i2c_mask & (1u << i)) != 0u) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* What an armed fault does to this call: STARK_OK lets it through. */
+static stark_err_t i2c_fault_for(uint8_t addr)
+{
+    switch (g_i2c_fault) {
+        case FAKE_LAB_I2C_STUCK:
+            return STARK_ERR_TIMEOUT;
+        case FAKE_LAB_I2C_NACK_ALL:
+            return STARK_ERR_NOT_FOUND;
+        case FAKE_LAB_I2C_TIMEOUT:
+            if (g_i2c_fault_addr >= 0 && g_i2c_fault_addr != (int)addr) {
+                return STARK_OK;
+            }
+            if (g_i2c_fault_count > 0 && --g_i2c_fault_count == 0) {
+                g_i2c_fault = FAKE_LAB_I2C_FAULT_NONE;
+            }
+            return STARK_ERR_TIMEOUT;
+        case FAKE_LAB_I2C_DROP_DEVICE:
+            if (g_i2c_fault_addr != (int)addr) {
+                return STARK_OK;
+            }
+            if (!g_i2c_drop_seen) {
+                g_i2c_drop_seen = true;
+                return STARK_OK;
+            }
+            return STARK_ERR_NOT_FOUND;
+        case FAKE_LAB_I2C_FAULT_NONE:
+        case FAKE_LAB_I2C_FAULT_COUNT:
+        default:
+            return STARK_OK;
+    }
+}
+
+stark_err_t fake_lab_i2c_probe(uint8_t addr)
+{
+    g_i2c_calls++;
+    stark_err_t err = i2c_fault_for(addr);
+    if (err != STARK_OK) {
+        return err;
+    }
+    if (i2c_device(addr) >= 0) {
+        return STARK_OK;
+    }
+    return g_i2c_ext_probe != NULL ? g_i2c_ext_probe(addr) : STARK_ERR_NOT_FOUND;
+}
+
+/* The bytes of a write: the pointer, then the data from it. True when a register changed or the
+ * device took a command. */
+static bool i2c_apply_write(int dev, const uint8_t *w, size_t wn)
+{
+    bool stored = false;
+    if (dev == 2) {
+        g_i2c_ptr[dev] = (uint8_t)(w[0] & 3u);
+        for (size_t i = 1; i + 1u < wn; i += 2u) {
+            if (g_i2c_ptr[dev] != 0u) { /* register 0 is the read-only reading */
+                g_i2c_word[g_i2c_ptr[dev]] = (uint16_t)((w[i] << 8) | w[i + 1u]);
+                stored = true;
+            }
+        }
+    } else if (dev == 3 || dev == 4) {
+        uint8_t *file = g_i2c_file[dev - 3];
+        uint8_t id_reg = dev == 3 ? 0x75u : 0xd0u; /* the chip id: read-only */
+        uint8_t p = w[0];
+        for (size_t i = 1; i < wn; i++) {
+            if (p != id_reg) {
+                file[p] = w[i];
+                stored = true;
+            }
+            p++; /* wraps at 256 */
+        }
+        g_i2c_ptr[dev] = p;
+    }
+    return stored || (dev < 2 && wn > 1u);
+}
+
+static void i2c_fill_read(int dev, uint8_t *r, size_t rn)
+{
+    for (size_t i = 0; i < rn; i++) {
+        switch (dev) {
+            case 0:
+                r[i] = i == 0u ? 0x01u : (i == 1u ? 0x23u : 0u);
+                break;
+            case 2: {
+                uint16_t word = g_i2c_word[g_i2c_ptr[dev] & 3u];
+                r[i] = (uint8_t)((i & 1u) == 0u ? word >> 8 : word & 0xFFu);
+                break;
+            }
+            case 3:
+            case 4:
+                r[i] = g_i2c_file[dev - 3][g_i2c_ptr[dev]++];
+                break;
+            case 1:
+            default:
+                r[i] = 0;
+                break;
+        }
+    }
+}
+
+stark_err_t fake_lab_i2c_xfer(uint8_t addr, const uint8_t *w, size_t wn, uint8_t *r, size_t rn)
+{
+    g_i2c_calls++;
+    stark_err_t err = i2c_fault_for(addr);
+    if (err != STARK_OK) {
+        return err;
+    }
+    int dev = i2c_device(addr);
+    if (dev < 0) {
+        if (g_i2c_ext_xfer != NULL) {
+            return g_i2c_ext_xfer(addr, w, wn, r, rn);
+        }
+        return STARK_ERR_NOT_FOUND;
+    }
+    if (wn > 0u && i2c_apply_write(dev, w, wn)) {
+        g_i2c_writes++;
+    }
+    if (rn > 0u) {
+        i2c_fill_read(dev, r, rn);
+    }
+    return STARK_OK;
+}
+
+unsigned fake_lab_i2c_calls(void)
+{
+    return g_i2c_calls;
+}
+
+unsigned fake_lab_i2c_writes(void)
+{
+    return g_i2c_writes;
+}
+
+uint8_t fake_lab_i2c_reg(uint8_t addr, uint8_t reg)
+{
+    if (addr == 0x68u) {
+        return g_i2c_file[0][reg];
+    }
+    return addr == 0x76u ? g_i2c_file[1][reg] : 0u;
+}
+
+uint16_t fake_lab_i2c_word(uint8_t reg)
+{
+    return g_i2c_word[reg & 3u];
 }

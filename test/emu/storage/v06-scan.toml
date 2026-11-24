@@ -25,7 +25,7 @@ presses = [
     { key = "UP", at_ms = 5300, hold_ms = 60 },     # Storage
     { key = "UP", at_ms = 5500, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 5700, hold_ms = 60 },     # Modules
-    { key = "UP", at_ms = 5900, hold_ms = 60 },     # Sub-GHz (Lab: IR 12, NFC 13 dimmed here, Sub-GHz 14)
+    { key = "UP", at_ms = 5900, hold_ms = 60 },     # Sub-GHz (Lab: IR 13, NFC 14 dimmed here, Sub-GHz 15)
     { key = "OK", at_ms = 6300, hold_ms = 60 },
     { key = "OK", at_ms = 7000, hold_ms = 60 },     # RSSI meter
     { key = "BACK", at_ms = 12500, hold_ms = 60 },  # meter -> home
@@ -37,7 +37,7 @@ presses = [
 expect = [
     "subghz: cc1101 version 0x14",
     "module: caps 0x00000027",
-    'menu: sel=14 "Sub-GHz"',
+    'menu: sel=15 "Sub-GHz"',
     "app: start subghz",
     "subghz: meter 433.920 MHz",
     "subghz: rssi -40 dBm",

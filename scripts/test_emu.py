@@ -124,7 +124,8 @@ POKE_VARS = ("emu_medium_present", "emu_medium_formatted",  # the test medium's 
              "emu_sg_chip", "emu_sg_carrier_khz", "emu_sg_level", "emu_sg_scene", "emu_sg_own_rx",
              "emu_sg_fault",  # the fake CC1101's (ADR-0022 §3)
              "emu_lab_ext_pin", "emu_lab_ext_mode", "emu_lab_ext_hz", "emu_lab_ext_duty",
-             "emu_lab_wire", "emu_lab_fault")  # the test pad model's (ADR-0023 §9)
+             "emu_lab_wire", "emu_lab_fault",  # the test pad model's (ADR-0023 §9)
+             "emu_lab_i2c_devs", "emu_lab_i2c_fault")  # ... and its I2C bus's (STARK-0704)
 
 
 def control_shell(port, command):

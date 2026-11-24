@@ -1495,3 +1495,91 @@ real signal stay V1 measurements.
     result for a measured vector (49 of them) is outside the accuracy of §4 (±0.5 % to 10 kHz, ±2 % above;
     ±2 and ±5 points of duty). The jitter is zero-mean and seeded: a systematic bias of the real
     interrupt (a latency that differs between the rising and the falling edge) is a V1 measurement.
+
+**Addendum (2026-11-24, STARK-0704).** The I²C scanner. The plan was silent or ambiguous on the points
+below; each is the smallest sound choice and none changes a rule above. The probes of the 0701 addendum
+still hold (the sweep finds exactly 0x50; the emulator's EEPROM accepts a write, so the refusal is the
+firmware's alone) and no acceptance criterion depends on more than they show.
+
+1. **The refusal rule is one table, stated three times and tested against a fourth.** *A module ID EEPROM
+   takes a one-byte pointer and a read, nothing else; the PN532 takes nothing while NFC is confirmed.* The
+   pure core (`lab_i2c_refusal()`, with the reason `module eeprom` or `nfc reader`), the transport's guard
+   (`stark_lab_i2c_allowed()`, an inline function in `stark_lab_transport.h` that the production file, the
+   test image's transport and the host shim all call) and the independent Python table in
+   `scripts/gen_lab_vectors.py` (112 vectors: seven addresses, eight transaction shapes, NFC on and off) give
+   the same answer; the core's answer is the service's, the guard's is "again from the transport" and refuses
+   before the bus is touched. Two readings go beyond the plan's wording: **a 16-bit register read of a module
+   EEPROM is refused**, because the two bytes before the repeated start are a pointer and a data byte, which
+   is a write to the chip (the model's 0x68 does exactly that); and **a read of the PN532 is refused as well
+   as a write** while NFC is confirmed, because a status read there consumes the driver's frame (the fake
+   PN532 models it). Without NFC confirmed the PN532 is an ordinary address. The scan itself is address-only
+   and is never refused: it must be able to list them.
+2. **The I²C group is a target-only file and a host shim.** The production transport gains
+   `lab_transport_i2c.c` (ESP-IDF's I²C master driver, `PRIV_REQUIRES esp_driver_i2c`): a probe is
+   `i2c_master_probe()` on `stark_board_i2c_bus()`; a transaction attaches a device handle for itself at the
+   requested clock and removes it again, so no handle outlives a call (the driver keeps no duplicate check,
+   verified in the IDF source, and applies each handle's own clock to its own transactions). `scripts/check.sh`
+   `gpio-centralized` is unaffected (`driver/i2c_master.h` is not `driver/i2c.h`, and `stark_hal` still wraps
+   no I²C). Because the file needs the driver it cannot be host-built like `lab_transport_hal.c`; the host
+   builds `test/host/support/lab_transport_i2c_host.c`, the same guard in front of the pad model's bus. The
+   fifth substitution stays the last: the test image's transport carries the I²C group too, and
+   `check_emu_image.py` still allows five.
+3. **One bus in the test image.** `fake_lab.c` models five devices (0x23, 0x3C, 0x48, 0x68, 0x76, specified in
+   `fake_lab.h`) and delegates every other address to hooks (`fake_lab_i2c_ext()`); the test image binds them
+   to the fake module transport (0x50 to 0x57, the 24C02 behind the slots) and the fake NFC transport
+   (0x24), so one scan shows one consistent bus. **Consequence for AC 1:** the fake PN532 is on the bus from
+   boot, so a scan on the test image lists `0x23 0x24 0x3c 0x48 0x68 0x76`; "exactly the five" holds when the
+   NFC fake is switched off (`emu_nfc_fault = 1`, which is how `storage/v07-i2c` shows it) and, on the host,
+   with no hook bound. The poke `emu_lab_i2c_devs` (a bitmask, `0x1F` at boot) selects the five;
+   `emu_lab_i2c_fault` maps 1 to NACK_ALL, 2 to a timeout at 0x48 only (the sweep goes on without it), 3 to
+   STUCK (every call times out) and 4 to DROP_DEVICE at 0x68 (it answers once and vanishes). The model's
+   pointer semantics follow real parts: the first byte written is the pointer, the following bytes are stored
+   from it, reads continue from it, both wrap at 256.
+4. **The sweep and its errors.** An ACK or a NACK is an answer; anything else (a timeout, a bus error, a
+   missing bus) is an error, three in a row end the sweep with `STARK_ERR_IO` and the list so far, and
+   `stark_lab_scan_t` carries `errors` (the count of failed probes, which the log shows as `(2 errors)` when
+   the sweep still finished). A NACK storm is 112 probes and an empty list, never an error. The call is
+   synchronous on the caller's task (at most 112 probes of 5 ms), so `STARK_LAB_EVT_SCAN_DONE` is **not
+   added**: the return is the completion, and the id stays reserved in the event list. The I²C group has its
+   own mutex, so a dump never holds up a pin; no task is added.
+5. **The arm is a fingerprint, and any call spends it.** `lab_i2c_arm()` stores a 32-bit FNV-1a of what the
+   dialog showed (`'W'`, address, width, register, count, bytes; `'D'` and the address for a dump; the speed is
+   not shown and so not part of it). The next `write` or `dump` takes it whatever it returns: success, a bus
+   error, an invalid argument, a refusal or a different payload all spend it, so a failed confirmation never
+   leaves a live arm behind. An arm is stale after 30 s (the clock is injected, the wrap is handled), a later
+   arm replaces an earlier one, and `stark_lab_i2c_disarm()` clears it (BACK out of an editor, the app
+   stopping). The order inside the service is arguments, then the refusal, then the arm, so a refusal needs
+   none and a refused call is `NOT_SUPPORTED`, not "not armed". A dump is armed like a write (§5: "after a
+   confirm"). `stark_lab_i2c_refusal(addr, reg16, write)` lets the app say so before it asks; the app then
+   **still makes the call, unarmed**, so the service refuses it and logs `lab: i2c write refused: module
+   eeprom` on every build: the rule is demonstrably the service's and not only the app's.
+6. **The editor is rows, not a nibble cursor.** UP and DOWN move the selection in every `ui_menu` (the 0702
+   addendum, point 1), so the register, the byte count and each byte are rows adjusted with LEFT and RIGHT,
+   and a *Nibble* row says which nibble that is (high or low); a nibble wraps inside itself, so every byte is
+   at most 16 presses from any other (`test_i2c_views`: all 256 values). The register and nibble carry over
+   from the Read editor to the Write editor and back within one device (write a register, read it back, no
+   setting up again) and reset when another device is opened; a result is forgotten when the register moves.
+   The selection follows the row, not the index, when rows come and go (a result, a 16-bit register's high
+   byte, the byte rows). A 16-bit register's high byte is its own row (*Reg high*).
+7. **The hints table** is 31 entries of address and the whole phrase, sorted, in "may be ..." wording, at most
+   30 characters so a phrase fits a row beside its address; it holds the examples the plan gave in shorter
+   words. `stark_lab_i2c_hint()` is a lookup and probes nothing. 0x50 and 0x51 say "may be EEPROM or a module
+   ID", 0x24 "may be NFC reader (PN532)".
+8. **Logs (contract).** Service: `lab: i2c scan found 0x23 0x3c ...` (`none`; the first 16 and `+n`; `(n
+   errors)`), `lab: i2c scan bus error found <...>`, `lab: i2c read 0x68 reg 0x75 68` (the bytes), `lab: i2c read
+   refused: <reason>`, `lab: i2c dump 0x68 ok` / `<error>` / `dump refused: <reason>`, `lab: i2c write 0x68 reg
+   0x6b 01 ok` / `<error>`, `lab: i2c write refused: <reason>`. App: `i2capp: home`, `scan <n> found`, `scan bus
+   error after <n> found`, `open 0x68`, `read 0x68 reg 0x75 len 1: 68`, `read ... failed: <err>`, `confirm
+   write 0x68` / `confirm dump 0x68`, `cancelled write 0x68`, `write 0x68 reg 0x6b: 01 ok`, `dump 0x68 ok`,
+   `Write refused: module eeprom` (the same for Read and Dump), `speed 400 kHz`.
+9. **Evidence.** *Production image* (`v07-i2c-prod`): the scan lists exactly `0x50` (so 0x10, 0x24, 0x51 and
+   0x52 NACK), a read of 0x50 register 0 returns eight zeros, a write to it is refused with no confirmation and
+   no write logged, and a read after it is still zero; docs/VALIDATION.md §2 records the whole list. *Test
+   image:* `storage/v07-i2c` (five devices, WHO_AM_I, a cancelled and then a confirmed write that reads back,
+   a second press that asks again) and `storage/v07-i2c-bus` (a module and the PN532 on the same bus, the
+   refusals of both, a dump behind a confirmation, a stuck bus ending the sweep with `Bus error`, recovery).
+   *Host:* `test_lab_i2c` (the sweep over 15 vectors, the bus and its faults, every refusal, the arm, lengths at
+   each edge, fingerprints, hex and the hints), `test_i2c_views`, `test_ui_i2c` (33 frames pinned after
+   inspection), `test_fake_lab`, and the independent Python reference for the sweep, the fingerprint (FNV-1a),
+   the refusal table and the hex text; `lab_i2c.c`, `lab_i2c_hints.c`, `i2c_views.c` and `fake_lab.c` run at
+   100 % lines. Nothing here shows a device answering on a wire (ROADMAP V1 exit 13).

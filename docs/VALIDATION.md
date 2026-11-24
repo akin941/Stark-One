@@ -75,6 +75,7 @@ bump is a deliberate change with a full emulator run — never "latest".
 | GPIO any-edge interrupt from a pad the firmware itself toggles (STARK-0701 probe) | ✅ 20 software toggles of pad 38 gave 20 ISR calls on pad 38 and none on pad 39 (no wire joins two pads). Edge capture of a self-driven pad is available to a test image; an *external* signal is still not |
 | I²C sweep 0x08 to 0x77 and register access (STARK-0701 probe) | ✅ 112 `i2c_master_probe` calls (5 ms timeout each, about 3.2 ms of emulated time in all): exactly **0x50** answers; a write to 0x51 at 400 kHz returns `ESP_ERR_INVALID_RESPONSE` (264, the address NACK). The built-in EEPROM at 0x50 reads zeros **and accepts writes**: A5 5A written at register 0x10 is read back from register 0x10 (a plain read after a write returned zeros). Correction to the "reads zeros" fact above: the bus does not refuse a write there, so STARK-0704's refusal of writes to 0x50 is firmware's, never the bus's |
 | The GPIO interrupt service and an any-edge handler (STARK-0703, `v07-measure-prod`) | ✅ `gpio_install_isr_service(ESP_INTR_FLAG_IRAM)`, `gpio_set_intr_type(GPIO_INTR_ANYEDGE)`, `gpio_isr_handler_add` with an `IRAM_ATTR` handler and the removal again all return OK on the production image; an unconnected pull-up pad raises no interrupt in a 20 ms gate and a 4 s window (the pad reads high throughout), so the Measure row answers `no signal (high)`; no `gpio:` error line. A pad the firmware toggles itself raised 20 of 20 interrupts in the STARK-0701 probe, but the GPIO app never measures a pad it drives, so no edge is ever stamped in the production image |
+| The I²C app on the production image (STARK-0704, `v07-i2c-prod`) | ✅ The scan (112 `i2c_master_probe` calls through the lab transport, 5 ms each) logs `lab: i2c scan found 0x50`: **the whole list is 0x50**, so 0x10, 0x24, 0x51 and 0x52 NACK as the STARK-0701 probe found. A register read of 0x50 (8 bytes from register 0, one `i2c_master_transmit_receive` on a device handle attached for the call and removed after it) returns eight zeros, and the handle coexists with the module task's own handle at the same address. A write to 0x50 is refused by the service before the bus is touched (the emulator's EEPROM would take it), no confirmation is asked, and a read after it is zero again. No second device and no waveform exist in the emulator, so this is the real driver and transport on the one thing the model has, never evidence of a device |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 
 **Not available, and not faked:**
@@ -345,8 +346,8 @@ receiving is never claimed below V1.
 
 V0.7 completion means **software / lab-protocol verified**: a pad driven, a wire measured or a
 real peripheral answering is never claimed below V1 (ROADMAP V1 exit 13). Landed so far:
-STARK-0701 (pin safety and the lab seam), STARK-0702 (the GPIO app) and STARK-0703 (frequency and duty
-measurement); the other tools follow in STARK-0704 to 0707.
+STARK-0701 (pin safety and the lab seam), STARK-0702 (the GPIO app), STARK-0703 (frequency and duty
+measurement) and STARK-0704 (the I²C scanner); the other tools follow in STARK-0705 to 0707.
 
 **What runs where (STARK-0701).**
 * **Host:** the board's pin classes for every number from -1 to 64 and the offer table derived
@@ -417,6 +418,32 @@ measurement); the other tools follow in STARK-0704 to 0707.
   50 kHz (a signal generator, ROADMAP V1 exit 13), whether a flash operation during a window disturbs a stamp
   (the handler is in IRAM so it should not), and a PWM wired into another pad: the GPIO app holds one
   pin at a time, so that check needs a signal generator or another tool (ADR-0023, 0703 addendum 10).
+
+**What runs where (STARK-0704).**
+* **Host:** the sweep's rules (`test_lab_i2c`: 15 sweeps from `scripts/gen_lab_vectors.py` whose independent
+  Python reference computes the list, the error count, the status and the number of probes: none, one, all
+  112, the edges, one and two timeouts, a NACK or an ACK between errors, three in a row at the start, the
+  middle and the end, every address timing out); the refusal table (112 vectors, the core and the transport's
+  guard agree with the reference on every one); the 32-bit FNV-1a fingerprints (16 vectors, all distinct) and
+  the hex text with its whole-bytes truncation (110 vectors); the bus model's five devices and faults
+  (`test_lab_i2c`, `test_fake_lab`: WHO_AM_I, a write that reads back, a write to a read-only register that
+  does not, auto-increment and wrap, a device that vanishes, a timeout at one address, a stuck bus, a NACK
+  storm bounded at 112 probes); the arm (consumed, a different payload, stale, replaced, cleared, the clock
+  wrapping); every length and address edge; no bus traffic for a refused write; the hints table (31 entries
+  sorted, "may be", at most 30 characters, a lookup that probes nothing); the app's rows (`test_i2c_views`: every
+  byte reachable by nibbles) and the app on the UI port (`test_ui_i2c`: scan, no devices, bus error and
+  recovery, a crowded bus, read by nibbles, 16-bit registers, a vanished device, a dump and a write behind
+  their confirmations, the refusals, an arm that dies with the screen; 33 frames pinned after inspection).
+  `lab_i2c.c`, `lab_i2c_hints.c`, `i2c_views.c` and `fake_lab.c` run at 100 % lines.
+* **Emulator, production image:** `v07-i2c-prod` (the row above): the real driver and transport find 0x50
+  and nothing else, read zeros from it, and the service refuses a write to it.
+* **Emulator, test image:** `storage/v07-i2c` (the five devices, WHO_AM_I `0x68`, a cancelled then a confirmed
+  write of register 0x6b that reads back) and `storage/v07-i2c-bus` (the module's 24C02 and the fake PN532 on
+  the same bus as the five, the refusals of both, a dump, a stuck bus and its recovery). The bus is the pad
+  model's; the EEPROM and the PN532 answer through their own fakes.
+* **Not proven anywhere before V1:** a real device at its address, pull-ups, the 100 and 400 kHz waveforms,
+  bus recovery after a device is pulled mid-transaction, and the lab's temporary device handle sharing the
+  bus with the NFC and module handles at the real clocks (ADR-0023, 0704 addendum 2).
 
 ---
 

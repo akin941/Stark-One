@@ -8,19 +8,26 @@
  */
 #include "stark_lab.h"
 #include <stdio.h>
+#include <string.h>
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "lab_i2c.h"
 #include "lab_pins.h"
+#include "stark_caps.h"
 #include "stark_event.h"
 #include "stark_lab_transport.h"
 #include "stark_log.h"
 #include "stark_module.h"
 
 static lab_pins_t s_pins;
+static lab_i2c_t s_i2c;
 static bool s_inited;
 static StaticSemaphore_t s_lock_buf;
 static SemaphoreHandle_t s_lock;
+static StaticSemaphore_t
+    s_i2c_lock_buf; /* the I2C bus has its own: a dump must not hold up a pin */
+static SemaphoreHandle_t s_i2c_lock;
 
 static size_t io_list(void *ctx, stark_module_entry_t *out, size_t max)
 {
@@ -101,6 +108,31 @@ static void io_log(void *ctx, lab_log_t what, int a, int b)
     }
 }
 
+static stark_err_t io_i2c_probe(void *ctx, uint8_t addr, uint32_t timeout_ms)
+{
+    (void)ctx;
+    return stark_lab_transport_i2c_probe(addr, timeout_ms);
+}
+
+static stark_err_t io_i2c_xfer(void *ctx, uint8_t addr, uint32_t hz, const uint8_t *w, size_t wn,
+                               uint8_t *r, size_t rn, uint32_t timeout_ms)
+{
+    (void)ctx;
+    return stark_lab_transport_i2c_xfer(addr, hz, w, wn, r, rn, timeout_ms);
+}
+
+static bool io_nfc_confirmed(void *ctx)
+{
+    (void)ctx;
+    return (stark_module_caps() & STARK_CAP_NFC) != 0u;
+}
+
+static uint32_t io_now_ms(void *ctx)
+{
+    (void)ctx;
+    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
 /* `lab: pins <the pins on offer now>`, one number each. */
 static void log_pins(void)
 {
@@ -168,6 +200,12 @@ stark_err_t stark_lab_init(void)
                          .delay_us = io_delay_us,
                          .log = io_log};
     lab_pins_init(&s_pins, &io, stark_board_pins());
+    const lab_i2c_io_t i2c_io = {.probe = io_i2c_probe,
+                                 .xfer = io_i2c_xfer,
+                                 .nfc_confirmed = io_nfc_confirmed,
+                                 .now_ms = io_now_ms};
+    lab_i2c_init(&s_i2c, &i2c_io, stark_board_pins());
+    s_i2c_lock = xSemaphoreCreateMutexStatic(&s_i2c_lock_buf);
     s_inited = true;
     log_pins();
     return STARK_OK;
@@ -374,4 +412,156 @@ void stark_lab_refresh(void)
     if (changed) {
         publish_pins();
     }
+}
+
+/* ---- the shared I2C bus (STARK-0704) ------------------------------------------------------- */
+
+/* Takes the I2C lock; false before init. */
+static bool i2c_enter(void)
+{
+    if (!s_inited) {
+        return false;
+    }
+    (void)xSemaphoreTake(s_i2c_lock, portMAX_DELAY);
+    return true;
+}
+
+static void i2c_leave(void)
+{
+    (void)xSemaphoreGive(s_i2c_lock);
+}
+
+/* `0x23 0x3c ...`: the first 16 addresses, then `+<n>`; "none" for an empty list. */
+static void scan_text(const stark_lab_scan_t *r, char *buf, size_t sz)
+{
+    size_t used = 0;
+    buf[0] = '\0';
+    for (size_t i = 0; i < r->n && i < 16u; i++) {
+        used += (size_t)snprintf(buf + used, sz - used, "%s0x%02x", i > 0u ? " " : "", r->addr[i]);
+    }
+    if (r->n > 16u) {
+        used += (size_t)snprintf(buf + used, sz - used, " +%u", (unsigned)(r->n - 16u));
+    }
+    if (r->n == 0u) {
+        (void)snprintf(buf, sz, "none");
+    }
+}
+
+stark_err_t stark_lab_i2c_scan(stark_lab_scan_t *out)
+{
+    if (out == NULL) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (!i2c_enter()) {
+        memset(out, 0, sizeof(*out));
+        out->status = STARK_ERR_STATE;
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_i2c_scan(&s_i2c, out);
+    i2c_leave();
+    char text[16u * 5u + 16u];
+    scan_text(out, text, sizeof text);
+    if (err == STARK_OK) {
+        if (out->errors > 0u) {
+            STARK_LOGI("lab", "i2c scan found %s (%u errors)", text, (unsigned)out->errors);
+        } else {
+            STARK_LOGI("lab", "i2c scan found %s", text);
+        }
+    } else {
+        STARK_LOGW("lab", "i2c scan bus error found %s", text);
+    }
+    return err;
+}
+
+stark_err_t stark_lab_i2c_read(uint8_t addr, uint16_t reg, bool reg16, uint8_t *buf, size_t n,
+                               uint32_t hz)
+{
+    if (!i2c_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_i2c_read(&s_i2c, addr, reg, reg16, buf, n, hz);
+    const char *why = err == STARK_ERR_NOT_SUPPORTED
+                          ? lab_i2c_refusal_text(lab_i2c_refusal(&s_i2c, addr, reg16 ? 2u : 1u, 1u))
+                          : "";
+    i2c_leave();
+    char data[3u * STARK_LAB_I2C_R_MAX];
+    if (err == STARK_OK) {
+        (void)lab_i2c_hex(buf, n, data, sizeof data);
+        STARK_LOGI("lab", "i2c read 0x%02x reg 0x%0*x %s", addr, reg16 ? 4 : 2, reg, data);
+    } else if (err == STARK_ERR_NOT_SUPPORTED) {
+        STARK_LOGW("lab", "i2c read refused: %s", why);
+    } else {
+        STARK_LOGW("lab", "i2c read 0x%02x reg 0x%0*x %s", addr, reg16 ? 4 : 2, reg,
+                   stark_err_str(err));
+    }
+    return err;
+}
+
+stark_err_t stark_lab_i2c_dump(uint8_t addr, uint8_t *buf256, uint32_t hz)
+{
+    if (!i2c_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_i2c_dump(&s_i2c, addr, buf256, hz);
+    const char *why = err == STARK_ERR_NOT_SUPPORTED
+                          ? lab_i2c_refusal_text(lab_i2c_refusal(&s_i2c, addr, 1u, 1u))
+                          : "";
+    i2c_leave();
+    if (err == STARK_ERR_NOT_SUPPORTED) {
+        STARK_LOGW("lab", "i2c dump refused: %s", why);
+    } else {
+        STARK_LOGI("lab", "i2c dump 0x%02x %s", addr, err == STARK_OK ? "ok" : stark_err_str(err));
+    }
+    return err;
+}
+
+stark_err_t stark_lab_i2c_write(uint8_t addr, uint16_t reg, bool reg16, const uint8_t *v, size_t n,
+                                uint32_t hz)
+{
+    if (!i2c_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_i2c_write(&s_i2c, addr, reg, reg16, v, n, hz);
+    const char *why =
+        err == STARK_ERR_NOT_SUPPORTED
+            ? lab_i2c_refusal_text(lab_i2c_refusal(&s_i2c, addr, (reg16 ? 2u : 1u) + n, 0u))
+            : "";
+    i2c_leave();
+    if (err == STARK_ERR_NOT_SUPPORTED) {
+        STARK_LOGW("lab", "i2c write refused: %s", why);
+    } else {
+        char data[3u * LAB_I2C_WRITE_MAX];
+        (void)lab_i2c_hex(v, v != NULL && n <= LAB_I2C_WRITE_MAX ? n : 0u, data, sizeof data);
+        STARK_LOGI("lab", "i2c write 0x%02x reg 0x%0*x %s %s", addr, reg16 ? 4 : 2, reg, data,
+                   err == STARK_OK ? "ok" : stark_err_str(err));
+    }
+    return err;
+}
+
+stark_err_t stark_lab_i2c_arm(uint32_t fingerprint)
+{
+    if (!i2c_enter()) {
+        return STARK_ERR_STATE;
+    }
+    lab_i2c_arm(&s_i2c, fingerprint);
+    i2c_leave();
+    return STARK_OK;
+}
+
+void stark_lab_i2c_disarm(void)
+{
+    if (i2c_enter()) {
+        lab_i2c_disarm(&s_i2c);
+        i2c_leave();
+    }
+}
+
+const char *stark_lab_i2c_refusal(uint8_t addr, bool reg16, bool write)
+{
+    if (!i2c_enter()) {
+        return NULL;
+    }
+    lab_i2c_refusal_t why = lab_i2c_refusal(&s_i2c, addr, reg16 ? 2u : 1u, write ? 0u : 1u);
+    i2c_leave();
+    return why == LAB_I2C_REFUSE_NONE ? NULL : lab_i2c_refusal_text(why);
 }

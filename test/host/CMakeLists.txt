@@ -772,6 +772,51 @@ target_link_options(run_lab_service_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_C
 target_link_libraries(run_lab_service_tests PRIVATE unity)
 add_test(NAME stark_lab_service_tests COMMAND run_lab_service_tests)
 
+# The I2C scanner's rules (STARK-0704, ADR-0023 §5): lab_i2c.c and the hints over the test-only bus,
+# behind the host shim of the transport's I2C group (the production header's guard), against the
+# vectors of scripts/gen_lab_vectors.py.
+add_executable(run_lab_i2c_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_lab_i2c.c
+    ${STARK_COMPONENTS}/stark_lab/lab_i2c.c ${STARK_COMPONENTS}/stark_lab/lab_i2c_hints.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/lab_transport_i2c_host.c
+    ${FAKE_LAB} ${FAKE_24C02} ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_lab_i2c_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake)
+target_compile_options(run_lab_i2c_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_lab_i2c_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_lab_i2c_tests PRIVATE unity)
+add_test(NAME stark_lab_i2c_tests COMMAND run_lab_i2c_tests)
+
+# The I2C app (STARK-0704, ADR-0023 §5): its pure editor rows on their own.
+add_executable(run_i2c_views_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_i2c_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_i2c/i2c_views.c
+    ${STARK_COMPONENTS}/stark_lab/lab_i2c.c ${STARK_COMPONENTS}/stark_err/stark_err.c)
+target_include_directories(run_i2c_views_tests PRIVATE ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_i2c)
+target_compile_options(run_i2c_views_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_i2c_views_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_i2c_views_tests PRIVATE unity)
+add_test(NAME stark_i2c_views_tests COMMAND run_i2c_views_tests)
+
+# The real I2C app on the UI port (STARK-0704) over the real rules, the transport guard and the
+# test-only bus.
+add_executable(run_ui_i2c_tests
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_i2c.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_i2c/app_i2c.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_i2c/i2c_views.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/port/ui_port_i2c.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/lab_transport_i2c_host.c
+    ${STARK_COMPONENTS}/stark_lab/lab_i2c.c
+    ${STARK_COMPONENTS}/stark_lab/lab_i2c_hints.c
+    ${FAKE_LAB} ${FAKE_24C02}
+    ${UI_PORT_SOURCES}
+)
+target_include_directories(run_ui_i2c_tests BEFORE PRIVATE ${UI_PORT_INCLUDES} ${LAB_INCLUDES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../fake ${CMAKE_CURRENT_SOURCE_DIR}/../../apps/app_i2c)
+target_compile_options(run_ui_i2c_tests PRIVATE ${OUR_C_FLAGS})
+target_link_options(run_ui_i2c_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+target_link_libraries(run_ui_i2c_tests PRIVATE unity)
+add_test(NAME stark_ui_i2c_tests COMMAND run_ui_i2c_tests)
+
 # The real NFC app on the UI port (STARK-0404) with a fake stark_nfc.
 add_executable(run_ui_nfc_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_ui_nfc.c

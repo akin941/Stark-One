@@ -153,8 +153,13 @@ GPIOs; a header of spare lab pins is a V1 hardware requirement.
   thousand edges, so a fast clock cannot stall the CPU, but the pad is still not 5 V tolerant), and
   the app measures one pin at a time: wiring `LAB_UART_TX` PWM into `LAB_UART_RX` needs a second tool
   or a signal generator (ADR-0023, 0703 addendum 10).
-* **Module ID EEPROMs (0x50, 0x51) are never written** by the I²C tool (ADR-0021 §2), and
-  the SPI probe is refused on any slot whose module declares a function (ADR-0023 §6).
+* **I²C scanner (STARK-0704)** sweeps 0x08 to 0x77 with address-only probes (5 ms each) and reads,
+  dumps and writes registers on the shared bus (`I2C_SDA` 1, `I2C_SCL` 2) at 100 or 400 kHz, 3.3 V
+  devices only, with the board's pull-ups; every dump and write is confirmed first and logged. Real
+  devices, waveforms and bus recovery after a device is pulled are V1 checks.
+* **Module ID EEPROMs (0x50, 0x51) are never written** by the I²C tool (ADR-0021 §2; a 16-bit
+  register read of one is refused too, since its second byte would be written), the PN532 is not
+  touched at all while NFC is confirmed, and the SPI probe is refused on any slot whose module declares a function (ADR-0023 §6).
 * The measured current, drive and measurement accuracy are V1 checks
   (`docs/bringup/v1-labtools.md`, ROADMAP V1 exit 13).
 

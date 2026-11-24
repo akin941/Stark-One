@@ -65,7 +65,8 @@ presses = [
     { key = "UP", at_ms = 20550, hold_ms = 60 },
     { key = "UP", at_ms = 20700, hold_ms = 60 },
     { key = "UP", at_ms = 20850, hold_ms = 60 },
-    { key = "UP", at_ms = 21000, hold_ms = 60 },  # App Test
+    { key = "UP", at_ms = 21000, hold_ms = 60 },
+    { key = "UP", at_ms = 21150, hold_ms = 60 },  # App Test (I2C, STARK-0704: crossed too)
     { key = "OK", at_ms = 21300, hold_ms = 60 },
     { key = "UP", at_ms = 21600, hold_ms = 60 },  # wraps to IR self-test
     { key = "OK", at_ms = 21800, hold_ms = 60 },

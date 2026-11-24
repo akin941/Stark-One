@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for scripts/gen_lab_vectors.py (TASKS.md STARK-0703)."""
+"""Unit tests for scripts/gen_lab_vectors.py (TASKS.md STARK-0703, STARK-0704)."""
 import os
 import sys
 import tempfile
@@ -134,22 +134,91 @@ class Catalogue(unittest.TestCase):
         self.assertEqual(gen.tolerances(1_000_001), (20000, 50))
 
 
+class I2cReference(unittest.TestCase):
+    """STARK-0704: the independent restatement of the scanner's rules."""
+
+    def test_the_sweep(self):
+        self.assertEqual(gen.ref_sweep(set(), set()), ([], 0, gen.SWEEP_OK, 112))
+        self.assertEqual(gen.ref_sweep({0x08, 0x77}, set())[0], [0x08, 0x77])
+        found, errors, status, probes = gen.ref_sweep({0x23}, {0x08, 0x09, 0x0A})
+        self.assertEqual((found, errors, status, probes), ([], 3, gen.SWEEP_IO, 3))
+
+    def test_two_errors_then_an_ack_or_a_nack_do_not_end_it(self):
+        self.assertEqual(gen.ref_sweep({0x32}, {0x30, 0x31, 0x33, 0x34})[2], gen.SWEEP_OK)
+        self.assertEqual(gen.ref_sweep(set(), {0x30, 0x31, 0x33, 0x34})[2], gen.SWEEP_OK)
+        self.assertEqual(gen.ref_sweep(set(), {0x30, 0x31, 0x32})[2], gen.SWEEP_IO)
+
+    def test_three_errors_on_the_last_addresses_end_it_after_every_probe(self):
+        self.assertEqual(gen.ref_sweep({0x70}, {0x75, 0x76, 0x77})[1:], (3, gen.SWEEP_IO, 112))
+
+    def test_fnv1a_known_values(self):
+        self.assertEqual(gen.ref_fnv1a(b""), 2166136261)
+        self.assertEqual(gen.ref_fnv1a(b"a"), 0xE40C292C)  # the published 32-bit FNV-1a of "a"
+        self.assertEqual(gen.ref_fnv1a(b"foobar"), 0xBF9CF968)
+
+    def test_a_fingerprint_changes_with_every_field(self):
+        base = gen.ref_fp_write(0x68, 0x6B, False, [1])
+        for other in (gen.ref_fp_write(0x69, 0x6B, False, [1]), gen.ref_fp_write(0x68, 0x6C, False, [1]),
+                      gen.ref_fp_write(0x68, 0x6B, True, [1]), gen.ref_fp_write(0x68, 0x6B, False, [2]),
+                      gen.ref_fp_write(0x68, 0x6B, False, [1, 0]), gen.ref_fp_dump(0x68)):
+            self.assertNotEqual(base, other)
+
+    def test_the_refusal_table(self):
+        R = gen.ref_refusal
+        self.assertEqual(R(0x50, 1, 0, False), gen.REFUSE_EEPROM)  # a write
+        self.assertEqual(R(0x51, 2, 1, False), gen.REFUSE_EEPROM)  # more than a pointer before a read
+        self.assertEqual(R(0x50, 1, 16, False), gen.REFUSE_NONE)  # a pointer and a read
+        self.assertEqual(R(0x24, 1, 1, True), gen.REFUSE_NFC)
+        self.assertEqual(R(0x24, 1, 1, False), gen.REFUSE_NONE)
+        self.assertEqual(R(0x68, 10, 0, True), gen.REFUSE_NONE)
+
+    def test_hex_text_keeps_whole_bytes_that_fit(self):
+        self.assertEqual(gen.ref_hex([0xA5, 0x5A], 50, True), "a5 5a")
+        self.assertEqual(gen.ref_hex([0xA5, 0x5A], 50, False), "a55a")
+        self.assertEqual(gen.ref_hex([0xA5, 0x5A], 5, True), "a5")  # "a5 5a" needs 6
+        self.assertEqual(gen.ref_hex([0xA5, 0x5A], 6, True), "a5 5a")
+        self.assertEqual(gen.ref_hex([0xA5, 0x5A], 4, False), "a5")
+        self.assertEqual(gen.ref_hex([0xA5], 2, False), "")
+        self.assertEqual(gen.ref_hex([0xA5], 0, False), "")
+
+    def test_vector_sets_are_large_and_named_once(self):
+        names = [v[0] for v in gen.sweep_vectors()]
+        self.assertEqual(len(names), len(set(names)))
+        self.assertGreaterEqual(len(names), 15)
+        self.assertGreaterEqual(len(gen.refusal_vectors()), 100)
+        self.assertGreaterEqual(len(gen.hex_vectors()), 100)
+        fps = [v[-1] for v in gen.fp_vectors()]
+        self.assertEqual(len(fps), len(set(fps)))
+
+    def test_the_i2c_header_declares_what_the_tests_use(self):
+        text = gen.render_i2c()
+        for name in ("fake_lab_sweep_vec_t", "fake_lab_sweep_vecs", "FAKE_LAB_SWEEP_VECS",
+                     "fake_lab_fp_vecs", "fake_lab_refusal_vecs", "fake_lab_hex_vecs"):
+            self.assertIn(name, text)
+        self.assertIn("SPEC-DERIVED, NOT A RECORDING", text)
+        self.assertEqual(gen.render_i2c(), gen.render_i2c())
+
+
 class Output(unittest.TestCase):
     def test_render_is_deterministic(self):
         self.assertEqual(gen.render(), gen.render())
 
     def test_check_mode(self):
         with tempfile.TemporaryDirectory() as d:
-            old = gen.OUT
+            old, old_i2c = gen.OUT, gen.OUT_I2C
             try:
                 gen.OUT = Path(d) / "fake_lab_vectors.h"
+                gen.OUT_I2C = Path(d) / "fake_lab_i2c_vectors.h"
                 self.assertEqual(gen.main(["--check"]), 1)  # missing
                 self.assertEqual(gen.main([]), 0)
                 self.assertEqual(gen.main(["--check"]), 0)
                 gen.OUT.write_text("stale")
                 self.assertEqual(gen.main(["--check"]), 1)
+                self.assertEqual(gen.main([]), 0)
+                gen.OUT_I2C.write_text("stale")  # either file being stale fails the check
+                self.assertEqual(gen.main(["--check"]), 1)
             finally:
-                gen.OUT = old
+                gen.OUT, gen.OUT_I2C = old, old_i2c
 
     def test_the_committed_header_is_current(self):
         self.assertEqual(gen.main(["--check"]), 0)
