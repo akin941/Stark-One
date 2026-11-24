@@ -18,6 +18,7 @@ presses = [
     { key = "OK", at_ms = 2830, hold_ms = 60 },
     { key = "BACK", at_ms = 5140, hold_ms = 60 },
     { key = "DOWN", at_ms = 5450, hold_ms = 60 },
+    { key = "DOWN", at_ms = 5590, hold_ms = 60 },  # Diagnostics -> Self-Test (STARK-0707) -> App Test
     { key = "OK", at_ms = 5760, hold_ms = 60 },
     { key = "OK", at_ms = 6070, hold_ms = 60 },
     { key = "OK", at_ms = 6380, hold_ms = 60 },
@@ -63,6 +64,7 @@ presses = [
     { key = "OK", at_ms = 24460, hold_ms = 60 },
     { key = "BACK", at_ms = 26770, hold_ms = 60 },
     { key = "DOWN", at_ms = 27080, hold_ms = 60 },
+    { key = "DOWN", at_ms = 27220, hold_ms = 60 },  # Diagnostics -> Self-Test (STARK-0707) -> App Test
     { key = "OK", at_ms = 27390, hold_ms = 60 },
     { key = "OK", at_ms = 27700, hold_ms = 60 },
     { key = "OK", at_ms = 28010, hold_ms = 60 },

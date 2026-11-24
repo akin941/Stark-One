@@ -76,7 +76,8 @@ presses = [
     { key = "BACK", at_ms = 36200, hold_ms = 60 },  # leave App Test
     { key = "UP", at_ms = 36600, hold_ms = 60 },
     { key = "UP", at_ms = 36750, hold_ms = 60 },
-    { key = "UP", at_ms = 36900, hold_ms = 60 },  # wraps to Storage
+    { key = "UP", at_ms = 36900, hold_ms = 60 },  # Self-Test (STARK-0707): crossed on the way up
+    { key = "UP", at_ms = 37050, hold_ms = 60 },  # wraps to Storage
     { key = "OK", at_ms = 37200, hold_ms = 60 },
     { key = "DOWN", at_ms = 37500, hold_ms = 60 },
     { key = "DOWN", at_ms = 37700, hold_ms = 60 },

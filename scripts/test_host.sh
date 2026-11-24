@@ -95,6 +95,11 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
             --filter "$PROJECT_ROOT/apps/app_spi/spi_views.c" \
             --filter "$PROJECT_ROOT/apps/app_uart/uart_views.c" \
             --filter "$PROJECT_ROOT/apps/app_uart/uart_log.c" \
+            --filter "$PROJECT_ROOT/apps/app_selftest/selftest_views.c" \
+            --filter "$PROJECT_ROOT/components/stark_diag/selftest_" \
+            --filter "$PROJECT_ROOT/main/selftest_checks.c" \
+            --filter "$PROJECT_ROOT/main/selftest_export.c" \
+            --filter "$PROJECT_ROOT/main/selftest_sha256.c" \
             --filter "$PROJECT_ROOT/test/fake/fake_lab.c" \
             --filter "$PROJECT_ROOT/components/stark_storage/log_rotate" \
             --filter "$PROJECT_ROOT/components/stark_storage/storage_log" \

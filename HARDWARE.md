@@ -174,6 +174,11 @@ GPIOs; a header of spare lab pins is a V1 hardware requirement.
   probe. 3.3 V logic only; a SPI breakout's own pull-ups and levels are the user's to check. A real flash's
   JEDEC ID, the panel and the card staying intact while the probe runs (no display corruption, a logic-analyser
   capture of the transaction) and the refusal on a real Sub-GHz module are V1 checks (ROADMAP V1 exit 13).
+* **Self-test (STARK-0707)** touches no lab pin. Its module-bus check sends an address-only probe to 0x50 and 0x51 on the shared I²C bus
+  (5 ms each, never a write), its storage check writes and deletes one 4 kB file on the card, its RAM check tests one transient block of
+  at most 32 kB and its flash check only reads the running image. The display, buzzer and status LED checks are answered by the
+  operator. On the breadboard (ROADMAP V1 exit 13): each of the three really observed, the flash and RAM checks on silicon, and the
+  report read from a real card.
 * **Module ID EEPROMs (0x50, 0x51) are never written** by the I²C tool (ADR-0021 §2; a 16-bit
   register read of one is refused too, since its second byte would be written), the PN532 is not
   touched at all while NFC is confirmed, and the SPI probe is refused on any slot whose module declares a function (ADR-0023 §6).

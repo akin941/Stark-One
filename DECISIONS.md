@@ -1783,3 +1783,121 @@ slot whose module declares `MOD_SPI` and no function bit**, so no path leads fro
    never claimed by the probe, then an empty slot). Nothing here shows a signal on MOSI, a chip select moving, the panel and the
    card staying intact, or a real flash answering (ROADMAP V1 exit 13).
 10. **Cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM and flash against the 0706 budgets.
+
+**Addendum (2026-11-24, STARK-0707).** The self-test and the report export. The plan was silent or ambiguous on the points
+below; each is the smallest sound choice and none changes a rule above. The rule that matters stays §8's: **a check the device
+cannot judge for itself is `attested` when the operator says yes, `fail` when the operator says no, and never `pass`**, and
+the report never leaves the device.
+
+1. **Where the code lives, and one split the plan did not make.** The runner (`selftest_core.c`) and the report formatter
+   (`selftest_report.c`) are pure files of `stark_diag` over injected pieces (a clock, a lock, a notifier, a sink), at 100 %
+   lines. The `stark_selftest_*()` calls are `selftest_svc.c`, one instance of the runner with the log lines and the events;
+   it needs only the log and the event bus, both of which the host has, so the host UI port runs the very same file and
+   `stark_diag.c` only hands it the clock (`esp_timer`) and a mutex. The ten checks and the export are the composition root's
+   (`main/selftest_checks.c`, `selftest_export.c`), **pure over one table of calls** (`main/selftest_env.h`: heap, flash read,
+   settings, card, module list and probe, diagnostics, the log tail), so the host tests give them a model of the machine they
+   can break one call at a time, and `main/selftest_target.c` (not in the plan's file list) fills the same table from the real
+   services and registers the checks. `stark_diag` gains no edge; the root requires `stark_hal`, `stark_module_transport`,
+   `app_update` and `spi_flash`, which the root may. `main/selftest_sha256.c` is a plain FIPS 180-4 SHA-256 over reads (item 5).
+2. **API additions to the plan's list.** `stark_selftest_set_export()` and `stark_selftest_export(name, cap, &bytes)` (the
+   app cannot call the root, so the root installs the exporter; the size is for the log), `stark_settings_source()` (item 6),
+   `stark_log_ring_tail()` (item 12), and the check indices the app relies on (`STAPP_BUTTONS`.. in `selftestapp.h`, which
+   `test_selftest_checks` compares with the root's enum). Not added: a public summary call. The summary line the log carries is
+   the core's (`selftest: summary 7 pass  3 attested  0 fail  0 skip`); the screen builds its own from the rows, in a compact
+   form (`6 pass  0 att  1 fail  1 skip  2 left`) while some are not run, because the full text does not fit a screen row.
+3. **The runner's contract.** A check with `run == NULL` is interactive: the app observes it and records the result with
+   `stark_selftest_report()`; running it is `STARK_ERR_NOT_SUPPORTED`. Every check has a deadline of 10 s judged **when it
+   returns** (a check cannot be preempted, so every check keeps its own loops bounded, and a check that took longer is
+   `fail`, `timeout`, whatever it returned). A value outside pass, fail and skip is `fail`, `bad result`. Evidence is cut at 48
+   characters and loses its control characters. A run that never returned (the contained app faulted inside a check) leaves
+   its row `not run`, so the table keeps what finished, and the next run records it `fail`, `app_fault`. **Clearing a row
+   (`ST_NOT_RUN`) is silent**: no log line, no event, so a second Run all cannot flood the bus (queue 32) or print a summary.
+   The log line is `selftest: <name lower-cased> <result> <evidence>` (`selftest: ram pass 32768 B`, `selftest: status led
+   attested operator: blinks once a second`); `STARK_SYS_SELFTEST` carries `_STEP` after each result and `_DONE` when no row is
+   left `not run`.
+4. **RAM.** One block of the smaller of 32 kB and a quarter of the largest free block, **and never so much that free heap
+   would fall below 128 kB** (so on a heap near the floor the block shrinks, under 1 kB it is `fail`, `heap too low`, and nothing
+   is allocated), a whole number of words, from the internal 8-bit heap only. After the allocation the free heap is read again
+   and a fall below the floor (another task took memory) is a failure before any pattern is written. Twelve byte patterns (walking
+   ones, 0x00, 0xFF, 0xAA, 0x55) and the address-in-address word pattern, each written, given a dwell and verified through
+   `volatile` pointers; the first mismatch is named (`bad byte +100 read 11 want 01`). **The dwell is a hook in the environment
+   table (`ram_dwell`) that the firmware leaves NULL**: it is the one place the host test flips a bit, and the only test-only seam
+   in the production check. The block is freed in every outcome.
+5. **Flash, read-only, and what "the image header's size" means.** The chip size from `esp_flash_get_size()` must equal the
+   size nibble of the bootloader image header at flash offset 0 (byte 3, upper half: the flash size the image was built for;
+   sizes 1 to 32 MB are known). Then two SHA-256 passes over **the running image**, not the whole partition: the length is found by
+   walking the app image header, its segment headers, the padding to the checksum byte and the appended digest if the header
+   says so (`selftest_image_length()`, tested over 16 segment counts and every malformed header), because hashing the 3 MB
+   partition twice would take seconds for nothing. Reads are 256 bytes at a time through `esp_flash_read()`; nothing is erased or
+   written, which the host model enforces by having no call to do it and `scripts/check.sh` (`selftest-flash-readonly`) enforces
+   on the target by refusing any flash, partition, OTA or NVS write or erase call in a self-test file. The appended digest is not
+   compared (the plan asks for two passes that agree); a check against it is a V1 candidate. **The hash is plain C**, not mbedTLS
+   (nothing else links it) and not the SHA accelerator (the emulator does not model it): 1 210 B of code, FIPS vectors and every
+   block boundary tested.
+6. **Settings: read, never write.** All four settings are read twice and must agree and lie inside their descriptor's range and
+   step, and `stark_settings_source()` (new; NVS, defaults, or RAM only) must not be RAM only: a store that could not be opened is
+   `fail`, `store unavailable, RAM only`. The plan's "a read-back of one value" would not have noticed an unreadable NVS.
+7. **Storage: skip, fail or pass by the state.** No card, no slot or an ejected card are not faults: `skip`, with the state
+   as evidence (`selftest: storage skip no card`). A card that was mounted and went away (`REMOVED`) or answers and holds no
+   volume (`UNUSABLE`) is what the status bar shows as an error, so it is `fail` with the state. A mounted card gets one atomic
+   file `logs/selftest.chk` of 4 096 bytes (16 chunks of a counting pattern), closed, reopened, compared and removed; each step
+   has its own evidence (`write failed: I/O error`, `short read at 3996`, `read-back differs in block 1`), a failed write is
+   discarded and a file that closed is removed even when the comparison failed.
+8. **Module bus: the table against the wire, both ways, with one retry.** For each slot with an ID EEPROM address the table's
+   state is compared with an address probe through `stark_module_transport_probe()` (5 ms): a module that is present but does not
+   ACK, and one that is absent but ACKs, both fail (`slot 0 present, 0x50 no ACK`). The table is a second old, so a disagreement
+   is looked at once more; **a bus fault (any probe error but a NACK) is the finding and is not retried**; no bus is `skip`.
+9. **Events and stacks.** Event drops 0 and every task (at most 16) with at least 256 B of stack free in the `stark_diag`
+   snapshot. The emulator's production image reports 12 tasks with at least 568 B, so the margin is real.
+10. **The walk, and what BACK means.** Run all runs the six automated checks on the app worker and, when they are done, pushes the
+    walk screen: **Buttons** asks for the six keys; **Display** shows the colour bars and the grey ramp; **Buzzer** plays three
+    rising tones (UP plays them again); **Status LED** asks about the heartbeat. The plan's "BACK abandons the walk" and "BACK on
+    one records `fail`" are one rule here: BACK on an attested question records `fail` **and ends the walk**; the rest stay
+    `not run`. In the Buttons step BACK is the sixth key, observed and consumed, and does not leave the app. Buttons: a key counts
+    once on its **press** in any order (the prompt names the next one, the plan's "in turn"), the limit is **30 s for the whole
+    step** (the plan says "within 30 s" without a unit), read from the once-a-second diagnostics sample, and when it runs out the
+    step is `fail` naming the missing keys (`missing DOWN,LEFT`) and the walk goes on to the questions. **An answer needs its
+    press to have arrived in its step**: the release and short press of the key that finished the previous step (BACK, say) arrive
+    in the next one and must not answer it (tested). Leaving the app, by a long BACK or the manager, stops the tones; what
+    finished is kept. BACK during Run all asks the worker to stop, and it stops after the check in progress (a check cannot be
+    preempted): the join waits up to 1 s (`CONFIG_STARK_APP_WORKER_JOIN_MS`), and the longest check, the flash one, is about
+    0.3 s by arithmetic on silicon (4 500 reads of 256 B and 2.3 MB hashed): a V1 reading, not a measurement made here.
+11. **The report: bounded, one line per fact, whole or not at all.** `logs/report_NNNN.txt`, the number one past the highest
+    present (so `report_0001.txt` first, never replacing one, `STARK_ERR_NO_SPACE` after 9 999), written through a cursor formatter
+    one line at a time into an atomic card file: firmware, build, board, uptime, the snapshot line, the tasks, the module-table
+    lines, the storage state, every self-test row with its result, `(operator)` for an attested one, and its evidence, the summary
+    and the log tail. **Every character is printable or a newline**: in every field, a control character (a newline too) becomes
+    `.` so a hostile module name or log line cannot start a new line or an escape sequence; in the tail only the newlines are kept.
+    The cap is 16 384 bytes with 16 bytes reserved for `-- truncated --`, and the tail is at most 4 096 bytes of whole lines. The
+    transient 5.5 kB (snapshot, tasks, module lines, rows, the tail window) is heap, held for the export and freed in every
+    outcome. **Beyond the plan, the file is read back and its length and CRC-32 must equal what was written** before the app says
+    it is saved; otherwise it is removed and the export is `STARK_ERR_IO`. No error leaves a file behind (tested at every write).
+12. **The log tail is non-destructive.** `stark_log_ring_tail()` (new, `log_ring_tail()` in the pure ring, 100 % lines) copies the
+    newest whole lines without consuming them, because the storage service drains the same ring into `logs/stark.log`: the report
+    sees the lines since that service's last drain (about a second), not the whole file. That is what the plan's "the tail of the
+    log ring" can mean. Nothing else is collected: no setting value, no file content, no credential.
+13. **No card.** The app says so (`No card`, an alert) and logs `selftest: export skipped (no card)`. The plan's "the report is
+    shown" is read as: the results are on the screen already; the report text is not rendered. Any other error is `selftest: export
+    failed: <error>`; success is `selftest: export report_0001.txt 1447 B` and an alert naming the file.
+14. **Launcher and scenarios.** Self-Test is System row 3 (after Diagnostics), the registry line is `n=18` with `selftest` after
+    `diagnostics`, and every later row moves down by one. Edits to pre-existing scenarios are the registry line, launcher row
+    numbers (+1 from App Test down) and one more DOWN press where a walk from About crosses the new row; they are listed in
+    TASKS.md STARK-0707. Two scenarios on the test image, not one: `v07-selftest` (a card: Storage passes, the export) and
+    `v07-selftest-faults` (the card pulled and the module bus timing out), so each stays far inside 20 s.
+15. **What the emulator cannot show, and the tests that do.** A card failing part-way through the 4 kB write cannot be timed by
+    a poke (the check lasts a few milliseconds and the storage service notices a pulled card within 150 ms, so the emulator
+    reports `removed`, not a failed write), so every step of that failure is host-only, as are the corrupted RAM word, the flash
+    size and digest mismatches, NVS unreadable, a drop, a thin stack and a module that declares and does not ACK. The emulator's
+    flash check passing shows the check's logic against the emulated flash (16 MB there, the image header agreeing), never the
+    chip's.
+16. **Evidence.** *Host:* `test_selftest_core`, `test_selftest_report`, `test_selftest_checks`, `test_selftest_export`,
+    `test_selftest_views`, `test_ui_selftest` (16 frames pinned after inspection) and three more tests in `test_log_ring`;
+    `selftest_core.c`, `selftest_report.c`, `selftest_svc.c`, `selftest_checks.c`, `selftest_export.c`, `selftest_sha256.c`,
+    `selftest_views.c` and `log_ring.c` at 100 % lines. *Production image:* `v07-selftest-prod`: the six automated checks (storage
+    skipped: no card is modelled), the injected keys, three attestations, `6 pass  3 attested  0 fail  1 skip`, heap before and
+    after equal. *Test image:* `storage/v07-selftest` (`7 pass  3 attested  0 fail  0 skip`, `report_0001.txt` and `report_0002.txt`
+    written and read back) and `storage/v07-selftest-faults` (`storage fail removed`, `module bus fail probe 0x50 failed:
+    Timeout`, the walk ended by BACK). Nothing here shows a screen, a tone or an LED being observed by a person, a real flash, or
+    RAM on silicon (ROADMAP V1 exit 13).
+17. **Cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM and flash against the 0707 budgets. The flash
+    budget of 8 kB was exceeded; the binary ceiling of §10 was already passed at STARK-0705 and STARK-0708 restates it.

@@ -107,6 +107,22 @@ uint8_t stark_settings_get(stark_setting_t key)
     return s_ready ? s_core.value[key] : d->def;
 }
 
+stark_settings_source_t stark_settings_source(void)
+{
+    if (!s_ready) {
+        return STARK_SETTINGS_FROM_RAM;
+    }
+    switch (s_core.source) {
+        case SETTINGS_FROM_NVS:
+            return STARK_SETTINGS_FROM_NVS;
+        case SETTINGS_FROM_DEFAULTS:
+            return STARK_SETTINGS_FROM_DEFAULTS;
+        case SETTINGS_FROM_RAM:
+        default:
+            return STARK_SETTINGS_FROM_RAM;
+    }
+}
+
 stark_err_t stark_settings_set(stark_setting_t key, uint8_t value)
 {
     if (!s_ready) {

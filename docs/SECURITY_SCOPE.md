@@ -33,7 +33,7 @@ These are designed properly, thoroughly, and to a professional standard:
 | Sub-GHz spectrum observation, RSSI, raw capture, bitstream framing analysis | RF development |
 | Replay of **our own** recorded signals to **our own** receivers | Test-rig validation |
 | Protocol dissection and documentation of open/published protocols | Research |
-| Self-test, diagnostics, measurement, logging, export | Product quality |
+| Self-test, diagnostics, measurement, logging, export | Product quality. The self-test reads and probes our own hardware and writes nothing the user did not ask for: one transient RAM block, the flash read-only, address-only I²C probes of the module ID EEPROM addresses (never a write), one 4 kB temporary file on the card that is deleted again and, on request, a report to the card (`logs/report_NNNN.txt`, 16 kB at most, control characters stripped, no setting value, file content or credential in it). What only the operator can judge is `attested` or `fail`, never `pass`; nothing is sent anywhere (ADR-0023 §8) |
 
 Receive, analyse, measure and document: these are the core of the product and are not
 limited.

@@ -11,6 +11,7 @@
 
 extern const stark_app_t app_about;
 extern const stark_app_t app_diagnostics;
+extern const stark_app_t app_selftest;
 extern const stark_app_t app_buzzertest;
 extern const stark_app_t app_displaytest;
 extern const stark_app_t app_inputtest;

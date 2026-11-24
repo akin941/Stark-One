@@ -29,4 +29,9 @@ void log_ring_put(log_ring_t *r, const char *s, size_t n);
  * last take, and the count restarts. */
 size_t log_ring_take(log_ring_t *r, char *out, size_t max, uint32_t *dropped);
 
+/* Copies the newest whole lines, at most max bytes, oldest first, WITHOUT consuming them (the
+ * self-test report reads the ring that the storage service drains). A line still being written
+ * and a line longer than max are left out; returns the byte count. */
+size_t log_ring_tail(const log_ring_t *r, char *out, size_t max);
+
 size_t log_ring_used(const log_ring_t *r);

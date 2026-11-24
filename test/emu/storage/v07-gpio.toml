@@ -10,53 +10,54 @@
 # nothing here shows a level on a pad (docs/VALIDATION.md §2).
 name = "emu-v07-gpio"
 image = "storage"
-end_ms = 17540
+end_ms = 17760
 heap_min = 200000
 presses = [
-    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 7)
-    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 7)
-    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 7)
-    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 7)
-    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 7)
-    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 7)
-    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 7)
-    { key = "OK", at_ms = 1940, hold_ms = 60 },  # open the app
-    { key = "OK", at_ms = 2340, hold_ms = 60 },  # open pin 38
-    { key = "RIGHT", at_ms = 2740, hold_ms = 60 },  # Mode: Input, Output (1 of 2)
-    { key = "RIGHT", at_ms = 3040, hold_ms = 60 },  # Mode: Input, Output (2 of 2)
-    { key = "DOWN", at_ms = 3340, hold_ms = 60 },  # Level, Drive (1 of 2)
-    { key = "DOWN", at_ms = 3640, hold_ms = 60 },  # Level, Drive (2 of 2)
-    { key = "OK", at_ms = 3940, hold_ms = 60 },  # Drive: the confirmation opens
-    { key = "BACK", at_ms = 4440, hold_ms = 60 },  # cancel: nothing is armed and nothing is driven
-    { key = "OK", at_ms = 4940, hold_ms = 60 },  # Drive again: it asks again
-    { key = "OK", at_ms = 5440, hold_ms = 60 },  # confirm: armed, driven low
-    { key = "DOWN", at_ms = 6040, hold_ms = 60 },  # Toggle
-    { key = "OK", at_ms = 6340, hold_ms = 60 },  # toggle: high (armed, no dialog)
-    { key = "OK", at_ms = 6940, hold_ms = 60 },  # toggle: low (the short agrees)
-    { key = "OK", at_ms = 7440, hold_ms = 60 },  # toggle: high against the short -> contention
-    { key = "OK", at_ms = 8140, hold_ms = 60 },  # close the alert
-    { key = "BACK", at_ms = 8740, hold_ms = 60 },  # release pin 38
-    { key = "DOWN", at_ms = 9240, hold_ms = 60 },  # pin 40, the first slot line (1 of 2)
-    { key = "DOWN", at_ms = 9540, hold_ms = 60 },  # pin 40, the first slot line (2 of 2)
-    { key = "OK", at_ms = 9840, hold_ms = 60 },  # open pin 40
-    { key = "RIGHT", at_ms = 10340, hold_ms = 60 },  # Mode: Input, Output (1 of 2)
-    { key = "RIGHT", at_ms = 10640, hold_ms = 60 },  # Mode: Input, Output (2 of 2)
-    { key = "DOWN", at_ms = 10940, hold_ms = 60 },  # Level, Drive (1 of 2)
-    { key = "DOWN", at_ms = 11240, hold_ms = 60 },  # Level, Drive (2 of 2)
-    { key = "OK", at_ms = 11540, hold_ms = 60 },  # Drive: the confirmation opens
-    { key = "OK", at_ms = 12040, hold_ms = 60 },  # confirm: pin 40 driven low
-    { key = "OK", at_ms = 14240, hold_ms = 60 },  # close the withdrawal alert
-    { key = "BACK", at_ms = 16240, hold_ms = 60 },  # leave the app
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 8)
+    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 8)
+    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 8)
+    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 8)
+    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 8)
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 8)
+    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 8)
+    { key = "DOWN", at_ms = 1940, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO (8 of 8)
+    { key = "OK", at_ms = 2160, hold_ms = 60 },  # open the app
+    { key = "OK", at_ms = 2560, hold_ms = 60 },  # open pin 38
+    { key = "RIGHT", at_ms = 2960, hold_ms = 60 },  # Mode: Input, Output (1 of 2)
+    { key = "RIGHT", at_ms = 3260, hold_ms = 60 },  # Mode: Input, Output (2 of 2)
+    { key = "DOWN", at_ms = 3560, hold_ms = 60 },  # Level, Drive (1 of 2)
+    { key = "DOWN", at_ms = 3860, hold_ms = 60 },  # Level, Drive (2 of 2)
+    { key = "OK", at_ms = 4160, hold_ms = 60 },  # Drive: the confirmation opens
+    { key = "BACK", at_ms = 4660, hold_ms = 60 },  # cancel: nothing is armed and nothing is driven
+    { key = "OK", at_ms = 5160, hold_ms = 60 },  # Drive again: it asks again
+    { key = "OK", at_ms = 5660, hold_ms = 60 },  # confirm: armed, driven low
+    { key = "DOWN", at_ms = 6260, hold_ms = 60 },  # Toggle
+    { key = "OK", at_ms = 6560, hold_ms = 60 },  # toggle: high (armed, no dialog)
+    { key = "OK", at_ms = 7160, hold_ms = 60 },  # toggle: low (the short agrees)
+    { key = "OK", at_ms = 7660, hold_ms = 60 },  # toggle: high against the short -> contention
+    { key = "OK", at_ms = 8360, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 8960, hold_ms = 60 },  # release pin 38
+    { key = "DOWN", at_ms = 9460, hold_ms = 60 },  # pin 40, the first slot line (1 of 2)
+    { key = "DOWN", at_ms = 9760, hold_ms = 60 },  # pin 40, the first slot line (2 of 2)
+    { key = "OK", at_ms = 10060, hold_ms = 60 },  # open pin 40
+    { key = "RIGHT", at_ms = 10560, hold_ms = 60 },  # Mode: Input, Output (1 of 2)
+    { key = "RIGHT", at_ms = 10860, hold_ms = 60 },  # Mode: Input, Output (2 of 2)
+    { key = "DOWN", at_ms = 11160, hold_ms = 60 },  # Level, Drive (1 of 2)
+    { key = "DOWN", at_ms = 11460, hold_ms = 60 },  # Level, Drive (2 of 2)
+    { key = "OK", at_ms = 11760, hold_ms = 60 },  # Drive: the confirmation opens
+    { key = "OK", at_ms = 12260, hold_ms = 60 },  # confirm: pin 40 driven low
+    { key = "OK", at_ms = 14460, hold_ms = 60 },  # close the withdrawal alert
+    { key = "BACK", at_ms = 16460, hold_ms = 60 },  # leave the app
 ]
 pokes = [
-    { at_ms = 6840, var = "emu_lab_ext_mode", value = 2 },  # pad 38 is shorted to ground from outside
-    { at_ms = 8640, var = "emu_lab_ext_mode", value = 0 },  # the short is removed
-    { at_ms = 12740, var = "emu_mod_slot0", value = 32 },  # a module appears in slot 0 while pin 40 is an output
-    { at_ms = 14740, var = "emu_mod_slot0", value = 0 },  # the module leaves: the slot's pins are on offer again
+    { at_ms = 7060, var = "emu_lab_ext_mode", value = 2 },  # pad 38 is shorted to ground from outside
+    { at_ms = 8860, var = "emu_lab_ext_mode", value = 0 },  # the short is removed
+    { at_ms = 12960, var = "emu_mod_slot0", value = 32 },  # a module appears in slot 0 while pin 40 is an output
+    { at_ms = 14960, var = "emu_mod_slot0", value = 0 },  # the module leaves: the slot's pins are on offer again
 ]
 expect = [
     "lab: pins 38 39 40 41 42",
-    'menu: sel=11 "GPIO"',
+    'menu: sel=12 "GPIO"',
     "gpioapp: home 38 39 40 41 42",
     "app: start gpio",
     "gpioapp: open pin 38 LAB_UART_TX",

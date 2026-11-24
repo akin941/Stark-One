@@ -99,6 +99,16 @@ check "gpio-centralized" bash -c '
     exit 0
 '
 
+# --- The self-test never writes or erases flash (STARK-0707 AC 4) -----------
+# The flash check reads the running image and nothing else: no file of the self-test may name a
+# flash, partition, OTA or NVS write or erase call. (The host tests give the check an environment
+# with no such call to make; this is the same rule on the target side.)
+check "selftest-flash-readonly" bash -c '
+    ! grep -nE "(esp_flash|esp_partition|spi_flash|nvs|esp_ota)_(write|erase|set|begin|end|commit|mmap)" \
+        main/selftest_*.c main/selftest_*.h components/stark_diag/selftest_*.c \
+        components/stark_diag/include/selftest_*.h 2>/dev/null
+'
+
 # --- Font tables reproducible (STARK-0014 AC 4, STARK-0102 AC 2) ----------
 # tools/fontconv.py must regenerate both committed subset BDFs (each a fixed
 # point of the subset step) and both C tables byte-for-byte (commands:

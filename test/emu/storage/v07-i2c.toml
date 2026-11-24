@@ -9,90 +9,91 @@
 # spec-derived and nothing here shows a device on a wire (docs/VALIDATION.md §2).
 name = "emu-v07-i2c"
 image = "storage"
-end_ms = 15090
+end_ms = 15230
 heap_min = 200000
 presses = [
-    { key = "DOWN", at_ms = 540, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (1 of 8)
-    { key = "DOWN", at_ms = 680, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (2 of 8)
-    { key = "DOWN", at_ms = 820, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (3 of 8)
-    { key = "DOWN", at_ms = 960, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (4 of 8)
-    { key = "DOWN", at_ms = 1100, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (5 of 8)
-    { key = "DOWN", at_ms = 1240, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (6 of 8)
-    { key = "DOWN", at_ms = 1380, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (7 of 8)
-    { key = "DOWN", at_ms = 1520, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (8 of 8)
-    { key = "OK", at_ms = 1770, hold_ms = 60 },  # open the app
-    { key = "OK", at_ms = 2020, hold_ms = 60 },  # Scan: the five devices (the PN532 is off: emu_nfc_fault)
-    { key = "DOWN", at_ms = 2160, hold_ms = 60 },  # 0x23, 0x3c, 0x48, 0x68 (1 of 3)
-    { key = "DOWN", at_ms = 2300, hold_ms = 60 },  # 0x23, 0x3c, 0x48, 0x68 (2 of 3)
-    { key = "DOWN", at_ms = 2440, hold_ms = 60 },  # 0x23, 0x3c, 0x48, 0x68 (3 of 3)
-    { key = "OK", at_ms = 2640, hold_ms = 60 },  # open 0x68
-    { key = "OK", at_ms = 2840, hold_ms = 60 },  # Read
-    { key = "RIGHT", at_ms = 2980, hold_ms = 60 },  # Reg low nibble 5 (1 of 5)
-    { key = "RIGHT", at_ms = 3120, hold_ms = 60 },  # Reg low nibble 5 (2 of 5)
-    { key = "RIGHT", at_ms = 3260, hold_ms = 60 },  # Reg low nibble 5 (3 of 5)
-    { key = "RIGHT", at_ms = 3400, hold_ms = 60 },  # Reg low nibble 5 (4 of 5)
-    { key = "RIGHT", at_ms = 3540, hold_ms = 60 },  # Reg low nibble 5 (5 of 5)
-    { key = "DOWN", at_ms = 3680, hold_ms = 60 },  # Register, Nibble (1 of 2)
-    { key = "DOWN", at_ms = 3820, hold_ms = 60 },  # Register, Nibble (2 of 2)
-    { key = "RIGHT", at_ms = 3960, hold_ms = 60 },  # the high nibble
-    { key = "UP", at_ms = 4100, hold_ms = 60 },  # Register, Reg (1 of 2)
-    { key = "UP", at_ms = 4240, hold_ms = 60 },  # Register, Reg (2 of 2)
-    { key = "RIGHT", at_ms = 4380, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (1 of 7)
-    { key = "RIGHT", at_ms = 4520, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (2 of 7)
-    { key = "RIGHT", at_ms = 4660, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (3 of 7)
-    { key = "RIGHT", at_ms = 4800, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (4 of 7)
-    { key = "RIGHT", at_ms = 4940, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (5 of 7)
-    { key = "RIGHT", at_ms = 5080, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (6 of 7)
-    { key = "RIGHT", at_ms = 5220, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (7 of 7)
-    { key = "DOWN", at_ms = 5360, hold_ms = 60 },  # Register, Nibble, Length, Read (1 of 4)
-    { key = "DOWN", at_ms = 5500, hold_ms = 60 },  # Register, Nibble, Length, Read (2 of 4)
-    { key = "DOWN", at_ms = 5640, hold_ms = 60 },  # Register, Nibble, Length, Read (3 of 4)
-    { key = "DOWN", at_ms = 5780, hold_ms = 60 },  # Register, Nibble, Length, Read (4 of 4)
-    { key = "OK", at_ms = 6030, hold_ms = 60 },  # WHO_AM_I: 0x68
-    { key = "BACK", at_ms = 6430, hold_ms = 60 },  # to the device
-    { key = "DOWN", at_ms = 6570, hold_ms = 60 },  # Dump, Write (1 of 2)
-    { key = "DOWN", at_ms = 6710, hold_ms = 60 },  # Dump, Write (2 of 2)
-    { key = "OK", at_ms = 6910, hold_ms = 60 },  # the write editor
-    { key = "LEFT", at_ms = 7050, hold_ms = 60 },  # Reg high nibble 7 -> 6 (the register and the nibble carry over from Read)
-    { key = "DOWN", at_ms = 7190, hold_ms = 60 },  # Register, Nibble (1 of 2)
-    { key = "DOWN", at_ms = 7330, hold_ms = 60 },  # Register, Nibble (2 of 2)
-    { key = "RIGHT", at_ms = 7470, hold_ms = 60 },  # the low nibble
-    { key = "UP", at_ms = 7610, hold_ms = 60 },  # Register, Reg (1 of 2)
-    { key = "UP", at_ms = 7750, hold_ms = 60 },  # Register, Reg (2 of 2)
-    { key = "RIGHT", at_ms = 7890, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (1 of 6)
-    { key = "RIGHT", at_ms = 8030, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (2 of 6)
-    { key = "RIGHT", at_ms = 8170, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (3 of 6)
-    { key = "RIGHT", at_ms = 8310, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (4 of 6)
-    { key = "RIGHT", at_ms = 8450, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (5 of 6)
-    { key = "RIGHT", at_ms = 8590, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (6 of 6)
-    { key = "DOWN", at_ms = 8730, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0 (1 of 4)
-    { key = "DOWN", at_ms = 8870, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0 (2 of 4)
-    { key = "DOWN", at_ms = 9010, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0 (3 of 4)
-    { key = "DOWN", at_ms = 9150, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0 (4 of 4)
-    { key = "RIGHT", at_ms = 9290, hold_ms = 60 },  # Byte 0 low nibble 1: 0x01
-    { key = "DOWN", at_ms = 9430, hold_ms = 60 },  # Write
-    { key = "OK", at_ms = 9680, hold_ms = 60 },  # the confirmation opens
-    { key = "BACK", at_ms = 10080, hold_ms = 60 },  # cancel: nothing armed, nothing written
-    { key = "OK", at_ms = 10480, hold_ms = 60 },  # Write again: it asks again
-    { key = "OK", at_ms = 10880, hold_ms = 60 },  # confirm: armed, written
-    { key = "BACK", at_ms = 11380, hold_ms = 60 },  # to the device
-    { key = "OK", at_ms = 11630, hold_ms = 60 },  # Read: the register and the nibble carry over
-    { key = "DOWN", at_ms = 11770, hold_ms = 60 },  # Register, Nibble, Length, Read (1 of 4)
-    { key = "DOWN", at_ms = 11910, hold_ms = 60 },  # Register, Nibble, Length, Read (2 of 4)
-    { key = "DOWN", at_ms = 12050, hold_ms = 60 },  # Register, Nibble, Length, Read (3 of 4)
-    { key = "DOWN", at_ms = 12190, hold_ms = 60 },  # Register, Nibble, Length, Read (4 of 4)
-    { key = "OK", at_ms = 12440, hold_ms = 60 },  # reads back 0x01
-    { key = "BACK", at_ms = 12840, hold_ms = 60 },  # to the device
-    { key = "BACK", at_ms = 13090, hold_ms = 60 },  # to the list
-    { key = "BACK", at_ms = 13340, hold_ms = 60 },  # home
-    { key = "BACK", at_ms = 13590, hold_ms = 60 },  # leave the app
+    { key = "DOWN", at_ms = 540, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (1 of 9)
+    { key = "DOWN", at_ms = 680, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (2 of 9)
+    { key = "DOWN", at_ms = 820, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (3 of 9)
+    { key = "DOWN", at_ms = 960, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (4 of 9)
+    { key = "DOWN", at_ms = 1100, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (5 of 9)
+    { key = "DOWN", at_ms = 1240, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (6 of 9)
+    { key = "DOWN", at_ms = 1380, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (7 of 9)
+    { key = "DOWN", at_ms = 1520, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (8 of 9)
+    { key = "DOWN", at_ms = 1660, hold_ms = 60 },  # About -> Diagnostics, Self-Test, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (9 of 9)
+    { key = "OK", at_ms = 1910, hold_ms = 60 },  # open the app
+    { key = "OK", at_ms = 2160, hold_ms = 60 },  # Scan: the five devices (the PN532 is off: emu_nfc_fault)
+    { key = "DOWN", at_ms = 2300, hold_ms = 60 },  # 0x23, 0x3c, 0x48, 0x68 (1 of 3)
+    { key = "DOWN", at_ms = 2440, hold_ms = 60 },  # 0x23, 0x3c, 0x48, 0x68 (2 of 3)
+    { key = "DOWN", at_ms = 2580, hold_ms = 60 },  # 0x23, 0x3c, 0x48, 0x68 (3 of 3)
+    { key = "OK", at_ms = 2780, hold_ms = 60 },  # open 0x68
+    { key = "OK", at_ms = 2980, hold_ms = 60 },  # Read
+    { key = "RIGHT", at_ms = 3120, hold_ms = 60 },  # Reg low nibble 5 (1 of 5)
+    { key = "RIGHT", at_ms = 3260, hold_ms = 60 },  # Reg low nibble 5 (2 of 5)
+    { key = "RIGHT", at_ms = 3400, hold_ms = 60 },  # Reg low nibble 5 (3 of 5)
+    { key = "RIGHT", at_ms = 3540, hold_ms = 60 },  # Reg low nibble 5 (4 of 5)
+    { key = "RIGHT", at_ms = 3680, hold_ms = 60 },  # Reg low nibble 5 (5 of 5)
+    { key = "DOWN", at_ms = 3820, hold_ms = 60 },  # Register, Nibble (1 of 2)
+    { key = "DOWN", at_ms = 3960, hold_ms = 60 },  # Register, Nibble (2 of 2)
+    { key = "RIGHT", at_ms = 4100, hold_ms = 60 },  # the high nibble
+    { key = "UP", at_ms = 4240, hold_ms = 60 },  # Register, Reg (1 of 2)
+    { key = "UP", at_ms = 4380, hold_ms = 60 },  # Register, Reg (2 of 2)
+    { key = "RIGHT", at_ms = 4520, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (1 of 7)
+    { key = "RIGHT", at_ms = 4660, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (2 of 7)
+    { key = "RIGHT", at_ms = 4800, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (3 of 7)
+    { key = "RIGHT", at_ms = 4940, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (4 of 7)
+    { key = "RIGHT", at_ms = 5080, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (5 of 7)
+    { key = "RIGHT", at_ms = 5220, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (6 of 7)
+    { key = "RIGHT", at_ms = 5360, hold_ms = 60 },  # Reg high nibble 7: register 0x75 (7 of 7)
+    { key = "DOWN", at_ms = 5500, hold_ms = 60 },  # Register, Nibble, Length, Read (1 of 4)
+    { key = "DOWN", at_ms = 5640, hold_ms = 60 },  # Register, Nibble, Length, Read (2 of 4)
+    { key = "DOWN", at_ms = 5780, hold_ms = 60 },  # Register, Nibble, Length, Read (3 of 4)
+    { key = "DOWN", at_ms = 5920, hold_ms = 60 },  # Register, Nibble, Length, Read (4 of 4)
+    { key = "OK", at_ms = 6170, hold_ms = 60 },  # WHO_AM_I: 0x68
+    { key = "BACK", at_ms = 6570, hold_ms = 60 },  # to the device
+    { key = "DOWN", at_ms = 6710, hold_ms = 60 },  # Dump, Write (1 of 2)
+    { key = "DOWN", at_ms = 6850, hold_ms = 60 },  # Dump, Write (2 of 2)
+    { key = "OK", at_ms = 7050, hold_ms = 60 },  # the write editor
+    { key = "LEFT", at_ms = 7190, hold_ms = 60 },  # Reg high nibble 7 -> 6 (the register and the nibble carry over from Read)
+    { key = "DOWN", at_ms = 7330, hold_ms = 60 },  # Register, Nibble (1 of 2)
+    { key = "DOWN", at_ms = 7470, hold_ms = 60 },  # Register, Nibble (2 of 2)
+    { key = "RIGHT", at_ms = 7610, hold_ms = 60 },  # the low nibble
+    { key = "UP", at_ms = 7750, hold_ms = 60 },  # Register, Reg (1 of 2)
+    { key = "UP", at_ms = 7890, hold_ms = 60 },  # Register, Reg (2 of 2)
+    { key = "RIGHT", at_ms = 8030, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (1 of 6)
+    { key = "RIGHT", at_ms = 8170, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (2 of 6)
+    { key = "RIGHT", at_ms = 8310, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (3 of 6)
+    { key = "RIGHT", at_ms = 8450, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (4 of 6)
+    { key = "RIGHT", at_ms = 8590, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (5 of 6)
+    { key = "RIGHT", at_ms = 8730, hold_ms = 60 },  # Reg low nibble 5 -> b: register 0x6b (6 of 6)
+    { key = "DOWN", at_ms = 8870, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0 (1 of 4)
+    { key = "DOWN", at_ms = 9010, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0 (2 of 4)
+    { key = "DOWN", at_ms = 9150, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0 (3 of 4)
+    { key = "DOWN", at_ms = 9290, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0 (4 of 4)
+    { key = "RIGHT", at_ms = 9430, hold_ms = 60 },  # Byte 0 low nibble 1: 0x01
+    { key = "DOWN", at_ms = 9570, hold_ms = 60 },  # Write
+    { key = "OK", at_ms = 9820, hold_ms = 60 },  # the confirmation opens
+    { key = "BACK", at_ms = 10220, hold_ms = 60 },  # cancel: nothing armed, nothing written
+    { key = "OK", at_ms = 10620, hold_ms = 60 },  # Write again: it asks again
+    { key = "OK", at_ms = 11020, hold_ms = 60 },  # confirm: armed, written
+    { key = "BACK", at_ms = 11520, hold_ms = 60 },  # to the device
+    { key = "OK", at_ms = 11770, hold_ms = 60 },  # Read: the register and the nibble carry over
+    { key = "DOWN", at_ms = 11910, hold_ms = 60 },  # Register, Nibble, Length, Read (1 of 4)
+    { key = "DOWN", at_ms = 12050, hold_ms = 60 },  # Register, Nibble, Length, Read (2 of 4)
+    { key = "DOWN", at_ms = 12190, hold_ms = 60 },  # Register, Nibble, Length, Read (3 of 4)
+    { key = "DOWN", at_ms = 12330, hold_ms = 60 },  # Register, Nibble, Length, Read (4 of 4)
+    { key = "OK", at_ms = 12580, hold_ms = 60 },  # reads back 0x01
+    { key = "BACK", at_ms = 12980, hold_ms = 60 },  # to the device
+    { key = "BACK", at_ms = 13230, hold_ms = 60 },  # to the list
+    { key = "BACK", at_ms = 13480, hold_ms = 60 },  # home
+    { key = "BACK", at_ms = 13730, hold_ms = 60 },  # leave the app
 ]
 pokes = [
     { at_ms = 300, var = "emu_nfc_fault", value = 1 },  # the PN532 is gone: 0x24 NACKs
 ]
 expect = [
     "lab: pins 38 39 40 41 42",
-    'menu: sel=12 "I2C"',
+    'menu: sel=13 "I2C"',
     "i2capp: home",
     "app: start i2c",
     "lab: i2c scan found 0x23 0x3c 0x48 0x68 0x76",

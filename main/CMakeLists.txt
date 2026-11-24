@@ -34,6 +34,10 @@ idf_component_register(
         storage_ui.c
         module_bridge.c
         settings_apply.c
+        selftest_checks.c
+        selftest_export.c
+        selftest_sha256.c
+        selftest_target.c
     INCLUDE_DIRS
         "."
         ${CMAKE_CURRENT_BINARY_DIR}
@@ -46,13 +50,17 @@ idf_component_register(
         stark_diag
         stark_display
         stark_event
+        stark_hal
         stark_input
         stark_ir
         stark_lab
         stark_module
+        stark_module_transport
         stark_nfc
         stark_settings
         stark_storage
         stark_subghz
         stark_ui
+        app_update
+        spi_flash
 )

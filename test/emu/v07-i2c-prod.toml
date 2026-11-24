@@ -60,7 +60,7 @@ presses = [
 ]
 expect = [
     "lab: pins 38 39",
-    'menu: sel=12 "I2C"',
+    'menu: sel=13 "I2C"',
     "i2capp: home",
     "app: start i2c",
     "lab: i2c scan found 0x50",

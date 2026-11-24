@@ -1,0 +1,78 @@
+# STARK-0707 on the production image (ADR-0023 section 8): the Self-Test app. Run all executes the
+# six automated checks on the app worker through the real services: RAM (a 27.5 kB block, a quarter
+# of the largest free block, never taking free heap under 128 kB), flash (the chip the emulator
+# reports against the image header, then two read-only SHA-256 passes over the running image),
+# settings, the module bus (the table against address probes of 0x50 and 0x51: esp-emu answers at
+# 0x50, so slot 0 reads as a generic module and ACKs, slot 1 is empty and does not), and events and
+# stacks (no drops, every task with at least 256 B of stack free). Storage is skipped: no card is
+# modelled, so the state it reports is `no card`. The walk follows: the Buttons check observes the
+# six injected keys, then the operator answers the display, buzzer and LED questions with OK. The
+# three answers are `attested`, never `pass`, and the summary reads 6 pass, 3 attested, 0 fail, 1
+# skip. The heap after leaving the app is the heap before it (`heap_delta_max`): the 1.2 kB of menu
+# state is freed by on_stop, the 27.5 kB RAM block and the transient buffers by the checks. The
+# flash check passing here shows the check's logic against the emulated flash, not the chip's (V1).
+# Two DOWN presses from About reach Self-Test (row 3, after Diagnostics). The app is opened after
+# the first `diag:` line (the heap baseline at 1 s), so the gate compares the heap with the app
+# closed against the heap before it was ever opened.
+name = "emu-v07-selftest-prod"
+end_ms = 15500
+heap_min = 200000
+heap_delta_max = 1024
+presses = [
+    { key = "DOWN", at_ms = 1400, hold_ms = 60 },  # Diagnostics
+    { key = "DOWN", at_ms = 1600, hold_ms = 60 },  # Self-Test
+    { key = "OK", at_ms = 1900, hold_ms = 60 },  # open the app (after the first diag line, the baseline)
+    { key = "OK", at_ms = 2500, hold_ms = 60 },  # Run all: the six automated checks, then the walk
+    { key = "UP", at_ms = 6000, hold_ms = 60 },  # Buttons: UP
+    { key = "DOWN", at_ms = 6300, hold_ms = 60 },  # DOWN
+    { key = "LEFT", at_ms = 6600, hold_ms = 60 },  # LEFT
+    { key = "RIGHT", at_ms = 6900, hold_ms = 60 },  # RIGHT
+    { key = "OK", at_ms = 7200, hold_ms = 60 },  # OK
+    { key = "BACK", at_ms = 7500, hold_ms = 60 },  # BACK: the sixth key, observed, nothing leaves
+    { key = "OK", at_ms = 8200, hold_ms = 60 },  # Display: "looks right"
+    { key = "OK", at_ms = 8900, hold_ms = 60 },  # Buzzer: "heard"
+    { key = "OK", at_ms = 9600, hold_ms = 60 },  # Status LED: "blinks"
+    { key = "BACK", at_ms = 10800, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "app: registry n=18 ",
+    'menu: sel=3 "Self-Test"',
+    "selftestapp: home",
+    "app: start selftest",
+    "selftestapp: run all",
+    "selftest: ram pass ",
+    "selftest: flash pass ",
+    "selftest: settings pass ",
+    "selftest: storage skip no card",
+    "selftest: module bus pass ",
+    "selftest: events and stacks pass ",
+    "selftestapp: walk start",
+    "key: UP press",
+    "key: RIGHT press",
+    "key: BACK press",
+    "selftest: buttons pass all 6 keys seen",
+    "selftest: display attested ",
+    "selftest: buzzer attested ",
+    "selftest: status led attested ",
+    "selftest: summary 6 pass  3 attested  0 fail  1 skip",
+    "selftestapp: walk done",
+    "app: stop selftest",
+]
+forbid = [
+    "selftest: ram fail",
+    "selftest: flash fail",
+    "selftest: settings fail",
+    "selftest: storage fail",
+    "selftest: module bus fail",
+    "selftest: events and stacks fail",
+    "selftest: buttons fail",
+    "selftest: display pass",
+    "selftest: buzzer pass",
+    "selftest: status led pass",
+    "selftest: display fail",
+    "selftest: buzzer fail",
+    "selftest: status led fail",
+    "selftestapp: walk ended",
+    "selftestapp: worker not started",
+    "selftest: export",
+]

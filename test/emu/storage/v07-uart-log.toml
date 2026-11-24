@@ -48,7 +48,7 @@ presses = [
     { key = "BACK", at_ms = 14750, hold_ms = 60 },  # leave the app
 ]
 expect = [
-    'menu: sel=17 "UART"',
+    'menu: sel=18 "UART"',
     "uartapp: log on",
     "lab: uart open 115200 8N1",
     "uartapp: monitor 115200 8N1",
@@ -61,7 +61,7 @@ expect = [
     "uartapp: monitor closed",
     "uartapp: log closed uart_0002.log 1024 bytes crc 0x5d3de8ed",
     "app: stop uart",
-    'menu: sel=11 "GPIO"',
+    'menu: sel=12 "GPIO"',
     "app: start gpio",
     "gpioapp: open pin 38 LAB_UART_TX",
     "lab: released pin 38",

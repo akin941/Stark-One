@@ -36,7 +36,7 @@ presses = [
 ]
 expect = [
     "nfc: pn532 fw 1.6",
-    'menu: sel=14 "NFC"',
+    'menu: sel=15 "NFC"',
     "app: start nfc",
     "nfc: field on",
     "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",

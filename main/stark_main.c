@@ -19,6 +19,7 @@
 #include "settings_apply.h"
 #include "storage_ui.h"
 #include "module_bridge.h"
+#include "selftest_target.h"
 #include "stark_app.h"
 #include "app_registry.h"
 #include "stark_ui.h"
@@ -147,6 +148,13 @@ void app_main(void)
     err = stark_diag_init(diag_ui_source);
     if (err != STARK_OK) {
         STARK_LOGE("boot", "diag init failed: %s", stark_err_str(err));
+    } else {
+        /* Not boot-critical: without it the Self-Test app has no checks (STARK-0707). The checks
+         * read the other services only when they run, so the order of their init is free. */
+        err = selftest_target_init();
+        if (err != STARK_OK) {
+            STARK_LOGE("boot", "selftest init failed: %s", stark_err_str(err));
+        }
     }
 
     /* Last, and never boot-critical: the card is mounted in the background,

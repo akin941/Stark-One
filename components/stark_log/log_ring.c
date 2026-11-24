@@ -2,6 +2,7 @@
  * log_ring.c — the capture ring (log_ring.h). Pure.
  */
 #include "log_ring.h"
+#include <string.h>
 
 static char at(const log_ring_t *r, size_t i)
 {
@@ -70,6 +71,34 @@ size_t log_ring_take(log_ring_t *r, char *out, size_t max, uint32_t *dropped)
     r->head = (r->head + end) % r->cap;
     r->len -= end;
     return end;
+}
+
+size_t log_ring_tail(const log_ring_t *r, char *out, size_t max)
+{
+    if (r->cap == 0 || r->len == 0 || max == 0) {
+        return 0;
+    }
+    size_t end = r->len; /* through the last newline: a line still being written is not shown */
+    while (end > 0 && at(r, end - 1) != '\n') {
+        end--;
+    }
+    if (end == 0) {
+        return 0;
+    }
+    size_t start = end > max ? end - max : 0;
+    if (start > 0) { /* begin on a line boundary: the first newline at or after start - 1 */
+        size_t i = start - 1;
+        while (at(r, i) != '\n') {
+            i++;
+        }
+        start = i + 1;
+    }
+    size_t n = end - start;
+    size_t from = (r->head + start) % r->cap;
+    size_t first = r->cap - from < n ? r->cap - from : n;
+    memcpy(out, r->buf + from, first);
+    memcpy(out + first, r->buf, n - first);
+    return n;
 }
 
 size_t log_ring_used(const log_ring_t *r)

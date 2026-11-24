@@ -6,9 +6,11 @@
 #include <stdbool.h>
 #include <string.h>
 #include "diag_core.h"
+#include "selftest_svc.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
 #include "stark_event.h"
@@ -26,6 +28,10 @@ static uint32_t s_prev_frames;
 static uint64_t s_prev_us;
 static uint32_t s_samples;
 static TaskStatus_t s_status[DIAG_MAX_TASKS];
+
+/* The self-test's clock and mutex (STARK-0707); the rest of it is selftest_svc.c. */
+static StaticSemaphore_t s_selftest_lock_buf;
+static SemaphoreHandle_t s_selftest_lock;
 
 /* arg != NULL: the silent init sample (taken inside app_main, before the
  * main task has returned and freed its stack — a heap figure no later sample
@@ -71,6 +77,24 @@ static void sample(void *arg)
     (void)stark_event_publish(&e);
 }
 
+static uint32_t selftest_now_ms(void *ctx)
+{
+    (void)ctx;
+    return (uint32_t)((uint64_t)esp_timer_get_time() / 1000u);
+}
+
+static void selftest_lock(void *ctx)
+{
+    (void)ctx;
+    (void)xSemaphoreTake(s_selftest_lock, portMAX_DELAY);
+}
+
+static void selftest_unlock(void *ctx)
+{
+    (void)ctx;
+    (void)xSemaphoreGive(s_selftest_lock);
+}
+
 stark_err_t stark_diag_init(stark_diag_ui_fn ui_source)
 {
     if (s_timer != NULL) {
@@ -89,6 +113,8 @@ stark_err_t stark_diag_init(stark_diag_ui_fn ui_source)
         return err;
     }
     sample(&s_samples); /* silent: a valid snapshot from boot on, not only after 1 s */
+    s_selftest_lock = xSemaphoreCreateMutexStatic(&s_selftest_lock_buf);
+    selftest_svc_init(selftest_now_ms, selftest_lock, selftest_unlock);
     err = stark_err_from_esp(esp_timer_start_periodic(s_timer, 1000000u));
     if (err != STARK_OK) {
         (void)esp_timer_delete(s_timer);
