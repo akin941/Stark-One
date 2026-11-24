@@ -147,6 +147,12 @@ GPIOs; a header of spare lab pins is a V1 hardware requirement.
 * **DevKitC-1 caveat:** GPIO 38 is the on-board RGB LED on board rev v1.1 (GPIO 48 on v1.0,
   which is not a lab pin): driving it lights the LED and the confirmation says "own hardware
   only".
+* **Frequency and duty (STARK-0703)** are measured on an input pad from the timestamps of its
+  edges, 1 Hz to 50 kHz at 3.3 V logic, with no output and no arm. A faster signal is reported as
+  `> 50 kHz, not measured` after a 20 ms gate (the edge interrupt switches itself off after a few
+  thousand edges, so a fast clock cannot stall the CPU, but the pad is still not 5 V tolerant), and
+  the app measures one pin at a time: wiring `LAB_UART_TX` PWM into `LAB_UART_RX` needs a second tool
+  or a signal generator (ADR-0023, 0703 addendum 10).
 * **Module ID EEPROMs (0x50, 0x51) are never written** by the I²C tool (ADR-0021 §2), and
   the SPI probe is refused on any slot whose module declares a function (ADR-0023 §6).
 * The measured current, drive and measurement accuracy are V1 checks

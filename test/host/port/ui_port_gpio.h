@@ -22,3 +22,6 @@ void ui_port_gpio_set_slot0(stark_module_state_t state);
 
 /* Pulses the service was asked to cut short, and the widths of the pulses it ran. */
 unsigned ui_port_gpio_cancels(void);
+
+/* Measurements the service was asked to cut short (stark_lab_measure_cancel()). */
+unsigned ui_port_gpio_measure_cancels(void);

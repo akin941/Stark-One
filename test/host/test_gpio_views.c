@@ -8,10 +8,12 @@
 #include "unity.h"
 
 static gpioapp_cfg_t s_cfg;
+static const char *s_meas; /* the Measure row's text (NULL: none yet) */
 
 void setUp(void)
 {
     gpioview_cfg_reset(&s_cfg);
+    s_meas = NULL;
 }
 void tearDown(void)
 {}
@@ -29,7 +31,8 @@ static const stark_lab_info_t k_hiz = {.mode = STARK_LAB_MODE_HIZ};
 static const char *value(gpioview_row_t k, const stark_lab_info_t *info, bool level_read,
                          const char *probe, char *buf)
 {
-    const gpioview_t v = {.cfg = &s_cfg, .info = info, .level_read = level_read, .probe = probe};
+    const gpioview_t v = {
+        .cfg = &s_cfg, .info = info, .level_read = level_read, .probe = probe, .meas = s_meas};
     return gpioview_value(k, &v, buf, 24);
 }
 
@@ -51,10 +54,11 @@ static void test_the_rows_of_every_mode(void)
     TEST_ASSERT_EQUAL(GPIOVIEW_ROW_PROBE, s_kinds[1]);
     TEST_ASSERT_EQUAL(GPIOVIEW_ROW_PAD, s_kinds[2]);
 
-    TEST_ASSERT_EQUAL_UINT(4, rows(GPIOAPP_MODE_IN));
+    TEST_ASSERT_EQUAL_UINT(5, rows(GPIOAPP_MODE_IN));
     TEST_ASSERT_EQUAL(GPIOVIEW_ROW_PULL, s_kinds[1]);
     TEST_ASSERT_EQUAL(GPIOVIEW_ROW_READ, s_kinds[2]);
-    TEST_ASSERT_EQUAL(GPIOVIEW_ROW_PAD, s_kinds[3]);
+    TEST_ASSERT_EQUAL(GPIOVIEW_ROW_MEASURE, s_kinds[3]); /* STARK-0703 */
+    TEST_ASSERT_EQUAL(GPIOVIEW_ROW_PAD, s_kinds[4]);
 
     TEST_ASSERT_EQUAL_UINT(5, rows(GPIOAPP_MODE_OUT));
     TEST_ASSERT_EQUAL(GPIOVIEW_ROW_LEVEL, s_kinds[1]);
@@ -78,9 +82,9 @@ static void test_the_rows_of_every_mode(void)
 
 static void test_labels(void)
 {
-    const char *want[GPIOVIEW_ROW_COUNT] = {"Mode",  "Pull",  "Level", "Freq",  "Duty",
-                                            "Width", "Probe", "Read",  "Drive", "Toggle",
-                                            "Start", "Pulse", "Pad"};
+    const char *want[GPIOVIEW_ROW_COUNT] = {"Mode",   "Pull",  "Level", "Freq",    "Duty",
+                                            "Width",  "Probe", "Read",  "Measure", "Drive",
+                                            "Toggle", "Start", "Pulse", "Pad"};
     for (int k = 0; k < GPIOVIEW_ROW_COUNT; k++) {
         TEST_ASSERT_EQUAL_STRING(want[k], gpioview_label((gpioview_row_t)k, false));
     }
@@ -133,6 +137,12 @@ static void test_value_text(void)
     TEST_ASSERT_EQUAL_STRING("H", value(GPIOVIEW_ROW_READ, &k_hiz, true, NULL, b));
     TEST_ASSERT_EQUAL_STRING("L", value(GPIOVIEW_ROW_READ, &k_hiz, false, NULL, b));
     TEST_ASSERT_EQUAL_STRING("Hi-Z", value(GPIOVIEW_ROW_PAD, &k_hiz, false, NULL, b));
+    TEST_ASSERT_EQUAL_STRING("50 kHz max", value(GPIOVIEW_ROW_MEASURE, &k_hiz, false, NULL, b));
+    s_meas = "";
+    TEST_ASSERT_EQUAL_STRING("50 kHz max", value(GPIOVIEW_ROW_MEASURE, &k_hiz, false, NULL, b));
+    s_meas = "1.000 kHz duty 25.0 %";
+    TEST_ASSERT_EQUAL_STRING("1.000 kHz duty 25.0 %",
+                             value(GPIOVIEW_ROW_MEASURE, &k_hiz, false, NULL, b));
     TEST_ASSERT_NULL(value(GPIOVIEW_ROW_DRIVE, &k_hiz, false, NULL, b));
     TEST_ASSERT_NULL(value(GPIOVIEW_ROW_TOGGLE, &k_hiz, false, NULL, b));
     TEST_ASSERT_NULL(value(GPIOVIEW_ROW_PWM, &k_hiz, false, NULL, b));
@@ -238,9 +248,9 @@ static void test_frequency_duty_and_width_steps(void)
 static void test_other_rows_do_not_adjust(void)
 {
     const gpioapp_cfg_t before = s_cfg;
-    const gpioview_row_t none[] = {GPIOVIEW_ROW_PROBE,  GPIOVIEW_ROW_READ, GPIOVIEW_ROW_DRIVE,
-                                   GPIOVIEW_ROW_TOGGLE, GPIOVIEW_ROW_PWM,  GPIOVIEW_ROW_PULSE,
-                                   GPIOVIEW_ROW_PAD,    GPIOVIEW_ROW_COUNT};
+    const gpioview_row_t none[] = {GPIOVIEW_ROW_PROBE, GPIOVIEW_ROW_READ,   GPIOVIEW_ROW_MEASURE,
+                                   GPIOVIEW_ROW_DRIVE, GPIOVIEW_ROW_TOGGLE, GPIOVIEW_ROW_PWM,
+                                   GPIOVIEW_ROW_PULSE, GPIOVIEW_ROW_PAD,    GPIOVIEW_ROW_COUNT};
     for (size_t i = 0; i < sizeof none / sizeof none[0]; i++) {
         TEST_ASSERT_FALSE(gpioview_adjust(&s_cfg, none[i], +1));
         TEST_ASSERT_FALSE(gpioview_adjust(&s_cfg, none[i], -1));

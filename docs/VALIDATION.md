@@ -74,6 +74,7 @@ bump is a deliberate change with a full emulator run — never "latest".
 | GPIO output read back as an input (`GPIO_MODE_INPUT_OUTPUT`, STARK-0701 probe, 2026-11-24) | ✅ on pads 38, 39, 40 and 3: driven 0 reads 0, driven 1 reads 1; `gpio_set_drive_capability(GPIO_DRIVE_CAP_0)` then `gpio_get_drive_capability` returns `GPIO_DRIVE_CAP_0`. The lab's contention check (drive, wait, read back) therefore runs for real. The drive strength itself has no observable effect |
 | GPIO any-edge interrupt from a pad the firmware itself toggles (STARK-0701 probe) | ✅ 20 software toggles of pad 38 gave 20 ISR calls on pad 38 and none on pad 39 (no wire joins two pads). Edge capture of a self-driven pad is available to a test image; an *external* signal is still not |
 | I²C sweep 0x08 to 0x77 and register access (STARK-0701 probe) | ✅ 112 `i2c_master_probe` calls (5 ms timeout each, about 3.2 ms of emulated time in all): exactly **0x50** answers; a write to 0x51 at 400 kHz returns `ESP_ERR_INVALID_RESPONSE` (264, the address NACK). The built-in EEPROM at 0x50 reads zeros **and accepts writes**: A5 5A written at register 0x10 is read back from register 0x10 (a plain read after a write returned zeros). Correction to the "reads zeros" fact above: the bus does not refuse a write there, so STARK-0704's refusal of writes to 0x50 is firmware's, never the bus's |
+| The GPIO interrupt service and an any-edge handler (STARK-0703, `v07-measure-prod`) | ✅ `gpio_install_isr_service(ESP_INTR_FLAG_IRAM)`, `gpio_set_intr_type(GPIO_INTR_ANYEDGE)`, `gpio_isr_handler_add` with an `IRAM_ATTR` handler and the removal again all return OK on the production image; an unconnected pull-up pad raises no interrupt in a 20 ms gate and a 4 s window (the pad reads high throughout), so the Measure row answers `no signal (high)`; no `gpio:` error line. A pad the firmware toggles itself raised 20 of 20 interrupts in the STARK-0701 probe, but the GPIO app never measures a pad it drives, so no edge is ever stamped in the production image |
 | Wear-levelled FAT on an internal-flash partition (storage test image, STARK-0201) | ✅ formatted on first boot, mounted at `/sd`: `storage: mounted emu-flashfat total=972 free=972` (kB) |
 
 **Not available, and not faked:**
@@ -344,8 +345,8 @@ receiving is never claimed below V1.
 
 V0.7 completion means **software / lab-protocol verified**: a pad driven, a wire measured or a
 real peripheral answering is never claimed below V1 (ROADMAP V1 exit 13). Landed so far:
-STARK-0701 (pin safety and the lab seam) and STARK-0702 (the GPIO app); the other tools follow in
-STARK-0703 to 0707.
+STARK-0701 (pin safety and the lab seam), STARK-0702 (the GPIO app) and STARK-0703 (frequency and duty
+measurement); the other tools follow in STARK-0704 to 0707.
 
 **What runs where (STARK-0701).**
 * **Host:** the board's pin classes for every number from -1 to 64 and the offer table derived
@@ -389,6 +390,33 @@ STARK-0703 to 0707.
   LEDC does not reach a pad in esp-emu, so no PWM waveform is claimed here.
 * **Not proven anywhere before V1:** the PWM waveform on a logic analyser, a pulse's width, a
   short to the idle level during a pulse, a PWM against a driven pad, drive strength.
+
+**What runs where (STARK-0703).**
+* **Host:** the arithmetic (`test_lab_meas`: 79 edge sets from `scripts/gen_lab_vectors.py`, whose
+  independent Python reference computes every expected result exactly; 49 of them are also held to the
+  accuracy of ADR-0023 §4, ±0.5 % to 10 kHz and ±2 % to 50 kHz, ±2 and ±5 points of duty, with seeded
+  jitter of up to ±2 µs; every status, a counter wrap, hostile input and 10 000 seeded random edge sets
+  that never return a number outside their status); the window plan for every gate count; the service
+  over the pad model (`test_lab_pins`: gate, window and ring bounds, a PWM wired to a measured pad at
+  six frequency and duty pairs, a sweep of 40 frequency and duty pairs with jitter, too fast, steady
+  lines, overflow, glitches, a cancel and a failure); the transport over the fake HAL
+  (`test_lab_service`: every number from -1 to 64 against the capture, the interrupt on for the window
+  only); the pad model's own edge synthesis (`test_fake_lab`); and the Measure row on the UI port
+  (`test_ui_gpio`, frames pinned after inspection). `lab_meas.c`, `lab_pins.c`,
+  `lab_transport_hal.c`, `fake_lab.c` and `gpio_views.c` run at 100 % lines.
+* **Emulator, production image:** `v07-measure-prod` opens pin 38 as an input with a pull-up and
+  measures it. The real GPIO interrupt service (installed with the IRAM flag), the IRAM edge handler,
+  the cycle counter and the window wait run; nothing drives the pad, so no edge comes and the answer is
+  `no signal (high)` after the 4 s window, with the interrupt removed again. That is all the emulator
+  can show: it cannot stimulate a pad from outside, and a pad the firmware drives itself is not
+  something the GPIO app measures.
+* **Emulator, test image:** `storage/v07-measure` measures an external source on pad 39 through the app
+  at 1 kHz / 25 %, 40 kHz / 50 %, 80 kHz (`too fast` from the gate) and a steady high line, and cuts one
+  measurement short with BACK. The stamps are the pad model's, from the emulated clock.
+* **Not proven anywhere before V1:** the interrupt latency, the accuracy of a real signal from 1 Hz to
+  50 kHz (a signal generator, ROADMAP V1 exit 13), whether a flash operation during a window disturbs a stamp
+  (the handler is in IRAM so it should not), and a PWM wired into another pad: the GPIO app holds one
+  pin at a time, so that check needs a signal generator or another tool (ADR-0023, 0703 addendum 10).
 
 ---
 

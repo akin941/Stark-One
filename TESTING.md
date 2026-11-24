@@ -160,8 +160,8 @@ commit. Reserved prefixes:
 | `ir:` | `stark_ir` | `ir: init rx=48 tx=47` / `ir: rx on` / `ir: rx NEC addr=0x10 cmd=0x12` / `ir: rx RAW n=67` (STARK-0303) / `ir: tx NEC addr=0x00 cmd=0x12 carrier=38000 dur=68 repeats=0` / `ir: tx done` (STARK-0304) |
 | `irapp:` | IR app | `irapp: view NEC 00/12` / `irapp: saved ir_0001.ir` / `irapp: save refused: no card` (STARK-0305) |
 | `storageapp:` | Storage app | `storageapp: status mounted` / `storageapp: eject requested` / `storageapp: mount requested` (STARK-0202) / `storageapp: wtest ok bytes=102400 crc=<hex> frames=<n>` / `storageapp: wtest failed: <err> at <offset>` (STARK-0203) |
-| `lab:` | `stark_lab` | `lab: pins 38 39` / `lab: pin 40 withdrawn (slot 0)` / `lab: contention pin 38` (STARK-0701; `pins` lists the offer at boot and after each change) / `lab: armed pin 38` / `lab: pwm pin 38 1000 Hz 25 %` / `lab: pwm stopped` / `lab: pulse pin 38 low 100 us` / `lab: released pin 38` / `lab: released all` (STARK-0702) |
-| `gpioapp:` | GPIO app | `gpioapp: home 38 39` / `gpioapp: open pin 38 LAB_UART_TX` / `gpioapp: pin 38 IN H` / `gpioapp: confirm pin 38 reads floating` / `gpioapp: cancelled pin 38` (STARK-0702; the full list is ADR-0023's 0702 addendum) |
+| `lab:` | `stark_lab` | `lab: pins 38 39` / `lab: pin 40 withdrawn (slot 0)` / `lab: contention pin 38` (STARK-0701; `pins` lists the offer at boot and after each change) / `lab: armed pin 38` / `lab: pwm pin 38 1000 Hz 25 %` / `lab: pwm stopped` / `lab: pulse pin 38 low 100 us` / `lab: released pin 38` / `lab: released all` (STARK-0702) / `lab: measure 1000.0 Hz duty 25.0 %` / `lab: measure too fast` / `lab: measure no signal (high)` (STARK-0703) |
+| `gpioapp:` | GPIO app | `gpioapp: home 38 39` / `gpioapp: open pin 38 LAB_UART_TX` / `gpioapp: pin 38 IN H` / `gpioapp: confirm pin 38 reads floating` / `gpioapp: cancelled pin 38` (STARK-0702; the full list is ADR-0023's 0702 addendum) / `gpioapp: pin 39 measuring` / `gpioapp: pin 39 measure 1.000 kHz duty 25.0 %` / `gpioapp: pin 39 not measured: <err>` (STARK-0703) |
 
 **Scenario budget:** ≤ 20 s of emulated time each. Emulator scenarios are free and
 all run on every push and pull request. (Wokwi's quota once forced a push-only smoke
@@ -210,6 +210,8 @@ that milestone before a scenario depends on them.
 | V0.4 | `storage/v04-*.toml`, `soak/v04-soak.toml` | Test image with the fake-PN532 transport: detection, identification, 20/20 reads, confirmed NDEF write + read-back, dumps, faults and recovery; 60 s soak. Not RF evidence |
 | V0.7 | `v07-lab-boot.toml` | Production image: the lab offers exactly the two lab UART pins (`lab: pins 38 39`, slot 0 reads generic), nothing is driven, boot heap above the gate (STARK-0701) |
 | V0.7 | `storage/v07-pins.toml` | Test image with the pad-model transport (the fifth and last substitution, ADR-0023): slot 0 empty offers `38 39 40 41 42`; a module appearing logs each slot pin withdrawn; it leaving offers them again. Integration evidence, not pad evidence |
+| V0.7 | `v07-measure-prod.toml` | Production image: the Measure row on pin 38 (pull-up) takes the 20 ms gate and a 4 s window through the real GPIO interrupt service and the IRAM edge handler; nothing drives the pad, so the answer is `no signal (high)` and the interrupt is gone again (STARK-0703) |
+| V0.7 | `storage/v07-measure.toml` | Test image with the pad-model transport: an external source on pad 39 measured at 1 kHz / 25 %, 40 kHz / 50 %, 80 kHz (`too fast` from the gate alone) and a steady high line (`no signal`, a 4 s window), the last measurement cut short by BACK. Integration evidence, not a signal on a pad |
 | V0.7 | `v07-i2c-scan.toml` | Scanner finds esp-emu's built-in I²C EEPROM (and nothing else) |
 | V0.7 | `v07-uart-loopback.toml` | UART bridge round-trips via esp-emu's `--uart1-tcp` side channel |
 

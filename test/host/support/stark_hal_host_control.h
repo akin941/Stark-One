@@ -31,6 +31,7 @@ uint64_t hal_host_delayed_us(void);
 #define HAL_HOST_FAIL_PWM_DUTY   2u
 #define HAL_HOST_FAIL_DRIVE_WEAK 4u
 #define HAL_HOST_FAIL_OUT_WEAK   8u
+#define HAL_HOST_FAIL_EDGES      16u
 void hal_host_fail(unsigned mask);
 void hal_host_set_delay_hook(void (*hook)(unsigned call));
 
@@ -38,6 +39,24 @@ void hal_host_set_delay_hook(void (*hook)(unsigned call));
 
 /* Clears all fake GPIO state (for test isolation between cases). */
 void hal_host_gpio_reset(void);
+
+/* ---- Edge capture (STARK-0703) -----------------------------------------------------------------
+ * stark_hal_gpio_edges() returns what hal_host_edges_set() was given (up to 2048 stamps: `n` of
+ * them stored as far as the caller's cap allows, `seen` edges counted, saturating like the target
+ * at cap + 1 or STARK_HAL_EDGES_GATE_MAX). The window is added to hal_host_delayed_us(). The hook
+ * runs while the interrupt is on (hal_host_edge_irq_pin() is the pin then, -1 otherwise), and may
+ * call stark_hal_gpio_edges_cancel(). */
+void hal_host_edges_set(const uint32_t *ts, size_t n, uint32_t seen, bool first_level);
+void hal_host_set_edges_hook(void (*hook)(int pin));
+int hal_host_edge_irq_pin(void);
+unsigned hal_host_edges_calls(void);
+typedef struct {
+    int pin;
+    uint32_t window_us;
+    size_t cap;
+    bool level_before; /* the fake pad's level when the capture started */
+} hal_host_edges_call_t;
+const hal_host_edges_call_t *hal_host_edges_last(void);
 
 /* ---- Lab pad inspection (STARK-0701) ---------------------------------------
  * What the pad calls of stark_hal.h last did to a pin; mode is NONE until one has. */

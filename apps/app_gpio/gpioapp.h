@@ -37,13 +37,14 @@ typedef enum {
     GPIOVIEW_ROW_FREQ,
     GPIOVIEW_ROW_DUTY,
     GPIOVIEW_ROW_WIDTH,
-    GPIOVIEW_ROW_PROBE,  /* Hi-Z: what is the pad doing (floating / high / low) */
-    GPIOVIEW_ROW_READ,   /* Input: read the level again */
-    GPIOVIEW_ROW_DRIVE,  /* Output: drive the Level row */
-    GPIOVIEW_ROW_TOGGLE, /* Output: flip the level and drive it */
-    GPIOVIEW_ROW_PWM,    /* PWM: Start, or Stop while it runs */
-    GPIOVIEW_ROW_PULSE,  /* Pulse: one pulse */
-    GPIOVIEW_ROW_PAD,    /* the live state of the pad (dimmed, never selected) */
+    GPIOVIEW_ROW_PROBE,   /* Hi-Z: what is the pad doing (floating / high / low) */
+    GPIOVIEW_ROW_READ,    /* Input: read the level again */
+    GPIOVIEW_ROW_MEASURE, /* Input: measure frequency and duty (STARK-0703) */
+    GPIOVIEW_ROW_DRIVE,   /* Output: drive the Level row */
+    GPIOVIEW_ROW_TOGGLE,  /* Output: flip the level and drive it */
+    GPIOVIEW_ROW_PWM,     /* PWM: Start, or Stop while it runs */
+    GPIOVIEW_ROW_PULSE,   /* Pulse: one pulse */
+    GPIOVIEW_ROW_PAD,     /* the live state of the pad (dimmed, never selected) */
     GPIOVIEW_ROW_COUNT
 } gpioview_row_t;
 
@@ -55,6 +56,7 @@ typedef struct {
     const stark_lab_info_t *info; /* the service's view of the pin */
     bool level_read;              /* the last read of the pad (Input) */
     const char *probe;            /* "floating", "high", "low" or "" */
+    const char *meas;             /* the Measure row's text: a result, "measuring..." or "" */
 } gpioview_t;
 
 void gpioview_cfg_reset(gpioapp_cfg_t *c); /* Hi-Z, no pull, 1 kHz 50 %, 100 us, level low */

@@ -1,8 +1,9 @@
 /*
  * stark_lab.h — L3 lab service (TASKS.md STARK-0701…0707, ADR-0023): the one place that
  * decides which pins a lab tool may touch and checks every pin call against it. Today the
- * pad group (STARK-0701) and the PWM and pulse outputs (STARK-0702), whose user is the GPIO app;
- * later tasks add measurement, I2C, SPI and UART behind the same seam.
+ * pad group (STARK-0701), the PWM and pulse outputs (STARK-0702) and the frequency and duty
+ * measurement (STARK-0703), whose user is the GPIO app; later tasks add I2C, SPI and UART behind
+ * the same seam.
  *
  * Pins are named only through stark_board (stark_board_pin_class(), stark_board_lab_pins()):
  * a LAB pin is always offered, a SLOT pin only while its slot reads ABSENT, everything else
@@ -11,6 +12,9 @@
  * needs an arm after the app's confirmation; every pin is released to hi-Z (input, no pull)
  * on release, withdrawal and failure. Changes of the offer are published as
  * STARK_EVT_SYSTEM / STARK_SYS_LAB with system.arg = STARK_LAB_EVT_*.
+ *
+ * Frequency and duty (STARK-0703) are measured from timestamped edges (stark_lab_measure(),
+ * ADR-0023 §4); the arithmetic is the pure lab_meas.c.
  *
  * Any task may call; one mutex serialises, and nothing is allocated after init.
  */
@@ -22,9 +26,10 @@
 #include "stark_board.h"
 #include "stark_err.h"
 
-#define STARK_SYS_LAB      8u
+#define STARK_SYS_LAB              8u
 
-#define STARK_LAB_EVT_PINS 1 /* the offer changed, or a held pin was withdrawn */
+#define STARK_LAB_EVT_PINS         1 /* the offer changed, or a held pin was withdrawn */
+#define STARK_LAB_EVT_MEASURE_DONE 2 /* a stark_lab_measure() has a result (STARK-0703) */
 
 typedef enum { STARK_LAB_PULL_NONE, STARK_LAB_PULL_UP, STARK_LAB_PULL_DOWN } stark_lab_pull_t;
 
@@ -165,6 +170,58 @@ uint32_t stark_lab_pwm_step_duty(uint32_t duty_pct, int dir);
 
 /* The next width in the direction, clamped to the list; an unlisted value gives 100 us. */
 uint32_t stark_lab_pulse_step(uint32_t us, int dir);
+
+/* ---- frequency and duty from edges (lab_meas.c, pure; STARK-0703, ADR-0023 §4) ------------ */
+
+#define STARK_LAB_MEAS_RING   1024u /* timestamps kept per window: the ring the caller supplies */
+#define STARK_LAB_MEAS_HZ_MIN 1u    /* the measured range, hertz */
+#define STARK_LAB_MEAS_HZ_MAX 50000u
+
+typedef enum {
+    STARK_LAB_MEAS_OK,        /* hz_x100, duty_x10 and period_ticks are valid */
+    STARK_LAB_MEAS_TOO_FAST,  /* above 50 kHz: not measured */
+    STARK_LAB_MEAS_TOO_SLOW,  /* below 1 Hz, or fewer than two rising edges in the window */
+    STARK_LAB_MEAS_NO_SIGNAL, /* no edge at all: a steady line, high or low (`steady_high`) */
+    STARK_LAB_MEAS_OVERFLOW,  /* more edges than the ring holds: reported, never guessed */
+    STARK_LAB_MEAS_GLITCH,    /* a pulse shorter than 1 us (or two edges at one instant) */
+    STARK_LAB_MEAS_INVALID    /* timestamps that go backwards, a zero clock, a ring too long */
+} stark_lab_meas_status_t;
+
+typedef struct {
+    stark_lab_meas_status_t status;
+    uint32_t hz_x100;      /* frequency in 0.01 Hz units; 0 unless OK */
+    uint16_t duty_x10;     /* duty in 0.1 % units; 0 unless OK */
+    uint32_t period_ticks; /* the mean period in clock ticks; 0 unless OK */
+    bool steady_high;      /* NO_SIGNAL: the level the line sits at */
+    uint32_t edges;        /* edges the window kept */
+} stark_lab_meas_t;
+
+/*
+ * Measures the signal on a held input pin (mode IN): a 20 ms pre-gate counts edges to estimate
+ * the rate (more than 50 kHz is TOO_FAST at once), then a window of 10 ms to 4 s sized so the
+ * expected edges fit the ring is captured and lab_meas_compute() turns it into the result. The
+ * caller supplies the ring (`ring`, `cap` >= 2 timestamps, at most STARK_LAB_MEAS_RING are
+ * used; the service allocates nothing). The pad is an input throughout and returns to its
+ * pull; the edge interrupt exists for the two windows only. Takes no arm: nothing is driven.
+ * STARK_ERR_STATE unless the pin is held and an input, or when the measurement was cancelled
+ * (nothing is returned); STARK_ERR_NOT_SUPPORTED for a pin that is not offered;
+ * STARK_ERR_INVALID_ARG for a NULL argument or a short ring; a transport failure puts the pin in
+ * hi-Z, clears its arm and returns STARK_ERR_IO. Blocks the caller for up to 4.1 s: call it from
+ * the app worker. Publishes STARK_LAB_EVT_MEASURE_DONE when a result is ready. Logs `lab: measure
+ * <text>`.
+ */
+stark_err_t stark_lab_measure(int pin, uint32_t *ring, size_t cap, stark_lab_meas_t *out);
+
+/* Ends a measurement that is waiting, early (within 10 ms). Any task, takes no lock. */
+void stark_lab_measure_cancel(void);
+
+/* "1.000 kHz duty 25.0 %", "250.00 Hz duty 50.0 %", "> 50 kHz, not measured", "< 1 Hz",
+ * "no signal (high)", "overflow: too many edges", "glitches (< 1 us)", "invalid timestamps". */
+void stark_lab_meas_text(const stark_lab_meas_t *m, char *buf, size_t n);
+
+/* The log form: "1000.0 Hz duty 25.0 %", "too fast", "too slow", "no signal (high)", "overflow",
+ * "glitch", "invalid". */
+void stark_lab_meas_log_text(const stark_lab_meas_t *m, char *buf, size_t n);
 
 /*
  * Recomputes the offer: a held pin that is no longer offered goes to hi-Z at once, loses its

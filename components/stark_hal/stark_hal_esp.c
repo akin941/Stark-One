@@ -6,10 +6,24 @@
 #include "stark_hal_esp.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "esp_attr.h"
+#include "esp_cpu.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+/*
+ * NOTE: the edge handler (STARK-0703) must switch its own GPIO interrupt off from IRAM, and the
+ * driver's gpio_intr_disable() lives in flash unless CONFIG_GPIO_CTRL_FUNC_IN_IRAM is set, so it
+ * uses the inline register-level call. ESP-IDF's gpio_ll.h does not compile clean under our
+ * -Wconversion -Wsign-conversion -Werror (its inline functions narrow into register bit fields),
+ * and that is third-party code: the one documented exception to "no pragmas" is this include.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#include "hal/gpio_ll.h"
+#pragma GCC diagnostic pop
 
 /* 10-bit duty resolution (0-1023): enough range for both a buzzer's
  * square-wave-ish tone and backlight brightness, one setting for both
@@ -208,6 +222,119 @@ stark_err_t stark_hal_gpio_config_out_weak(int pin, bool initial)
         return err != ESP_OK ? stark_err_from_esp(err) : STARK_ERR_IO;
     }
     return STARK_OK;
+}
+
+/* ---- Edge capture (STARK-0703) ---------------------------------------------------------------
+ * ADR-0023 §4: the any-edge interrupt stores esp_cpu_get_cycle_count() into the caller's ring.
+ * NOTE: the handler is IRAM_ATTR and the service is installed with ESP_INTR_FLAG_IRAM, so a flash
+ * operation in the middle of a window (a settings write, a log file) cannot delay a stamp and
+ * make a gap that looks like a slow signal. The cost is the handler's own few dozen bytes: the
+ * default IRAM is full and what no longer fits overflows into DIRAM, which comes out of the heap
+ * (docs/measurements.md, "V0.7 lab tools"). It touches only static DRAM and the GPIO registers.
+ * The handler also switches its own interrupt off once `limit` edges have come, so a signal far
+ * above the 50 kHz range cannot keep the CPU in the interrupt until the window's end. */
+
+#define STARK_HAL_EDGES_WINDOW_US_MAX 4100000u
+#define STARK_HAL_EDGES_SLICE_MS      10u
+
+static struct {
+    uint32_t *ts;
+    uint32_t cap;
+    uint32_t limit;
+    uint32_t pin;
+    volatile uint32_t seen;
+} s_edges;
+static volatile bool s_edges_cancel;
+static bool s_isr_service;
+
+static void IRAM_ATTR edge_isr(void *arg)
+{
+    (void)arg;
+    uint32_t t = esp_cpu_get_cycle_count();
+    uint32_t i = s_edges.seen;
+    if (i < s_edges.cap) {
+        s_edges.ts[i] = t;
+    }
+    s_edges.seen = i + 1u;
+    if (i + 1u >= s_edges.limit) {
+        gpio_ll_intr_disable(&GPIO, s_edges.pin);
+    }
+}
+
+void stark_hal_gpio_edges_cancel(void)
+{
+    s_edges_cancel = true;
+}
+
+uint32_t stark_hal_tick_hz(void)
+{
+    return (uint32_t)esp_rom_get_cpu_ticks_per_us() * 1000000u;
+}
+
+/* Waits for the window, a cancel, or the limit: sleeping in slices while it is long, then busy
+ * for the last stretch so a 10 ms window is 10 ms and not 11. */
+static stark_err_t edges_wait(uint32_t window_us)
+{
+    uint64_t t0 = (uint64_t)esp_timer_get_time();
+    for (;;) {
+        if (s_edges_cancel) {
+            return STARK_ERR_STATE;
+        }
+        if (s_edges.seen >= s_edges.limit) {
+            return STARK_OK;
+        }
+        uint64_t elapsed = (uint64_t)esp_timer_get_time() - t0;
+        if (elapsed >= window_us) {
+            return STARK_OK;
+        }
+        uint64_t left = window_us - elapsed;
+        if (left > 2u * STARK_HAL_EDGES_SLICE_MS * 1000u) {
+            vTaskDelay(pdMS_TO_TICKS(STARK_HAL_EDGES_SLICE_MS));
+        } else {
+            esp_rom_delay_us((uint32_t)(left > 500u ? 500u : left));
+        }
+    }
+}
+
+stark_err_t stark_hal_gpio_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap, size_t *n,
+                                 uint32_t *seen, bool *first_level)
+{
+    if (!STARK_HAL_GPIO_IN_RANGE(pin) || n == NULL || seen == NULL || first_level == NULL ||
+        (cap > 0u && ts == NULL) || cap > 0xFFFFu || window_us == 0u ||
+        window_us > STARK_HAL_EDGES_WINDOW_US_MAX) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (!s_isr_service) {
+        esp_err_t serr = gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+        if (serr != ESP_OK && serr != ESP_ERR_INVALID_STATE) { /* already installed: fine */
+            return stark_err_from_esp(serr);
+        }
+        s_isr_service = true;
+    }
+    s_edges_cancel = false;
+    s_edges.ts = ts;
+    s_edges.cap = (uint32_t)cap;
+    s_edges.limit = cap > 0u ? (uint32_t)cap + 1u : STARK_HAL_EDGES_GATE_MAX;
+    s_edges.pin = (uint32_t)pin;
+    s_edges.seen = 0;
+    *first_level = gpio_get_level((gpio_num_t)pin) != 0;
+    esp_err_t err = gpio_set_intr_type((gpio_num_t)pin, GPIO_INTR_ANYEDGE);
+    if (err == ESP_OK) {
+        err = gpio_isr_handler_add((gpio_num_t)pin, edge_isr, NULL); /* enables the interrupt */
+    }
+    if (err != ESP_OK) {
+        (void)gpio_set_intr_type((gpio_num_t)pin, GPIO_INTR_DISABLE);
+        return stark_err_from_esp(err);
+    }
+    stark_err_t result = edges_wait(window_us);
+    /* NOTE: the interrupt is removed on every way out, before the ring is read. */
+    (void)gpio_intr_disable((gpio_num_t)pin);
+    (void)gpio_isr_handler_remove((gpio_num_t)pin);
+    (void)gpio_set_intr_type((gpio_num_t)pin, GPIO_INTR_DISABLE);
+    uint32_t count = s_edges.seen < s_edges.limit ? s_edges.seen : s_edges.limit;
+    *seen = count;
+    *n = count < s_edges.cap ? count : s_edges.cap;
+    return result;
 }
 
 bool stark_hal_gpio_read(int pin)

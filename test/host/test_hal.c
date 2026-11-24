@@ -224,6 +224,124 @@ void test_stark_hal_failures_can_be_injected_per_call(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_hal_pwm_init(38, 1000, 2));
 }
 
+/* ---- STARK-0703: edge capture --------------------------------------------------------------- */
+
+static int s_hook_pin = -2;
+static int s_irq_seen_in_hook = -2;
+
+static void edges_hook(int pin)
+{
+    s_hook_pin = pin;
+    s_irq_seen_in_hook = hal_host_edge_irq_pin();
+}
+
+static void edges_cancel_hook(int pin)
+{
+    (void)pin;
+    stark_hal_gpio_edges_cancel();
+}
+
+void test_stark_hal_edges_returns_what_it_was_given_within_the_callers_ring(void)
+{
+    static const uint32_t stamps[6] = {10, 20, 30, 40, 50, 60};
+    uint32_t ring[4];
+    size_t n = 99;
+    uint32_t seen = 99;
+    bool first = false;
+    hal_host_edges_set(stamps, 6, 6, true);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_edges(38, 20000, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(4, n);      /* the ring holds four */
+    TEST_ASSERT_EQUAL_UINT32(5, seen); /* the count saturates at cap + 1, as on the target */
+    TEST_ASSERT_TRUE(first);
+    TEST_ASSERT_EQUAL_UINT32(40, ring[3]);
+    TEST_ASSERT_EQUAL_UINT(1, hal_host_edges_calls());
+    TEST_ASSERT_EQUAL_INT(38, hal_host_edges_last()->pin);
+    TEST_ASSERT_EQUAL_UINT32(20000, hal_host_edges_last()->window_us);
+    TEST_ASSERT_EQUAL_UINT(4, hal_host_edges_last()->cap);
+    TEST_ASSERT_EQUAL_UINT64(20000, hal_host_delayed_us()); /* the window is counted, not waited */
+    /* a gate: cap 0, no ring, counts up to its own limit */
+    hal_host_edges_set(stamps, 6, 9000, false);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_edges(39, 20000, NULL, 0, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(0, n);
+    TEST_ASSERT_EQUAL_UINT32(STARK_HAL_EDGES_GATE_MAX, seen);
+    TEST_ASSERT_FALSE(first);
+    /* a ring bigger than what the fake holds stores what there is */
+    uint32_t big[16];
+    hal_host_edges_set(stamps, 6, 6, false);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_edges(38, 20000, big, 16, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_UINT(6, n);
+    TEST_ASSERT_EQUAL_UINT32(6, seen);
+    TEST_ASSERT_EQUAL_UINT32(240000000u, stark_hal_tick_hz());
+}
+
+void test_stark_hal_edges_interrupt_is_on_for_the_window_only(void)
+{
+    uint32_t ring[4];
+    size_t n;
+    uint32_t seen;
+    bool first;
+    hal_host_edges_set(NULL, 0, 0, false);
+    hal_host_set_edges_hook(edges_hook);
+    TEST_ASSERT_EQUAL_INT(-1, hal_host_edge_irq_pin());
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_edges(39, 10000, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_INT(39, s_hook_pin);
+    TEST_ASSERT_EQUAL_INT(39, s_irq_seen_in_hook);      /* on during the window */
+    TEST_ASSERT_EQUAL_INT(-1, hal_host_edge_irq_pin()); /* and removed after it */
+    /* removed on a cancel and on a failure too */
+    hal_host_set_edges_hook(edges_cancel_hook);
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, stark_hal_gpio_edges(39, 10000, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_INT(-1, hal_host_edge_irq_pin());
+    hal_host_set_edges_hook(NULL);
+    TEST_ASSERT_EQUAL(STARK_OK,
+                      stark_hal_gpio_edges(39, 10000, ring, 4, &n, &seen, &first)); /* not sticky */
+    hal_host_fail(HAL_HOST_FAIL_EDGES);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, stark_hal_gpio_edges(39, 10000, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL_INT(-1, hal_host_edge_irq_pin());
+    hal_host_fail(0);
+}
+
+void test_stark_hal_edges_reports_the_level_the_pad_had(void)
+{
+    uint32_t ring[4];
+    size_t n;
+    uint32_t seen;
+    bool first;
+    hal_host_edges_set(NULL, 0, 0, false);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_config_in(38, STARK_HAL_PULL_UP));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_edges(38, 10000, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_TRUE(hal_host_edges_last()->level_before);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_hiz(38));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_edges(38, 10000, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_FALSE(hal_host_edges_last()->level_before);
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_IN, hal_host_pad(38)->mode); /* the pad is left as it was */
+}
+
+void test_stark_hal_edges_rejects_bad_arguments_before_anything_happens(void)
+{
+    uint32_t ring[4];
+    size_t n;
+    uint32_t seen;
+    bool first;
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_hal_gpio_edges(-1, 10000, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_hal_gpio_edges(49, 10000, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_hal_gpio_edges(38, 0, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_hal_gpio_edges(38, 4100001u, ring, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_hal_gpio_edges(38, 10000, NULL, 4, &n, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_hal_gpio_edges(38, 10000, ring, 4, NULL, &seen, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_hal_gpio_edges(38, 10000, ring, 4, &n, NULL, &first));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG,
+                      stark_hal_gpio_edges(38, 10000, ring, 4, &n, &seen, NULL));
+    TEST_ASSERT_EQUAL_UINT(0, hal_host_edges_calls());
+    TEST_ASSERT_EQUAL_UINT64(0, hal_host_delayed_us());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -245,5 +363,9 @@ int main(void)
     RUN_TEST(test_stark_hal_drive_weak_marks_the_pad_and_rejects_bad_pins);
     RUN_TEST(test_stark_hal_pwm_stop_records_only_its_own_channel);
     RUN_TEST(test_stark_hal_failures_can_be_injected_per_call);
+    RUN_TEST(test_stark_hal_edges_returns_what_it_was_given_within_the_callers_ring);
+    RUN_TEST(test_stark_hal_edges_interrupt_is_on_for_the_window_only);
+    RUN_TEST(test_stark_hal_edges_reports_the_level_the_pad_had);
+    RUN_TEST(test_stark_hal_edges_rejects_bad_arguments_before_anything_happens);
     return UNITY_END();
 }

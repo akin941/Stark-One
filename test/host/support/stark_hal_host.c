@@ -165,6 +165,95 @@ stark_err_t stark_hal_gpio_drive_weak(int pin)
     return STARK_OK;
 }
 
+/* ---- Edge capture (STARK-0703) -------------------------------------------------------------- */
+
+#define HOST_EDGES_MAX 2048
+
+static uint32_t g_edge_ts[HOST_EDGES_MAX];
+static size_t g_edge_ts_n;
+static uint32_t g_edge_seen;
+static bool g_edge_first;
+static volatile bool g_edge_cancel;
+static int g_edge_irq_pin = -1;
+static hal_host_edges_call_t g_edge_call;
+static unsigned g_edge_calls;
+static void (*g_edge_hook)(int pin);
+
+void hal_host_edges_set(const uint32_t *ts, size_t n, uint32_t seen, bool first_level)
+{
+    g_edge_ts_n = n < HOST_EDGES_MAX ? n : HOST_EDGES_MAX;
+    for (size_t i = 0; i < g_edge_ts_n; i++) {
+        g_edge_ts[i] = ts[i];
+    }
+    g_edge_seen = seen;
+    g_edge_first = first_level;
+}
+
+void hal_host_set_edges_hook(void (*hook)(int pin))
+{
+    g_edge_hook = hook;
+}
+
+int hal_host_edge_irq_pin(void)
+{
+    return g_edge_irq_pin;
+}
+
+unsigned hal_host_edges_calls(void)
+{
+    return g_edge_calls;
+}
+
+const hal_host_edges_call_t *hal_host_edges_last(void)
+{
+    return &g_edge_call;
+}
+
+uint32_t stark_hal_tick_hz(void)
+{
+    return 240000000u;
+}
+
+void stark_hal_gpio_edges_cancel(void)
+{
+    g_edge_cancel = true;
+}
+
+stark_err_t stark_hal_gpio_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap, size_t *n,
+                                 uint32_t *seen, bool *first_level)
+{
+    if (pin < 0 || pin >= MAX_GPIO || n == NULL || seen == NULL || first_level == NULL ||
+        (cap > 0u && ts == NULL) || window_us == 0u || window_us > 4100000u) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    g_edge_calls++;
+    g_edge_call = (hal_host_edges_call_t){
+        .pin = pin, .window_us = window_us, .cap = cap, .level_before = g_gpio_state[pin].level};
+    g_edge_cancel = false;
+    if ((g_fail & HAL_HOST_FAIL_EDGES) != 0u) {
+        return STARK_ERR_IO;
+    }
+    g_edge_irq_pin = pin; /* the interrupt is on for the window only */
+    if (g_edge_hook != NULL) {
+        g_edge_hook(pin);
+    }
+    g_edge_irq_pin = -1;
+    g_delayed_us += window_us;
+    if (g_edge_cancel) {
+        return STARK_ERR_STATE;
+    }
+    uint32_t limit = cap > 0u ? (uint32_t)cap + 1u : STARK_HAL_EDGES_GATE_MAX;
+    uint32_t count = g_edge_seen < limit ? g_edge_seen : limit;
+    size_t stored = g_edge_ts_n < cap ? g_edge_ts_n : cap;
+    for (size_t i = 0; i < stored; i++) {
+        ts[i] = g_edge_ts[i];
+    }
+    *n = stored;
+    *seen = count;
+    *first_level = g_edge_first;
+    return STARK_OK;
+}
+
 const hal_host_pad_t *hal_host_pad(int pin)
 {
     return (pin < 0 || pin >= MAX_GPIO) ? NULL : &g_pads[pin];
@@ -184,6 +273,14 @@ void hal_host_gpio_reset(void)
     memset(g_pads, 0, sizeof(g_pads));
     g_pad_calls = 0;
     memset(g_gpio_state, 0, sizeof(g_gpio_state));
+    g_edge_ts_n = 0;
+    g_edge_seen = 0;
+    g_edge_first = false;
+    g_edge_cancel = false;
+    g_edge_irq_pin = -1;
+    g_edge_call = (hal_host_edges_call_t){0};
+    g_edge_calls = 0;
+    g_edge_hook = NULL;
 }
 
 /* ---- PWM (LEDC) -----------------------------------------------------------

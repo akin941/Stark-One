@@ -3,6 +3,7 @@
  * real module core and fake 24C02 (the slot states) and the test-only pad model (the wires).
  * Software only: it proves the rules, never a level on a pad (ROADMAP V1 exit 13).
  */
+#include <stdio.h>
 #include <string.h>
 #include "fake_24c02.h"
 #include "fake_lab.h"
@@ -36,6 +37,10 @@ static struct {
     unsigned fail_in_at, fail_read_at, fail_hiz;
     unsigned pwm_stops, pwm_starts, pulses;
     bool fail_pwm_stop, fail_pulse;
+    unsigned edge_calls, fail_edges_at, cancel_edges_at;
+    uint32_t edge_window_us[8];
+    size_t edge_cap[8];
+    uint32_t edge_seen[8];
 } s_rec;
 
 static stark_err_t mio_probe(void *ctx, uint8_t addr)
@@ -115,6 +120,36 @@ static stark_err_t io_pulse(void *ctx, int pin, bool level, uint32_t us)
 
 static uint64_t s_now_us;
 
+static stark_err_t io_edges(void *ctx, int pin, uint32_t window_us, uint32_t *ts, size_t cap,
+                            size_t *n, uint32_t *seen, bool *first_level)
+{
+    (void)ctx;
+    unsigned call = ++s_rec.edge_calls;
+    if (call <= 8u) {
+        s_rec.edge_window_us[call - 1u] = window_us;
+        s_rec.edge_cap[call - 1u] = cap;
+    }
+    if (call == s_rec.cancel_edges_at) {
+        return STARK_ERR_STATE;
+    }
+    if (call == s_rec.fail_edges_at) {
+        return STARK_ERR_IO;
+    }
+    stark_err_t err = fake_lab_pad_edges(pin, window_us, ts, cap, n, seen, first_level);
+    if (call <= 8u) {
+        s_rec.edge_seen[call - 1u] = *seen;
+    }
+    s_now_us += window_us; /* the capture took its window */
+    fake_lab_time_us(s_now_us);
+    return err;
+}
+
+static uint32_t io_tick_hz(void *ctx)
+{
+    (void)ctx;
+    return FAKE_LAB_TICK_HZ;
+}
+
 static void io_delay_us(void *ctx, uint32_t us)
 {
     (void)ctx;
@@ -145,6 +180,8 @@ static void build(void)
                          .pwm_start = io_pwm_start,
                          .pwm_stop = io_pwm_stop,
                          .pulse = io_pulse,
+                         .edges = io_edges,
+                         .tick_hz = io_tick_hz,
                          .delay_us = io_delay_us,
                          .log = io_log};
     lab_pins_init(&s_lab, &io, &k_map);
@@ -263,11 +300,15 @@ static void sweep(void)
         TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_hiz(&s_lab, pin));
         TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_pwm_start(&s_lab, pin, 1000, 50));
         TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_pulse(&s_lab, pin, true, 100));
+        lab_meas_t meas;
+        uint32_t ring[4];
+        TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_measure(&s_lab, pin, ring, 4, &meas));
         stark_lab_info_t info;
         TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_info(&s_lab, pin, &info));
         lab_pins_release(&s_lab, pin);
         TEST_ASSERT_EQUAL_UINT(before, fake_lab_calls());
         TEST_ASSERT_EQUAL_UINT(0, s_rec.pwm_starts + s_rec.pwm_stops + s_rec.pulses);
+        TEST_ASSERT_EQUAL_UINT_MESSAGE(0, s_rec.edge_calls, "an unoffered pin reached a capture");
     }
 }
 
@@ -897,6 +938,284 @@ static void test_a_withdrawn_slot_pin_is_hiz_with_no_arm_left(void)
     TEST_ASSERT_EQUAL(STARK_LAB_MODE_HIZ, i.mode);
 }
 
+/* ---- STARK-0703: frequency and duty --------------------------------------------------------- */
+
+static uint32_t s_ring[4096];
+
+/* Holds pin 39 (or `pin`) as an input with the pull. */
+static void hold_input(int pin, stark_lab_pull_t pull)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, pin, "gpio"));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_input(&s_lab, pin, pull));
+}
+
+static uint32_t abs_diff(uint32_t a, uint32_t b)
+{
+    return a > b ? a - b : b - a;
+}
+
+static void test_measure_is_refused_for_what_is_not_held_offered_or_an_input(void)
+{
+    lab_meas_t r;
+    /* not held: STATE, and nothing was captured */
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.edge_calls);
+    /* not offered: every number the board does not offer (the sweep also does this) */
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_measure(&s_lab, 5, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_measure(&s_lab, -1, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.edge_calls);
+    /* held, but hi-Z, an output or a PWM is not an input */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_acquire(&s_lab, 39, "gpio"));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_arm(&s_lab, 39));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_write(&s_lab, 39, true));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 39, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_PWM, fake_lab_mode(39)); /* untouched */
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.edge_calls);
+    /* arguments */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_input(&s_lab, 39, STARK_LAB_PULL_UP));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_measure(&s_lab, 39, NULL, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_measure(&s_lab, 39, s_ring, 1024, NULL));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_measure(&s_lab, 39, s_ring, 1, &r));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, lab_pins_measure(&s_lab, 39, s_ring, 0, &r));
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.edge_calls);
+}
+
+/* AC 4's host half: a PWM wired to a measured pad reads back its own frequency and duty. */
+static void test_a_pwm_wired_to_a_measured_pad_reads_back(void)
+{
+    static const struct {
+        uint32_t hz;
+        uint32_t duty;
+    } k[] = {{100, 50}, {1000, 25}, {1000, 75}, {10000, 50}, {25000, 10}, {40000, 50}};
+    for (size_t i = 0; i < sizeof k / sizeof k[0]; i++) {
+        fake_lab_reset();
+        s_now_us = 12345;
+        fake_lab_time_us(s_now_us);
+        lab_pins_release_all(&s_lab);
+        memset(&s_rec, 0, sizeof(s_rec));
+        hold_armed(38);
+        fake_lab_wire(38, 39);
+        TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, k[i].hz, k[i].duty));
+        hold_input(39, STARK_LAB_PULL_NONE);
+        lab_meas_t r;
+        TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+        TEST_ASSERT_EQUAL_MESSAGE(STARK_LAB_MEAS_OK, r.status, "the wire was not measured");
+        TEST_ASSERT_TRUE(abs_diff(r.hz_x100, k[i].hz * 100u) * 1000u <= k[i].hz * 100u * 5u);
+        TEST_ASSERT_TRUE(abs_diff(r.duty_x10, k[i].duty * 10u) <= 20u);
+        TEST_ASSERT_EQUAL_UINT(2, s_rec.edge_calls); /* the gate, then the window */
+    }
+}
+
+static void test_the_gate_only_counts_and_the_window_follows_the_plan(void)
+{
+    /* the gate's limit is one number in the transport, the HAL and the pad model */
+    TEST_ASSERT_EQUAL_UINT32(STARK_LAB_EDGES_GATE_MAX, FAKE_LAB_GATE_LIMIT);
+    hold_armed(38);
+    fake_lab_wire(38, 39);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_pwm_start(&s_lab, 38, 1000, 25));
+    hold_input(39, STARK_LAB_PULL_UP);
+    lab_meas_t r;
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 4096, &r));
+    TEST_ASSERT_EQUAL_UINT(2, s_rec.edge_calls);
+    TEST_ASSERT_EQUAL_UINT32(20000u, s_rec.edge_window_us[0]);  /* the 20 ms gate ... */
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.edge_cap[0]);               /* ... that stores nothing */
+    TEST_ASSERT_EQUAL_UINT32(40, s_rec.edge_seen[0]);           /* 1 kHz: 40 edges in 20 ms */
+    TEST_ASSERT_EQUAL_UINT32(384000u, s_rec.edge_window_us[1]); /* 768 * 20 / 40 ms */
+    TEST_ASSERT_EQUAL_UINT(1024, s_rec.edge_cap[1]);            /* a bigger ring is cut to 1024 */
+    /* the pad is back to what it was: an input with its pull, interrupts are the transport's */
+    stark_lab_info_t info;
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_info(&s_lab, 39, &info));
+    TEST_ASSERT_EQUAL(STARK_LAB_MODE_IN, info.mode);
+    TEST_ASSERT_EQUAL(STARK_LAB_PULL_UP, info.pull);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_IN, fake_lab_mode(39));
+    TEST_ASSERT_EQUAL_UINT8(1, fake_lab_pull(39));
+    /* released afterwards: hi-Z, no pull */
+    lab_pins_release(&s_lab, 39);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(39));
+    TEST_ASSERT_EQUAL_UINT8(0, fake_lab_pull(39));
+}
+
+/* AC 1 through the service: every frequency at several duties, with jitter. */
+static void test_the_service_measures_within_the_stated_accuracy_with_jitter(void)
+{
+    static const uint32_t hz[] = {1, 2, 10, 100, 1000, 10000, 25000, 50000};
+    static const uint32_t duty[] = {10, 25, 50, 75, 90};
+    hold_input(39, STARK_LAB_PULL_NONE);
+    unsigned measured = 0;
+    unsigned glitches = 0;
+    for (size_t i = 0; i < sizeof hz / sizeof hz[0]; i++) {
+        for (size_t j = 0; j < sizeof duty / sizeof duty[0]; j++) {
+            fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, hz[i], (uint8_t)duty[j]);
+            /* up to +-2 us, a quarter of the shortest pulse at most */
+            uint32_t period = FAKE_LAB_TICK_HZ / hz[i];
+            uint32_t shortest = period * (duty[j] < 50u ? duty[j] : 100u - duty[j]) / 100u;
+            uint32_t jitter = shortest / 4u < 480u ? shortest / 4u : 480u;
+            fake_lab_edge_noise(jitter, (uint32_t)(i * 8u + j + 1u));
+            lab_meas_t r;
+            TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+            char msg[48];
+            snprintf(msg, sizeof msg, "%u Hz at %u %%", (unsigned)hz[i], (unsigned)duty[j]);
+            if (r.status == STARK_LAB_MEAS_GLITCH) {
+                glitches++;
+                TEST_ASSERT_TRUE_MESSAGE(shortest <= 480u, msg); /* only a pulse of ~2 us or less */
+                continue;
+            }
+            measured++;
+            TEST_ASSERT_EQUAL_MESSAGE(STARK_LAB_MEAS_OK, r.status, msg);
+            bool slow = hz[i] <= 10000u;
+            uint32_t want = hz[i] * 100u;
+            TEST_ASSERT_TRUE_MESSAGE(abs_diff(r.hz_x100, want) * 1000u <= want * (slow ? 5u : 20u),
+                                     msg);
+            TEST_ASSERT_TRUE_MESSAGE(abs_diff(r.duty_x10, duty[j] * 10u) <= (slow ? 20u : 50u),
+                                     msg);
+            TEST_ASSERT_TRUE_MESSAGE(r.edges <= STARK_LAB_MEAS_RING, msg);
+        }
+    }
+    TEST_ASSERT_TRUE(measured >= 36u);
+    TEST_ASSERT_TRUE(glitches <= 4u);
+}
+
+static void test_a_fast_signal_stops_at_the_gate_and_a_steady_line_is_a_steady_line(void)
+{
+    hold_input(39, STARK_LAB_PULL_UP);
+    lab_meas_t r;
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 80000, 50);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_TOO_FAST, r.status);
+    TEST_ASSERT_EQUAL_UINT32(0, r.hz_x100);
+    TEST_ASSERT_EQUAL_UINT(1, s_rec.edge_calls); /* no capture followed the gate */
+    TEST_ASSERT_EQUAL_UINT32(3200, s_rec.edge_seen[0]);
+    s_rec.edge_calls = 0;
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 2000000, 50); /* far past the gate's own limit */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_TOO_FAST, r.status);
+    TEST_ASSERT_EQUAL_UINT32(FAKE_LAB_GATE_LIMIT, s_rec.edge_seen[0]);
+    /* 50 kHz itself is in range */
+    s_rec.edge_calls = 0;
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 50000, 50);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_OK, r.status);
+    TEST_ASSERT_EQUAL_UINT(2, s_rec.edge_calls);
+    TEST_ASSERT_EQUAL_UINT32(10000u, s_rec.edge_window_us[1]); /* the shortest window */
+
+    /* nothing there: a 4 s window, then the level it sat at */
+    s_rec.edge_calls = 0;
+    fake_lab_ext(39, FAKE_LAB_EXT_NONE, 0, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_NO_SIGNAL, r.status);
+    TEST_ASSERT_TRUE(r.steady_high); /* the pull-up */
+    TEST_ASSERT_EQUAL_UINT32(4000000u, s_rec.edge_window_us[1]);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_input(&s_lab, 39, STARK_LAB_PULL_NONE));
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_NO_SIGNAL, r.status);
+    TEST_ASSERT_FALSE(r.steady_high);
+    fake_lab_ext(39, FAKE_LAB_EXT_LOW, 0, 0); /* a short to ground */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_NO_SIGNAL, r.status);
+    TEST_ASSERT_FALSE(r.steady_high);
+}
+
+static void test_a_ring_that_fills_is_reported_as_an_overflow(void)
+{
+    hold_input(39, STARK_LAB_PULL_NONE);
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 50);
+    lab_meas_t r;
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 16, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_OVERFLOW, r.status);
+    TEST_ASSERT_EQUAL_UINT32(0, r.hz_x100);
+    TEST_ASSERT_TRUE(r.edges <= 16u);
+    TEST_ASSERT_EQUAL_UINT(16, s_rec.edge_cap[1]);
+    /* the same signal in a ring that is big enough is a number */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_OK, r.status);
+}
+
+static void test_glitches_and_a_counter_wrap_through_the_service(void)
+{
+    hold_input(39, STARK_LAB_PULL_NONE);
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 50);
+    lab_meas_t r;
+    fake_lab_edge_glitches(4);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_GLITCH, r.status);
+    TEST_ASSERT_EQUAL_UINT32(0, r.hz_x100);
+    fake_lab_edge_glitches(0);
+    fake_lab_edge_epoch(0xFFFFFFFFu - 5000000u); /* the counter wraps 21 ms in */
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_OK, r.status);
+    TEST_ASSERT_TRUE(abs_diff(r.hz_x100, 100000u) <= 500u);
+}
+
+static void test_a_cancel_leaves_the_pin_alone(void)
+{
+    hold_input(39, STARK_LAB_PULL_UP);
+    stark_lab_info_t info;
+    lab_meas_t r;
+    for (unsigned at = 1; at <= 2; at++) { /* in the gate, and in the window */
+        s_rec.edge_calls = 0;
+        s_rec.cancel_edges_at = at;
+        fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 50);
+        TEST_ASSERT_EQUAL(STARK_ERR_STATE, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+        TEST_ASSERT_EQUAL(STARK_OK, lab_pins_info(&s_lab, 39, &info));
+        TEST_ASSERT_EQUAL(STARK_LAB_MODE_IN, info.mode); /* held, an input, as it was */
+        TEST_ASSERT_EQUAL(FAKE_LAB_PAD_IN, fake_lab_mode(39));
+    }
+    s_rec.cancel_edges_at = 0;
+    s_rec.edge_calls = 0;
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r)); /* not sticky */
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_OK, r.status);
+}
+
+static void test_a_transport_failure_ends_in_hiz_and_disarms(void)
+{
+    stark_lab_info_t info;
+    lab_meas_t r;
+    for (unsigned at = 1; at <= 2; at++) {
+        lab_pins_release_all(&s_lab);
+        s_rec.edge_calls = 0;
+        hold_armed(39);
+        TEST_ASSERT_EQUAL(STARK_OK, lab_pins_input(&s_lab, 39, STARK_LAB_PULL_UP));
+        fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 50);
+        s_rec.fail_edges_at = at;
+        TEST_ASSERT_EQUAL(STARK_ERR_IO, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+        s_rec.fail_edges_at = 0;
+        TEST_ASSERT_EQUAL(STARK_OK, lab_pins_info(&s_lab, 39, &info));
+        TEST_ASSERT_EQUAL(STARK_LAB_MODE_HIZ, info.mode);
+        TEST_ASSERT_FALSE(info.armed);
+        TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(39));
+        TEST_ASSERT_EQUAL_UINT8(0, fake_lab_pull(39));
+    }
+}
+
+static void test_the_pad_models_own_faults_through_the_service(void)
+{
+    hold_input(39, STARK_LAB_PULL_NONE);
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 50);
+    lab_meas_t r;
+    fake_lab_fault(FAKE_LAB_FAULT_PAD_STUCK_HIGH, 39, -1);
+    TEST_ASSERT_EQUAL(STARK_OK, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(STARK_LAB_MEAS_NO_SIGNAL, r.status);
+    TEST_ASSERT_TRUE(r.steady_high);
+    fake_lab_fault(FAKE_LAB_FAULT_CONFIG_ERROR, 39, 1);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, lab_pins_measure(&s_lab, 39, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(39));
+}
+
+static void test_a_hotplug_withdraws_a_pin_that_is_being_measured_on(void)
+{
+    hold_input(40, STARK_LAB_PULL_UP);
+    lab_meas_t r;
+    fit(A0, FAKE_MODULE_SPI_IRQ);
+    ticks(2);
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, lab_pins_measure(&s_lab, 40, s_ring, 1024, &r));
+    TEST_ASSERT_EQUAL_UINT(0, s_rec.edge_calls);
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_HIZ, fake_lab_mode(40));
+    TEST_ASSERT_EQUAL_UINT8(0, fake_lab_pull(40));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -934,5 +1253,16 @@ int main(void)
     RUN_TEST(test_a_pulse_returns_the_pad_to_its_mode);
     RUN_TEST(test_a_pulse_in_contention_or_failure_ends_in_hiz);
     RUN_TEST(test_a_withdrawn_slot_pin_is_hiz_with_no_arm_left);
+    RUN_TEST(test_measure_is_refused_for_what_is_not_held_offered_or_an_input);
+    RUN_TEST(test_a_pwm_wired_to_a_measured_pad_reads_back);
+    RUN_TEST(test_the_gate_only_counts_and_the_window_follows_the_plan);
+    RUN_TEST(test_the_service_measures_within_the_stated_accuracy_with_jitter);
+    RUN_TEST(test_a_fast_signal_stops_at_the_gate_and_a_steady_line_is_a_steady_line);
+    RUN_TEST(test_a_ring_that_fills_is_reported_as_an_overflow);
+    RUN_TEST(test_glitches_and_a_counter_wrap_through_the_service);
+    RUN_TEST(test_a_cancel_leaves_the_pin_alone);
+    RUN_TEST(test_a_transport_failure_ends_in_hiz_and_disarms);
+    RUN_TEST(test_the_pad_models_own_faults_through_the_service);
+    RUN_TEST(test_a_hotplug_withdraws_a_pin_that_is_being_measured_on);
     return UNITY_END();
 }

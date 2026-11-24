@@ -19,6 +19,7 @@
  */
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "stark_err.h"
@@ -92,6 +93,31 @@ stark_err_t stark_hal_gpio_hiz(int pin);
  * reset by the next stark_hal_gpio_config_in()/hiz(), whatever it was routed to.
  */
 stark_err_t stark_hal_gpio_drive_weak(int pin);
+
+/*
+ * Edge capture (STARK-0703, ADR-0023 §4): a GPIO any-edge interrupt timestamps every edge on an
+ * input pad with the CPU cycle counter, for `window_us`, then removes the interrupt again.
+ *
+ *   ts, cap   the ring the caller owns: the first `cap` stamps are stored (cap 0: only counted)
+ *   *n        stamps stored, at most cap
+ *   *seen     edges seen, counted up to cap + 1 (cap > 0) or STARK_HAL_EDGES_GATE_MAX (cap 0):
+ *             the capture ends at once when that many have come, so a signal too fast for the
+ *             ring cannot hold the CPU in the interrupt; seen > cap means the ring overflowed
+ *   *first_level  the pad's level just before the interrupt was enabled
+ *
+ * The pad is left as it was (an input with its pull). A cancel (stark_hal_gpio_edges_cancel(),
+ * any task, no lock) ends the wait within 10 ms and returns STARK_ERR_STATE; the interrupt is
+ * removed on every way out. STARK_ERR_INVALID_ARG for a pin outside 0-48, a NULL output, `cap`
+ * above 0 with no ring, or a window of 0 or more than 4.1 s. Callers are serialised. The target
+ * interrupt handler is in IRAM; the host fake returns what hal_host_edges_set() was given.
+ */
+#define STARK_HAL_EDGES_GATE_MAX 4096u
+stark_err_t stark_hal_gpio_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap, size_t *n,
+                                 uint32_t *seen, bool *first_level);
+void stark_hal_gpio_edges_cancel(void);
+
+/* The clock the stamps count at, in hertz (the CPU clock: 240 000 000 on the target). */
+uint32_t stark_hal_tick_hz(void);
 
 /* ---- PWM (LEDC) --------------------------------------------------------
  *

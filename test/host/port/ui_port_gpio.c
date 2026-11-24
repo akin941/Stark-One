@@ -22,6 +22,7 @@ static const stark_board_pins_t k_map = {
 static lab_pins_t s_lab;
 static const stark_board_pins_t *s_map = &k_map;
 static unsigned s_cancels;
+static unsigned s_meas_cancels;
 static uint64_t s_now_us;
 
 static size_t io_list(void *ctx, stark_module_entry_t *out, size_t max)
@@ -66,6 +67,22 @@ static stark_err_t io_pulse(void *ctx, int pin, bool level, uint32_t us)
     return fake_lab_pulse(pin, level, us);
 }
 
+static stark_err_t io_edges(void *ctx, int pin, uint32_t window_us, uint32_t *ts, size_t cap,
+                            size_t *n, uint32_t *seen, bool *first_level)
+{
+    (void)ctx;
+    stark_err_t err = fake_lab_pad_edges(pin, window_us, ts, cap, n, seen, first_level);
+    s_now_us += window_us; /* the capture took its window */
+    fake_lab_time_us(s_now_us);
+    return err;
+}
+
+static uint32_t io_tick_hz(void *ctx)
+{
+    (void)ctx;
+    return FAKE_LAB_TICK_HZ;
+}
+
 static void io_delay_us(void *ctx, uint32_t us)
 {
     (void)ctx;
@@ -93,6 +110,8 @@ static void build(void)
                          .pwm_start = io_pwm_start,
                          .pwm_stop = io_pad_hiz, /* the fake pad leaves PWM with its release */
                          .pulse = io_pulse,
+                         .edges = io_edges,
+                         .tick_hz = io_tick_hz,
                          .delay_us = io_delay_us,
                          .log = io_log};
     lab_pins_init(&s_lab, &io, s_map);
@@ -131,6 +150,7 @@ void ui_port_gpio_reset_with(const stark_board_pins_t *map)
     ui_port_module_set(t, STARK_MODULE_ENTRIES);
     fake_lab_reset();
     s_cancels = 0;
+    s_meas_cancels = 0;
     s_now_us = 0;
     build();
 }
@@ -150,6 +170,11 @@ void ui_port_gpio_set_slot0(stark_module_state_t state)
 unsigned ui_port_gpio_cancels(void)
 {
     return s_cancels;
+}
+
+unsigned ui_port_gpio_measure_cancels(void)
+{
+    return s_meas_cancels;
 }
 
 /* ---- stark_lab.h ---------------------------------------------------------------------------- */
@@ -276,4 +301,21 @@ void stark_lab_refresh(void)
     if (lab_pins_refresh(&s_lab)) {
         publish();
     }
+}
+
+stark_err_t stark_lab_measure(int pin, uint32_t *ring, size_t cap, stark_lab_meas_t *out)
+{
+    stark_err_t err = lab_pins_measure(&s_lab, pin, ring, cap, out);
+    leave();
+    if (err == STARK_OK) {
+        char text[40];
+        stark_lab_meas_log_text(out, text, sizeof text);
+        STARK_LOGI("lab", "measure %s", text);
+    }
+    return err;
+}
+
+void stark_lab_measure_cancel(void)
+{
+    s_meas_cancels++;
 }

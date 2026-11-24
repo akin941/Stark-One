@@ -436,6 +436,54 @@ stark_err_t lab_pins_pulse(lab_pins_t *p, int pin, bool level, uint32_t us)
     return lab_pins_hiz(p, pin);
 }
 
+/* One edge capture. A cancel (STARK_ERR_STATE) leaves the pin alone; a failure releases it. */
+static stark_err_t capture(lab_pins_t *p, size_t i, uint32_t window_us, uint32_t *ts, size_t cap,
+                           size_t *n, uint32_t *seen, bool *first)
+{
+    stark_err_t err = p->io.edges(p->io.ctx, p->tab[i].gpio, window_us, ts, cap, n, seen, first);
+    if (err == STARK_OK || err == STARK_ERR_STATE) {
+        return err;
+    }
+    return fail(p, i, err);
+}
+
+stark_err_t lab_pins_measure(lab_pins_t *p, int pin, uint32_t *ring, size_t cap, lab_meas_t *out)
+{
+    size_t i;
+    stark_err_t gerr = guard(p, pin, &i);
+    if (gerr != STARK_OK) {
+        return gerr;
+    }
+    if (ring == NULL || out == NULL || cap < 2u) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (p->hold[i].mode != STARK_LAB_MODE_IN) {
+        return STARK_ERR_STATE;
+    }
+    if (cap > STARK_LAB_MEAS_RING) {
+        cap = STARK_LAB_MEAS_RING;
+    }
+    size_t n = 0;
+    uint32_t seen = 0;
+    bool first = false;
+    /* The gate only counts: no ring, so it can say nothing but how many edges came. */
+    stark_err_t err = capture(p, i, LAB_MEAS_GATE_MS * 1000u, NULL, 0, &n, &seen, &first);
+    if (err != STARK_OK) {
+        return err;
+    }
+    lab_meas_plan_t plan = lab_meas_plan(seen);
+    if (plan.too_fast) {
+        *out = (lab_meas_t){.status = STARK_LAB_MEAS_TOO_FAST, .edges = seen};
+        return STARK_OK;
+    }
+    err = capture(p, i, plan.window_ms * 1000u, ring, cap, &n, &seen, &first);
+    if (err != STARK_OK) {
+        return err;
+    }
+    *out = lab_meas_compute(ring, n, first, p->io.tick_hz(p->io.ctx), seen > cap);
+    return STARK_OK;
+}
+
 bool lab_pins_refresh(lab_pins_t *p)
 {
     for (size_t i = 0; i < p->n; i++) {

@@ -1,0 +1,83 @@
+# STARK-0703 on the test image (ADR-0023 §4, §9): frequency and duty from timestamped edges over the
+# test-only pad model. The model synthesises the edge stamps of an external source (emu_lab_ext_*,
+# on pad 39 here) at 240 MHz from the emulated clock, so this proves the chain from the app's
+# Measure row through the service, the transport seam and the pure arithmetic, with the real
+# worker, the real 20 ms gate and the windows the plan sizes from it. It is integration evidence:
+# the emulator shows no pad moving, and the accuracy against a real signal is a V1 measurement
+# (docs/VALIDATION.md §2). The PWM-wired-to-a-pad half of the acceptance criterion is proven in the
+# host tests (test_lab_pins: PWM on 38, wire 38 -> 39, 39 measured), because the GPIO app holds one
+# pin at a time and BACK from pin 38 releases its PWM: only an external source can be measured on
+# the pad next to it. Pad 39 is opened as an input (an input needs no confirmation) and measured
+# at 1 kHz / 25 % (a 20 ms gate, then a 384 ms window), 40 kHz / 50 % (the shortest, 10 ms window),
+# 80 kHz (the gate alone says "too fast" and no capture follows) and a steady high line (a 4 s
+# window, then `no signal (high)`). A last measurement of the steady line is cut short by BACK:
+# it ends within a slice, the pin is released, and no result is logged for it.
+name = "emu-v07-measure"
+image = "storage"
+end_ms = 16400
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 7)
+    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 7)
+    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 7)
+    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 7)
+    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 7)
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 7)
+    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 7)
+    { key = "OK", at_ms = 1940, hold_ms = 60 },  # open the app
+    { key = "DOWN", at_ms = 2340, hold_ms = 60 },  # pin 39
+    { key = "OK", at_ms = 2740, hold_ms = 60 },  # open pin 39
+    { key = "RIGHT", at_ms = 3140, hold_ms = 60 },  # Mode: Input
+    { key = "DOWN", at_ms = 3540, hold_ms = 60 },  # Pull, Read, Measure (1 of 3)
+    { key = "DOWN", at_ms = 3840, hold_ms = 60 },  # Pull, Read, Measure (2 of 3)
+    { key = "DOWN", at_ms = 4140, hold_ms = 60 },  # Pull, Read, Measure (3 of 3)
+    { key = "OK", at_ms = 4540, hold_ms = 60 },  # measure: 1 kHz at 25 %
+    { key = "OK", at_ms = 5900, hold_ms = 60 },  # measure: 40 kHz at 50 %
+    { key = "OK", at_ms = 7400, hold_ms = 60 },  # measure: 80 kHz, too fast
+    { key = "OK", at_ms = 8900, hold_ms = 60 },  # measure: a steady high line, a 4 s window
+    { key = "OK", at_ms = 13500, hold_ms = 60 },  # measure again ...
+    { key = "BACK", at_ms = 14600, hold_ms = 60 },  # ... and cut it short: the pin is released
+    { key = "BACK", at_ms = 15200, hold_ms = 60 },  # leave the app
+]
+pokes = [
+    { at_ms = 400, var = "emu_lab_ext_pin", value = 39 },  # the external source is on pad 39
+    { at_ms = 410, var = "emu_lab_ext_hz", value = 1000 },
+    { at_ms = 420, var = "emu_lab_ext_duty", value = 25 },
+    { at_ms = 430, var = "emu_lab_ext_mode", value = 3 },  # a square wave
+    { at_ms = 5400, var = "emu_lab_ext_hz", value = 40000 },
+    { at_ms = 5410, var = "emu_lab_ext_duty", value = 50 },
+    { at_ms = 6900, var = "emu_lab_ext_hz", value = 80000 },
+    { at_ms = 8400, var = "emu_lab_ext_mode", value = 1 },  # a steady high line
+]
+expect = [
+    "lab: pins 38 39 40 41 42",
+    'menu: sel=11 "GPIO"',
+    "app: start gpio",
+    "gpioapp: open pin 39 LAB_UART_RX",
+    "gpioapp: pin 39 measuring",
+    "lab: measure 1000.0 Hz duty 25.0 %",
+    "gpioapp: pin 39 measure 1.000 kHz duty 25.0 %",
+    "lab: measure 40000.0 Hz duty 50.0 %",
+    "gpioapp: pin 39 measure 40.000 kHz duty 50.0 %",
+    "lab: measure too fast",
+    "gpioapp: pin 39 measure > 50 kHz, not measured",
+    "lab: measure no signal (high)",
+    "gpioapp: pin 39 measure no signal (high)",
+    "lab: released pin 39",
+    "gpioapp: close pin 39",
+    "lab: released all",
+    "app: stop gpio",
+]
+forbid = [
+    "lab init failed",
+    "gpio: conflict",
+    "armed",
+    "dialog: open",
+    "panic",
+]
+# The cut-short measurement logs no result, and nothing is driven or armed at any point.
+forbid_between = [
+    { after = "lab: released pin 39", before = "lab: released all", text = "lab: measure" },
+    { after = "gpioapp: open pin 39", before = "lab: released all", text = "lab: pulse" },
+    { after = "gpioapp: open pin 39", before = "lab: released all", text = "lab: pwm" },
+]

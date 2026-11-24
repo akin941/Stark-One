@@ -12,6 +12,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "stark_err.h"
 
@@ -70,6 +71,31 @@ stark_err_t fake_lab_pad_hiz(int pin);
  */
 stark_err_t fake_lab_pwm_start(int pin, uint32_t hz, uint8_t duty_pct);
 stark_err_t fake_lab_pulse(int pin, bool level, uint32_t us);
+
+/*
+ * Edge capture (STARK-0703): the stamps of the edges of whatever drives the pad over the next
+ * `window_us` from fake_lab_time_us(), at FAKE_LAB_TICK_HZ (240 MHz, 240 ticks to the
+ * microsecond), the way stark_hal_gpio_edges() returns them: the first `cap` are stored in `ts`,
+ * `*seen` counts edges up to cap + 1 (FAKE_LAB_GATE_LIMIT when cap is 0), `*first_level` is the
+ * level before the first one. A steady source gives no edge. The wave is anchored at tick 0 and
+ * its period is FAKE_LAB_TICK_HZ / hz in whole ticks, so the frequency it models is that of
+ * a square wave of that period, within hz / 240 MHz. The clock does not advance (the fake never
+ * waits); a fault applies as for a read (stuck: no edge, the stuck level; config error: IO).
+ * The pad is not changed.
+ */
+#define FAKE_LAB_TICK_HZ      240000000u
+#define FAKE_LAB_TICKS_PER_US 240u
+#define FAKE_LAB_GATE_LIMIT   4096u
+stark_err_t fake_lab_pad_edges(int pin, uint32_t window_us, uint32_t *ts, size_t cap, size_t *n,
+                               uint32_t *seen, bool *first_level);
+
+/* Imperfections for the capture, off at the reset: every edge displaced by up to +-jitter_ticks
+ * (a deterministic function of the seed and the edge's number, kept in order), a pair of 0.5 us
+ * edges after every `every_edges`-th edge that is followed by room for it (0: none), and an
+ * offset added to every stamp (to put a window across the 32-bit wrap of the counter). */
+void fake_lab_edge_noise(uint32_t jitter_ticks, uint32_t seed);
+void fake_lab_edge_glitches(uint32_t every_edges);
+void fake_lab_edge_epoch(uint32_t ticks);
 
 /* The square wave at `now_us` (the fake's own formula, shared with the external source). */
 bool fake_lab_square(uint32_t hz, uint8_t duty_pct, uint64_t now_us);

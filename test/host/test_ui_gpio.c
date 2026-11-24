@@ -196,7 +196,7 @@ static void test_input_with_a_pull_reads_the_pad(void)
     TEST_ASSERT_EQUAL_UINT8(1, fake_lab_pull(38));
     TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 38 pull up"));
     TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 38 IN H"));
-    pin("pin_input_pullup", UINT64_C(0xd76106beecfea82f));
+    pin("pin_input_pullup", UINT64_C(0xc8353225e9557d2b));
     press(STARK_KEY_RIGHT);
     TEST_ASSERT_EQUAL_UINT8(2, fake_lab_pull(38));
     press(STARK_KEY_DOWN); /* Read */
@@ -587,6 +587,141 @@ static void test_every_exit_path_leaves_every_pad_hiz(void)
     assert_every_pad_hiz();
 }
 
+/* ---- STARK-0703: the Measure row ------------------------------------------------------------ */
+
+/* Opens pin 39 (row 1) as an input and selects the Measure row. */
+static void open_measure(void)
+{
+    open_row(1);
+    mode_to(1);
+    presses(STARK_KEY_DOWN, 3); /* Pull, Read, Measure */
+}
+
+/* AC 2 and 4 on the host: the row shows a result, or says why there is none, and never a number
+ * for a signal it cannot measure. */
+static void test_the_measure_row_shows_the_result_or_the_reason(void)
+{
+    ui_port_gpio_reset();
+    open_measure();
+    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=3 \"Measure\""));
+    pin("measure_idle", UINT64_C(0x61133c3e23614fad));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_IN, fake_lab_mode(39));
+
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 25);
+    press(STARK_KEY_OK);
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 measuring"));
+    frame(); /* the worker's note arrives */
+    TEST_ASSERT_TRUE(ui_port_log_contains("lab: measure 1000.0 Hz duty 25.0 %"));
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 measure 1.000 kHz duty 25.0 %"));
+    pin("measure_1khz", UINT64_C(0x38fb9abd38aa794d));
+    TEST_ASSERT_EQUAL(FAKE_LAB_PAD_IN, fake_lab_mode(39)); /* the pad is still an input */
+
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 40000, 50);
+    press(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 measure 40.000 kHz duty 50.0 %"));
+
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 80000, 50); /* past the range: the gate says so */
+    press(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("lab: measure too fast"));
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 measure > 50 kHz, not measured"));
+    pin("measure_too_fast", UINT64_C(0x095f2914ea15c8c5));
+
+    fake_lab_ext(39, FAKE_LAB_EXT_HIGH, 0, 0); /* a steady line */
+    press(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("lab: measure no signal (high)"));
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 measure no signal (high)"));
+    pin("measure_no_signal", UINT64_C(0x5ec3d34f8b8c91dd));
+
+    fake_lab_edge_glitches(4); /* a glitch train */
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 50);
+    press(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 measure glitches (< 1 us)"));
+    fake_lab_edge_glitches(0);
+
+    assert_nothing_was_driven();
+    TEST_ASSERT_FALSE(ui_port_log_contains("dialog: open")); /* an input: no confirmation */
+    leave_by_back();
+    assert_every_pad_hiz();
+}
+
+static void test_a_new_pull_or_mode_forgets_the_result(void)
+{
+    ui_port_gpio_reset();
+    open_measure();
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 25);
+    press(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 measure 1.000 kHz duty 25.0 %"));
+    press(STARK_KEY_UP);
+    press(STARK_KEY_UP); /* Pull */
+    press(STARK_KEY_RIGHT);
+    pin("measure_cleared_by_pull", UINT64_C(0x803efb62940cf2bb));
+    press(STARK_KEY_DOWN);
+    press(STARK_KEY_DOWN);
+    press(STARK_KEY_OK); /* measure again */
+    frame();
+    press(STARK_KEY_UP);
+    press(STARK_KEY_UP);
+    press(STARK_KEY_UP);   /* Mode */
+    press(STARK_KEY_LEFT); /* back to Hi-Z, and in again: no stale result */
+    press(STARK_KEY_RIGHT);
+    presses(STARK_KEY_DOWN, 3);
+    pin("measure_cleared_by_mode", UINT64_C(0x99fc8dc93170c91f));
+    leave_by_back();
+    assert_every_pad_hiz();
+}
+
+/* One measurement per press; while it runs the keys do nothing, except BACK, which cuts it short
+ * and leaves the pin. */
+static void test_keys_are_swallowed_during_a_measurement_and_back_cuts_it_short(void)
+{
+    ui_port_gpio_reset();
+    open_measure();
+    fake_lab_ext(39, FAKE_LAB_EXT_SQUARE, 1000, 25);
+    ui_port_short(STARK_KEY_OK);   /* the worker runs inside this tick ... */
+    ui_port_short(STARK_KEY_DOWN); /* ... and a key queued behind it is swallowed */
+    ui_port_short(STARK_KEY_OK);   /* so is a second request */
+    frame();
+    unsigned runs = 0;
+    for (size_t i = 0; i < ui_port_log_count(); i++) {
+        runs += strstr(ui_port_log_line(i), "lab: measure 1000.0") != NULL ? 1u : 0u;
+    }
+    TEST_ASSERT_EQUAL_UINT(1, runs);
+    ui_port_short(STARK_KEY_OK);
+    ui_port_short(STARK_KEY_BACK);
+    frame();
+    TEST_ASSERT_EQUAL_UINT(1, ui_port_gpio_measure_cancels());
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: close pin 39"));
+    frame();
+    assert_every_pad_hiz();
+    press(STARK_KEY_BACK);
+    TEST_ASSERT_TRUE(ui_port_gpio_measure_cancels() >= 2u); /* leaving the app cancels too */
+}
+
+static void test_a_measurement_that_cannot_run_is_explained(void)
+{
+    ui_port_gpio_reset();
+    open_measure();
+    ui_port_worker_inline(false);
+    press(STARK_KEY_OK);
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 measure refused: Not supported"));
+    press(STARK_KEY_UP); /* the keys still work */
+    TEST_ASSERT_TRUE(ui_port_log_contains("menu: sel=2 \"Read\""));
+    ui_port_worker_inline(true);
+    press(STARK_KEY_DOWN);
+    fake_lab_fault(FAKE_LAB_FAULT_CONFIG_ERROR, 39, 1); /* the pad model fails the capture */
+    press(STARK_KEY_OK);
+    frame();
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 not measured: I/O error"));
+    TEST_ASSERT_TRUE(ui_port_log_contains("gpioapp: pin 39 Hi-Z")); /* released after the failure */
+    leave_by_back();
+    assert_every_pad_hiz();
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -607,5 +742,9 @@ int main(void)
     RUN_TEST(test_the_probe_row_says_what_the_pad_is_doing);
     RUN_TEST(test_the_mode_row_releases_the_pad_when_it_changes);
     RUN_TEST(test_every_exit_path_leaves_every_pad_hiz);
+    RUN_TEST(test_the_measure_row_shows_the_result_or_the_reason);
+    RUN_TEST(test_a_new_pull_or_mode_forgets_the_result);
+    RUN_TEST(test_keys_are_swallowed_during_a_measurement_and_back_cuts_it_short);
+    RUN_TEST(test_a_measurement_that_cannot_run_is_explained);
     return UNITY_END();
 }

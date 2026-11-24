@@ -1394,3 +1394,104 @@ on the host and as a request on the test image, and its waveform is a V1 logic-a
     `lab: wire 38 -> 39 edges=4 high=25%`. The scenario is split in two (`storage/v07-gpio`,
     `storage/v07-gpio-pwm`) to stay inside the 20 s budget. `check_emu_image.py` still allows five
     substitutions; the fake adds no sixth.
+
+**Addendum (2026-11-24, STARK-0703).** Frequency and duty from timestamped edges. The plan was silent
+or ambiguous on the points below; each is the smallest sound choice and none changes a rule above.
+The probes of the 0701 addendum still hold (a self-driven pad raises its interrupt, an unconnected
+pad does not, LEDC does not reach a pad): no acceptance criterion depends on a pad that moves in
+the production image, so the arithmetic is proven on the host against an independent Python
+reference, the edges on the test image over the pad model, and the real interrupt only as far as
+"installed, counted nothing, removed" on the production image. ISR latency and the accuracy of a
+real signal stay V1 measurements.
+
+1. **IRAM placement (the open question of the 0701 finding).** The edge handler is `IRAM_ATTR` and the
+   interrupt service is installed with `ESP_INTR_FLAG_IRAM`. Reason: a flash operation in the middle of
+   a window (a settings write, a log file) would otherwise delay a stamp by milliseconds, a gap that is
+   indistinguishable from a slow signal, and the result would be a wrong number, which §4 forbids. The
+   cost is the handler's own 84 B: the default IRAM was already full (16 384 of 16 384 B, 0 B free), so
+   the linker places it in the instruction region of DIRAM and the heap shrinks by about that much (the
+   measured effect on the boot heap is in docs/measurements.md, "V0.7 lab tools", inside the 0.5 kB
+   the task allows). A non-IRAM handler was rejected because its failure is silent.
+2. **The handler switches itself off.** Once `limit` edges have come (the ring's capacity plus one, so an
+   overflow is known, or 4 096 for the pre-gate that has no ring) the handler masks its own interrupt
+   with the register-level `gpio_ll_intr_disable()`. A signal far above 50 kHz (a 10 MHz clock on a lab
+   pin) would otherwise keep the CPU in the handler until the interrupt watchdog fired. The driver's own
+   `gpio_intr_disable()` is not IRAM-safe without `CONFIG_GPIO_CTRL_FUNC_IN_IRAM`. ESP-IDF's
+   `gpio_ll.h` does not compile under our `-Wconversion -Wsign-conversion -Werror` (its inline
+   functions narrow into register bit fields), so `stark_hal_esp.c` includes it inside one documented
+   `#pragma GCC diagnostic push/pop`: third-party code, the only pragma in the tree, explained at the
+   include.
+3. **HAL signature.** `stark_hal_gpio_edges(pin, window_us, ts, cap, *n, *seen, *first_level)`: `*seen`
+   (edges counted, up to `cap + 1`, or 4 096 when `cap` is 0) replaces the plan's `overflowed` flag,
+   because the pre-gate has to count and the ring has to say that it overflowed with one call shape;
+   `seen > cap` is the overflow. `*first_level` is read just before the interrupt is enabled. The
+   wait sleeps in 10 ms slices while the window is long and busy-waits the last 20 ms, so a 10 ms
+   window is 10 ms and not 11; it ends early when the ring is known to have overflowed, and on a
+   cancel (`STARK_ERR_STATE`). The GPIO interrupt service stays installed after the first
+   measurement (one allocation of 49 handler slots, in the heap); every window adds and removes the
+   pad's handler. `stark_hal_tick_hz()` is the CPU clock from `esp_rom_get_cpu_ticks_per_us()`.
+4. **The ring is the app's, per measurement.** The plan said the app allocates it when the Measure view
+   opens. The app allocates the 4 kB on the worker for one measurement and frees it before it
+   announces the result, so nothing is held between measurements and no exit path can leak it. The
+   service allocates nothing and takes `ring, cap`; a ring longer than 1 024 is cut to 1 024, one
+   shorter than 2 is refused.
+5. **The rules the plan left to the arithmetic** (all in `lab_meas.h`, restated by the Python
+   reference): a step between stamps is the unsigned 32-bit difference and 2^31 or more is a stamp
+   that went backwards (`INVALID`: one more status than the plan listed, shared with a zero clock and
+   a ring longer than 1 024); a pulse under 1 µs, a zero step included, is a `GLITCH`; fewer than two
+   rising edges is `TOO_SLOW` (a window shorter than two periods); no edge at all is `NO_SIGNAL` and
+   carries the level the line sat at; an `overflowed` ring is `OVERFLOW` whatever the stamps say. The
+   range limits carry a guard so a signal at the limit, read with its own jitter, is not refused:
+   `TOO_FAST` above 50 kHz + 0.1 %, `TOO_SLOW` below 0.99 Hz (one count of the 0.01 Hz unit). A signal
+   outside the range is never a number: frequency, duty and period are zero unless the status is `OK`.
+6. **Window sizing.** The gate counts edges for 20 ms; `lab_meas_plan()` sizes the window for about 768 of
+   the 1 024 stamps (`768 * 20 ms / edges`), clamped to 10 ms to 4 s, and 4 s when the gate saw
+   nothing. At the top of the range that is the 10 ms floor: 1 000 to 1 002 edges for 50 kHz to
+   50.05 kHz, inside the ring with 22 stamps to spare, which is why the gate refuses more than
+   50.05 kHz at once (3 200 edges at 80 kHz) and no capture follows. The host sweeps every gate count
+   from 1 to 4 096 against the ring.
+7. **After a measurement the pad is what it was**: an input with its pull, mode `IN` in
+   `stark_lab_info()`. "The pin is released" in AC 3 is read as the edge interrupt (the only thing a
+   measurement adds) being gone; release to hi-Z stays what BACK, leaving and withdrawal do. A
+   transport failure ends in hi-Z with the arm cleared (the 0701 contract); a cancel
+   (`STARK_ERR_STATE`: BACK, `on_exit`, the hot-plug refresh) leaves the pin as it is. The transport
+   re-checks the pin's class only: the plan said "an input-configured pin", but the service already
+   requires the pin held in mode `IN`, and the transport has no memory of modes.
+8. **The cancel is a per-capture flag**, like the pulse's: cleared when a capture starts, set by
+   `stark_lab_measure_cancel()` (no lock). A cancel that arrives between the gate and the window is
+   therefore lost and the measurement ends within 4 s instead of 10 ms; BACK has released the pin by
+   then, so the cost is a delayed return of the worker, not a wrong state. The app swallows every key
+   but BACK while it waits.
+9. **The Measure row** is the fourth row of the Input view (Mode, Pull, Read, Measure, Pad); its value is
+   "50 kHz max" until there is a result, then the result line (`1.000 kHz duty 25.0 %`,
+   `250.00 Hz duty 50.0 %` below a kilohertz, `> 50 kHz, not measured`, `< 1 Hz`,
+   `no signal (high)`, `overflow: too many edges`, `glitches (< 1 us)`, `invalid timestamps`),
+   cleared by a change of pull or mode. The log form is `lab: measure 1000.0 Hz duty 25.0 %`,
+   `too fast`, `too slow`, `no signal (high)`, `overflow`, `glitch`, `invalid`.
+   `STARK_LAB_EVT_MEASURE_DONE` (2) is published with every result; the app is told by its own
+   worker note, which arrives after the result is stored.
+10. **AC 4 and the one-pin app.** The GPIO app holds one pin and BACK from a pin releases it (0702), so a
+    PWM on pin 38 cannot keep running while pin 39 is measured: the emulator cannot show a PWM wired
+    to a measured pad through the app. The host proves exactly that path (`test_lab_pins`: PWM on 38,
+    wire 38 to 39, pin 39 measured at six frequency and duty pairs, a gate and a window each) and the
+    test image measures an external source on pad 39 through the app (`storage/v07-measure`), over the
+    same pad model and the same service. The V1 check "`LAB_UART_TX` PWM into `LAB_UART_RX`" needs two
+    live pins, which the app cannot give; it is STARK-0708's to restate (a signal generator, or the
+    UART tool's own loopback pattern), not decided here.
+11. **The pad model's edges.** `fake_lab_pad_edges()` gives the stamps of an external source, a wire or the
+    pad's own PWM at 240 ticks per microsecond from the model's clock, with the period `240 MHz / hz`
+    in whole ticks (error at most `hz / 240 MHz`), optional jitter (a deterministic function of a seed
+    and the edge's number, kept in order), glitch pairs and a counter epoch (a window across the
+    32-bit wrap). The test image's transport stamps from the emulated clock and waits the window out
+    in slices, like the hardware. No new poke is needed (`emu_lab_ext_*` and `emu_lab_wire` carry the
+    sources), so `check_emu_image.py` still allows five substitutions.
+12. **The vectors.** `scripts/gen_lab_vectors.py` has its own reference implementation of the rules in
+    `lab_meas.h` (exact rational arithmetic, the counter unwrapped into integers, edges as (time,
+    level) pairs) and 79 edge sets: every frequency of the catalogue (1, 2, 10, 100 Hz, 1, 10, 25,
+    50 kHz) at six duties with seeded jitter of up to ±2 µs (never more than a quarter of the shortest
+    pulse, so it cannot reorder edges), the pairs whose shortest pulse is about a microsecond, which
+    the reference itself reports as `GLITCH`, the limits, a steady line, one and two edges, an
+    overflow, a counter wrap, a glitch train and hostile input. Generation fails if the reference's
+    result for a measured vector (49 of them) is outside the accuracy of §4 (±0.5 % to 10 kHz, ±2 % above;
+    ±2 and ±5 points of duty). The jitter is zero-mean and seeded: a systematic bias of the real
+    interrupt (a latency that differs between the rising and the falling edge) is a V1 measurement.
