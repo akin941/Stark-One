@@ -7,46 +7,49 @@
 # real connectors and insertion are ROADMAP V1 exit 11.
 name = "emu-v05-hotplug"
 image = "storage"
-end_ms = 27000
+end_ms = 27700
 heap_min = 200000
 pokes = [
     { at_ms = 1000, var = "emu_nfc_fault", value = 1 },   # the reader leaves
-    { at_ms = 7100, var = "emu_mod_slot0", value = 1 },   # EEPROM declaring NFC
-    { at_ms = 10400, var = "emu_nfc_fault", value = 0 },  # the reader returns
-    { at_ms = 12900, var = "emu_mod_slot0", value = 15 }, # the chip now reads blank
-    { at_ms = 15400, var = "emu_mod_slot0", value = 0 },  # removed
-    { at_ms = 19700, var = "emu_nfc_fault", value = 1 },  # lost while the app is open
-    { at_ms = 22500, var = "emu_nfc_fault", value = 0 },  # restored
+    { at_ms = 7500, var = "emu_mod_slot0", value = 1 },   # EEPROM declaring NFC
+    { at_ms = 10800, var = "emu_nfc_fault", value = 0 },  # the reader returns
+    { at_ms = 13300, var = "emu_mod_slot0", value = 15 }, # the chip now reads blank
+    { at_ms = 15800, var = "emu_mod_slot0", value = 0 },  # removed
+    { at_ms = 20400, var = "emu_nfc_fault", value = 1 },  # lost while the app is open
+    { at_ms = 23200, var = "emu_nfc_fault", value = 0 },  # restored
 ]
 presses = [
     { key = "UP", at_ms = 5300, hold_ms = 60 },    # Storage
     { key = "UP", at_ms = 5500, hold_ms = 60 },    # Settings
     { key = "UP", at_ms = 5700, hold_ms = 60 },    # Modules
     { key = "UP", at_ms = 5900, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
-    { key = "UP", at_ms = 6100, hold_ms = 60 },    # IR: NFC is dimmed, skipped
-    { key = "DOWN", at_ms = 6300, hold_ms = 60 },  # back to Modules
-    { key = "DOWN", at_ms = 6500, hold_ms = 60 },  # UART (STARK-0705): crossed on the way back
-    { key = "OK", at_ms = 6800, hold_ms = 60 },
-    { key = "DOWN", at_ms = 9400, hold_ms = 60 },  # NFC reader
-    { key = "DOWN", at_ms = 9600, hold_ms = 60 },  # Slot 0
-    { key = "OK", at_ms = 9800, hold_ms = 60 },
-    { key = "BACK", at_ms = 18200, hold_ms = 60 }, # details -> list
-    { key = "BACK", at_ms = 18500, hold_ms = 60 }, # list -> launcher
-    { key = "UP", at_ms = 18800, hold_ms = 60 },  # UART (STARK-0705): crossed on the way
-    { key = "UP", at_ms = 19100, hold_ms = 60 },   # NFC, enabled again
-    { key = "OK", at_ms = 19400, hold_ms = 60 },
-    { key = "BACK", at_ms = 21700, hold_ms = 60 },
-    { key = "UP", at_ms = 25500, hold_ms = 60 },   # selection moved to UART (NFC dimmed); up to NFC
-    { key = "OK", at_ms = 25800, hold_ms = 60 },
-    { key = "BACK", at_ms = 26400, hold_ms = 60 },
+    { key = "UP", at_ms = 6100, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 6300, hold_ms = 60 },    # IR: NFC is dimmed, skipped
+    { key = "DOWN", at_ms = 6500, hold_ms = 60 },  # SPI (STARK-0706): crossed on the way down
+    { key = "DOWN", at_ms = 6700, hold_ms = 60 },  # back to Modules
+    { key = "DOWN", at_ms = 6900, hold_ms = 60 },  # UART (STARK-0705): crossed on the way back
+    { key = "OK", at_ms = 7200, hold_ms = 60 },
+    { key = "DOWN", at_ms = 9800, hold_ms = 60 },  # NFC reader
+    { key = "DOWN", at_ms = 10000, hold_ms = 60 },  # Slot 0
+    { key = "OK", at_ms = 10200, hold_ms = 60 },
+    { key = "BACK", at_ms = 18600, hold_ms = 60 }, # details -> list
+    { key = "BACK", at_ms = 18900, hold_ms = 60 }, # list -> launcher
+    { key = "UP", at_ms = 19200, hold_ms = 60 },  # UART (STARK-0705): crossed on the way
+    { key = "UP", at_ms = 19500, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 19800, hold_ms = 60 },   # NFC, enabled again
+    { key = "OK", at_ms = 20100, hold_ms = 60 },
+    { key = "BACK", at_ms = 22400, hold_ms = 60 },
+    { key = "UP", at_ms = 26200, hold_ms = 60 },   # selection moved to SPI (NFC dimmed, STARK-0706); up to NFC
+    { key = "OK", at_ms = 26500, hold_ms = 60 },
+    { key = "BACK", at_ms = 27100, hold_ms = 60 },
 ]
 expect = [
     "module: caps 0x00000007",
     "nfc: module lost",
     "module: caps 0x00000003",
-    'menu: sel=18 "Modules"',
+    'menu: sel=19 "Modules"',
     'menu: sel=13 "IR"',
-    'menu: sel=18 "Modules"',
+    'menu: sel=19 "Modules"',
     "app: start modules",
     "modules: NFC reader: Absent",
     "modules: Slot 0: NFC carrier",
@@ -64,7 +67,7 @@ expect = [
     "nfc: module lost",
     "module: caps 0x00000003",
     "app: stop nfc",
-    'menu: sel=16 "UART"',
+    'menu: sel=15 "SPI"',
     "nfc: pn532 fw 1.6",
     "module: caps 0x00000007",
     'menu: sel=14 "NFC"',

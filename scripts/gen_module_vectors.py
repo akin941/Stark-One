@@ -92,6 +92,10 @@ def entries():
     # What "unknown bits" meant before bit 5 was assigned: a bit no firmware knows.
     out.append(("unknown_bit_6", encode(0x0502, 1, 0x80000040 | CAP_MOD_IRQ, "Future 2"), ok,
                 0x0502, 1, 0x80000040 | CAP_MOD_IRQ, "Future 2", True))
+    # Appended by STARK-0706 (ADR-0023 §6): the module the SPI probe may talk to, MOD_SPI and no
+    # function bit (descriptor 0x00000008).
+    out.append(("spi_breakout", encode(0x0B01, 1, CAP_MOD_SPI, "SPI breakout"), ok, 0x0B01, 1,
+                CAP_MOD_SPI, "SPI breakout", True))
     return out
 
 

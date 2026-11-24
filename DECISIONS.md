@@ -1698,3 +1698,88 @@ still hold, and the probe this task owns ran first.
     for the whole of V0.7 is passed (the binary is 549 kB; the partition is 4 MB, 87 % free): this task flags it and
     does not move it, and STARK-0708 restates the ceiling from what V0.7 actually costs. The boot-heap cost is in
     docs/measurements.md; the V0.7 total stays inside the 16 kB.
+
+**Addendum (2026-11-24, STARK-0706).** The SPI probe. The plan was silent or ambiguous on the points below; each is the
+smallest sound choice and none changes a rule above. The one decision that matters stays §6's: **the probe runs only on a
+slot whose module declares `MOD_SPI` and no function bit**, so no path leads from a raw transfer to a driver's chip.
+
+1. **The eligibility rule is one inline function, judged four times and tested against a fifth statement.** *A slot reads
+   `KNOWN`, its descriptor declares `MOD_SPI`, and nothing else is declared except `MOD_IRQ`.* It is
+   `stark_lab_spi_entry_ok()` in `stark_lab_transport.h`. The service judges it at the request, at the send before it claims,
+   and again at the send after the claim (a module cannot change under a lease, since a replacement revokes it, so the second
+   look closes the gap between the first look and the claim); the transport judges it a fourth time, on the live table,
+   before it attaches anything, whatever the caller says. `lab_spi_judge()` adds the *reason* around the same predicate, and
+   the independent Python table in `scripts/gen_lab_vectors.py` (220 vectors: every state, 22 declared-bit mixes, the chip
+   select wired or not) gives the same answer for every one. An unknown bit is a function (`owned by unknown`): a future module
+   that declares something this firmware has no driver for is not a breakout. Reasons are decided in this order: `no chip
+   select` (a fact about the board, so slot 1 always says it), `no module`, `generic module` or `unsupported module`,
+   `conflict`, `owned by Sub-GHz` / `NFC` / `IR` / `unknown`, `no SPI declared`.
+2. **The request is the arm.** The plan's API has `request` and `send` and no `arm`, so `stark_lab_spi_request()` is what 0704
+   called `arm`: it validates, judges, records a fingerprint (32-bit FNV-1a over `'S'`, slot, clock, mode, count, the bytes and
+   the slot's module identity: id, revision, declared bits) and replaces any earlier request, and `stark_lab_spi_send()` spends
+   it. The fingerprint is **recomputed from the request the caller hands back and from the table as it is then**, so a changed
+   byte, clock, mode or count, a different module in the slot, or a request that is not the armed one is `STARK_ERR_STATE`
+   (`lab: spi send refused: changed`). The request struct carries no fingerprint of its own for that reason: nothing a caller
+   writes there could be believed. As in 0704, any send spends the arm, success or failure (it is cleared before the arguments
+   are even looked at, so "consumed before the bus is touched" holds for a transaction that then fails), a bad request leaves no
+   arm behind, and an arm is stale after 30 s with the clock injected and its wrap handled. *The module's identity is a
+   descriptor, not a serial number:* a module replaced by one with the same id, revision and bits in the 30 s between the
+   dialog and the OK is the same transaction as far as this check can tell, and that is no weaker than the dialog, which names
+   the slot, not a part. The lease generation the plan mentions is not observable (`stark_module_release()` bumps it, so a
+   claim-and-release at the request would learn nothing), so the identity stands in for it; the live lease still goes stale the
+   moment the module goes (`stark_module_spi_xfer()` returns `STARK_ERR_STATE`, tested).
+3. **The claim is made at the send and never held.** `request` claims nothing (so a dialog can sit open while a driver works),
+   and `send` claims `MOD_SPI` only, as `spiprobe`, after the first look and releases after the transfer in every outcome. A
+   busy slot is `lab: spi slot 0 busy` and `STARK_ERR_BUSY`, with the driver's lease untouched; any other claim error is
+   passed on with its text. `STARK_LAB_EVT_SPI_DONE` is published when a transfer was attempted, successful or not, never for
+   a refusal. The probe has a mutex of its own (a transaction never holds up a pin, a sweep or a UART read) and runs on the
+   caller's task, the UI task: 32 bytes at 100 kHz are 2.6 ms.
+4. **The transport call is as specified and attaches for itself.** `stark_lab_transport_spi_xfer(lease, hz, mode, tx, rx, n)`
+   checks its arguments (1 to 32 bytes, one of the six clocks, mode 0 to 3), the entry rule on `stark_module_list()`, and then
+   `stark_module_spi_attach()`, `_xfer()` and `_detach()` on the lease: no device handle outlives a call, and `stark_module_spi.c`
+   remains the only file that calls the SPI driver (`check_layers.py` and `scripts/check.sh` are unchanged). There is **no call
+   that names a pin or a device**: the chip select is the lease's, so the panel's and the card's devices on the shared bus cannot
+   be addressed from the probe, which is the answer to "the display and SD share SPI2". The host shim and the test image's
+   transport apply the same header-level guard in front of the device model (the fifth substitution carries the SPI group; there
+   is no sixth).
+5. **Catalogue entry 34 is the SPI breakout; entries 2 and 3 were already eligible.** The new entry (`scripts/gen_module_vectors.py`)
+   is id `0x0B01`, revision 1, caps `0x00000008`, name `SPI breakout`, and nothing before it moved. Entry 3 (`spi_only`, `0x08`) and
+   entry 2 (`spi_irq`, `0x18`) were in the catalogue from V0.5 and are probe-eligible too: the host tests use all three. Descriptor
+   and rule are in `docs/module-format.md`.
+6. **The fake devices are spec-derived and stateless.** `fake_lab.c` gains `fake_lab_spi_device()`: `NONE` (MISO idles low, 0x00),
+   `FLASH` (`9f` returns `ef 40 18` after a zero byte, `05` returns status 0, `03` plus three address bytes streams the counting
+   pattern, every other command is accepted and ignored: no write, no erase, no state) and `ECHO` (MISO is MOSI one byte late),
+   and two faults, appended to `fake_lab_fault_t`: `SPI_ERROR` (the transfer fails) and `SPI_NO_ANSWER` (MISO reads 0xFF). The
+   test image's pokes are `emu_lab_spi` (0 none, 1 flash, 2 echo) and the existing `emu_lab_fault` (4 and 5); an external
+   chip can be bound to the model (`fake_lab_spi_ext()`), which is how the host test puts the fake CC1101 behind slot 0 and shows
+   that nothing reaches it. Answers are checked against an independent Python model of the same devices (`fake_lab_spi_vectors.h`).
+7. **The app follows the module table and acts on what is true now.** Home lists both slots (the module's name when it can be
+   probed, else the reason) and redraws on `STARK_SYS_MODULE`, which adds the one launcher-style edge `apps/app_spi -> stark_module`
+   that `app_modules` already has; OK on a slot re-reads the table first, so a list that went stale between redraws still never
+   acts on a slot that has since become a radio's. A refused slot is an alert (`No probe`) and a log line, never a silent no-op.
+   Setup is Clock, Mode, the three presets, Bytes, Nibble, the bytes, Send, a dimmed note, then the answer. A preset loads its
+   bytes (the clock and mode stay) and moves the selection to Send; after a successful send the selection moves to the first
+   MISO row, because the answer is what the user came for and the viewport follows the selection (the result rows are
+   selectable and inert so they can be scrolled to: 32 bytes are four hex and four text rows). Editing a value, BACK and leaving
+   the app cancel the request. The default is the JEDEC ID at 1 MHz in mode 0.
+8. **Logs (contract).** Service: `lab: spi slot 0 1 MHz mode 0 tx 9f 00 00 00 rx 00 ef 40 18`, `lab: spi slot 0 1 MHz mode 0 tx
+   9f 00 00 00 failed: <error>`, `lab: spi slot 0 busy` (or `<error>`), `lab: spi request refused: <reason>`, `lab: spi send
+   refused: not confirmed | changed | <reason>`. App: `spiapp: home`, `open slot 0`, `slot 0 refused: <reason>`, `preset JEDEC
+   ID`, `confirm slot 0 1 MHz mode 0`, `cancelled slot 0`, `sent slot 0: rx 00 ef 40 18`, `send slot 0 failed: <error>`, `request slot
+   0 refused: <error>`. The module service adds `module: slot 0 claimed by spiprobe` for each transaction.
+9. **Evidence.** *Host:* `test_lab_spi` (the 220 judgement vectors against the reference and the shared predicate; the 14
+   fingerprint vectors; every clock, mode and length at its edges; a request consumed by success, by failure, by a bad argument and
+   by a cancel; stale at 30 s and 30 s + 1 ms, across the clock's wrap; a changed field, a replaced request, a different module,
+   a module swapped for a radio or pulled before the send and between the claim and the transfer; a stale lease; a busy slot; the
+   claim released after every outcome; and **the radio sees no transfer**: with the CC1101 module in slot 0 and the fake chip bound
+   behind the SPI model, a PATABLE burst, an `STX` strobe, 32 bytes of `ff` and a JEDEC read are refused at the request, at a
+   hand-made send and at the transport with a lease the radio's own driver could hold, and the chip's transfer count, `PATABLE`
+   writes, strobes and `MARCSTATE` do not move, while the same harness on an eligible slot does reach the chip, so the test cannot
+   pass by reaching nothing), `test_fake_lab` (the devices, the faults, the binding), `test_spi_views` and `test_ui_spi` (13
+   scenarios, 16 frames pinned after inspection), `test_module_desc` (entry 34). `lab_spi.c`, `spi_views.c` and `fake_lab.c` run at
+   100 % lines. *Production image:* `v07-spi-prod` (slot 0 reads generic because esp-emu answers at 0x50, slot 1 has no chip select:
+   both refused, no claim, no transfer). *Test image:* `storage/v07-spi` (entry 34 and a flash: cancel sends nothing, OK one
+   transaction, a second press asks again, an echo, then the CC1101 module: `owned by Sub-GHz`, the driver's detection unchanged,
+   never claimed by the probe, then an empty slot). Nothing here shows a signal on MOSI, a chip select moving, the panel and the
+   card staying intact, or a real flash answering (ROADMAP V1 exit 13).
+10. **Cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM and flash against the 0706 budgets.

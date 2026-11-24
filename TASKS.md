@@ -5980,6 +5980,64 @@ module) → slot 0 `owned by Sub-GHz`, no send possible, `subghz:` detection una
 display corruption, logic-analyser capture), a real flash's JEDEC ID, the refusal on a
 Sub-GHz module.
 
+**As built (2026-11-24).**
+
+* **The rule and where it is stated.** A slot is probed only when it reads `KNOWN` and its descriptor declares `MOD_SPI` and nothing else
+  except `MOD_IRQ`: `stark_lab_spi_entry_ok()` in `stark_lab_transport.h`, one inline predicate. The service judges it at the
+  request, at the send before the claim and again after it, the transport judges it a fourth time on the live table before it
+  attaches anything, and `scripts/gen_lab_vectors.py` restates it independently (220 vectors) for the tests to compare against.
+  The reason text is `lab_spi_judge()`'s: `no chip select` (slot 1, always), `no module`, `generic module`, `unsupported module`,
+  `conflict`, `owned by Sub-GHz | NFC | IR | unknown`, `no SPI declared`. AC 1, AC 2.
+* **Layers.** `lab_spi.c` is pure (100 % lines, with `spi_views.c`): the judgement, the request and its FNV-1a fingerprint (slot,
+  clock, mode, bytes, the module's id, revision and declared bits), the single-use arm, the claim-use-release and the log text over
+  an injected table, lease and bus. `stark_lab.c` binds it under a mutex of its own. The transport's SPI group is the specified
+  `stark_lab_transport_spi_xfer(lease, hz, mode, tx, rx, n)` (`lab_transport_spi.c`, target-only; it calls `stark_module_spi_attach`,
+  `_xfer` and `_detach` and no SPI driver, so `check_layers.py` and `check.sh` are unchanged; the host builds a shim, the test image's
+  transport carries the group: still five substitutions). There is no call that names a pin, so only the lease's chip select can
+  be asserted and the panel's and the card's devices on SPI2 are out of reach.
+* **The arm is the request** (ADR-0023 0706 addendum 2): `stark_lab_spi_request()` validates, judges and records the fingerprint,
+  `stark_lab_spi_send()` spends it before anything else, refuses a request that is missing, used, cancelled, older than 30 s, changed
+  in any field or for another module (`STARK_ERR_STATE`) or whose slot stopped being eligible (`STARK_ERR_NOT_SUPPORTED`), then
+  claims `MOD_SPI` as `spiprobe`, judges again, transfers and releases in every outcome. `BUSY` is `lab: spi slot 0 busy`. AC 1, AC 3.
+* **Limits** (constants): 1 to 32 bytes, the six clocks 100 kHz to 4 MHz, modes 0 to 3, checked by the service and again by the
+  transport; every transaction is logged with MOSI and MISO (`lab: spi slot 0 1 MHz mode 0 tx 9f 00 00 00 rx 00 ef 40 18`). AC 4.
+* **App** (Lab category, title "SPI", launcher row 15 between NFC and Sub-GHz). Home: both slots with the module's name or the
+  reason, redrawn on `STARK_SYS_MODULE`; OK acts on the table as it is then. A refused slot is an alert (`No probe`). Setup: Clock,
+  Mode, the presets JEDEC ID, Read status and Dummy read (which move the selection to Send), Bytes, Nibble, the byte rows, Send, and
+  after a send the answer as hex and ASCII rows of eight (the selection moves to the first). Send asks the confirmation naming slot,
+  clock, mode and bytes ("Own hardware only"); BACK sends nothing, OK makes that one transaction, a second press asks again.
+* **Catalogue entry 34** (`SPI breakout`, id `0x0B01`, `0x00000008`) is appended by `scripts/gen_module_vectors.py` and documented in
+  `docs/module-format.md`; entries 1 to 33 keep their meaning, and entries 2 (`0x18`) and 3 (`0x08`) were already eligible. AC 5.
+* **Fake devices and pokes.** `fake_lab.c` gains the SPI model: none (MISO idles low), a JEDEC flash (`9f` returns `ef 40 18`,
+  `05` status 0, `03` plus an address a counting pattern, everything else ignored: no state), an echo, the faults `SPI_ERROR` and
+  `SPI_NO_ANSWER` (appended to `fake_lab_fault_t`) and a binding for a chip it does not know. Test-image pokes: `emu_lab_spi` (0, 1, 2)
+  and `emu_lab_fault` 4 and 5.
+* **The radio sees nothing.** `test_lab_spi` puts the fake CC1101 behind slot 0 with the CC1101 module's descriptor: a PATABLE burst,
+  an `STX` strobe and 32 bytes of `ff` are refused at the request, at a hand-made send and at the transport with a lease the radio's own
+  driver could hold; its transfers, PATABLE writes, strobes and MARCSTATE do not move; the same harness on an eligible slot does reach
+  the chip (the control). AC 2.
+* **Emulator.** Production `v07-spi-prod`: slot 0 reads generic (esp-emu answers at 0x50) and slot 1 has no chip select, both refused
+  with an alert, no claim, no transfer. Test image `storage/v07-spi` (20 s of virtual time at most): entry 34 and a flash: cancel sends
+  nothing, OK one transaction `rx 00 ef 40 18`, a second press asks again, an echo `rx 00 9f 00 00`, then the CC1101 module (`owned by
+  Sub-GHz`, an alert, the Sub-GHz detection and its capability unchanged, never claimed by the probe) and an empty slot (`no module`).
+* **Pre-existing scenarios edited (row indices, the registry line and one more press where a walk crosses the new row, as STARK-0702,
+  0704 and 0705 did).** Registry `n=16` to `n=17` (`spi` after `i2c`): `v0-boot`, `v01-hello`. Launcher rows (+1 from Sub-GHz down):
+  `v07-uart-prod`, `storage/{v07-uart, v07-uart-log}` (UART 16 to 17), `v04-nfc-absent` and `storage/v05-hotplug` (Modules 18 to 19),
+  `v02-settings-persist` (Settings 19 to 20), `storage/{v02-eject, v02-log-file}` (Storage 20 to 21), `soak/v06-soak` and
+  `storage/{v06-capture, v06-decode, v06-replay, v06-scan}` (Sub-GHz 15 to 16). One more press where a walk crosses the row, UP from
+  the Device header past it to NFC, IR, I2C, GPIO or Hello: `v01-hello`, `v04-nfc-absent`, `v07-gpio-prod`, `v07-i2c-prod`,
+  `v07-measure-prod`, `soak/{v03-soak, v04-soak}`, `storage/v07-uart-log` (the walk from UART to GPIO), `storage/{v03-capture-replay, v03-ir-app, v03-protocols, v03-replay, v04-dump,
+  v04-nfc-app, v04-reads, v04-write-readback}`; DOWN past it from IR or NFC to UART: `v02-no-card`, `v04-nfc-absent`, `soak/v04-soak`,
+  `soak/v05-soak` (once each), `soak/v01-soak` (twice); and `storage/v05-hotplug` (UP once on the first walk and once from Modules to
+  NFC, DOWN once; when the reader is lost the selection now falls to SPI, not UART, so its expectation reads `sel=15 "SPI"`),
+  `soak/v05-soak` (UP once). Walks that end at Sub-GHz cross the row only on the way up from UART and need no press.
+* **Not edited, against the plan's file list:** `test/host/test_lab_service.c` tests the production pad transport over the fake HAL;
+  the SPI group is not over the HAL and its host tests are `test_lab_spi.c` (the transport's guard through the host shim), so
+  that file is unchanged.
+* **Evidence and cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM and flash against the budgets
+  (app static ≤ 1 kB, boot heap ≤ 1 kB, flash ≤ 6 kB), and the host and emulator runs.
+* **Not here.** Anything physical (a signal on a pin, a real flash, the panel and the card staying intact), and the self-test.
+
 ---
 
 ## STARK-0707 — Self-test and report export

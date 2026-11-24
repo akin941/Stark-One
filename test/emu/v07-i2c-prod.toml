@@ -8,54 +8,55 @@
 # wraps to Storage, Settings, Modules, UART, IR (NFC and Sub-GHz are dimmed without a module), I2C. Not
 # device evidence: the emulator has no second device and no waveform.
 name = "emu-v07-i2c-prod"
-end_ms = 17650
+end_ms = 17800
 heap_min = 200000
 presses = [
     { key = "UP", at_ms = 400, hold_ms = 60 },      # Storage
     { key = "UP", at_ms = 550, hold_ms = 60 },      # Settings
     { key = "UP", at_ms = 700, hold_ms = 60 },      # Modules
     { key = "UP", at_ms = 850, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
-    { key = "UP", at_ms = 1000, hold_ms = 60 },      # IR
-    { key = "UP", at_ms = 1150, hold_ms = 60 },     # I2C
-    { key = "OK", at_ms = 1450, hold_ms = 60 },     # open the app
-    { key = "OK", at_ms = 1950, hold_ms = 60 },     # Scan: 112 probes through the real driver
-    { key = "OK", at_ms = 2950, hold_ms = 60 },     # open 0x50
-    { key = "OK", at_ms = 3450, hold_ms = 60 },     # Read
-    { key = "DOWN", at_ms = 3850, hold_ms = 60 },   # Register
-    { key = "DOWN", at_ms = 4050, hold_ms = 60 },   # Nibble
-    { key = "DOWN", at_ms = 4250, hold_ms = 60 },   # Length
-    { key = "RIGHT", at_ms = 4450, hold_ms = 60 },  # Length 2 (1 of 7)
-    { key = "RIGHT", at_ms = 4600, hold_ms = 60 },  # Length 3 (2 of 7)
-    { key = "RIGHT", at_ms = 4750, hold_ms = 60 },  # Length 4 (3 of 7)
-    { key = "RIGHT", at_ms = 4900, hold_ms = 60 },  # Length 5 (4 of 7)
-    { key = "RIGHT", at_ms = 5050, hold_ms = 60 },  # Length 6 (5 of 7)
-    { key = "RIGHT", at_ms = 5200, hold_ms = 60 },  # Length 7 (6 of 7)
-    { key = "RIGHT", at_ms = 5350, hold_ms = 60 },  # Length 8 (7 of 7)
-    { key = "DOWN", at_ms = 5650, hold_ms = 60 },   # Read
-    { key = "OK", at_ms = 5950, hold_ms = 60 },     # eight bytes from register 0: zeros
-    { key = "BACK", at_ms = 6750, hold_ms = 60 },   # to the device
-    { key = "DOWN", at_ms = 7150, hold_ms = 60 },   # Dump
-    { key = "DOWN", at_ms = 7350, hold_ms = 60 },   # Write
-    { key = "OK", at_ms = 7650, hold_ms = 60 },     # the write editor
-    { key = "DOWN", at_ms = 8050, hold_ms = 60 },   # Register
-    { key = "DOWN", at_ms = 8250, hold_ms = 60 },   # Nibble
-    { key = "DOWN", at_ms = 8450, hold_ms = 60 },   # Bytes
-    { key = "DOWN", at_ms = 8650, hold_ms = 60 },   # Byte 0
-    { key = "RIGHT", at_ms = 8850, hold_ms = 60 },  # Byte 0 = 0x01
-    { key = "DOWN", at_ms = 9150, hold_ms = 60 },   # Write
-    { key = "OK", at_ms = 9450, hold_ms = 60 },     # refused: an alert, no confirmation, no bus traffic
-    { key = "OK", at_ms = 10450, hold_ms = 60 },    # close the alert
-    { key = "BACK", at_ms = 10950, hold_ms = 60 },  # to the device
-    { key = "OK", at_ms = 11450, hold_ms = 60 },    # Read again
-    { key = "DOWN", at_ms = 11950, hold_ms = 60 },  # Register
-    { key = "DOWN", at_ms = 12150, hold_ms = 60 },  # Nibble
-    { key = "DOWN", at_ms = 12350, hold_ms = 60 },  # Length
-    { key = "DOWN", at_ms = 12550, hold_ms = 60 },  # Read
-    { key = "OK", at_ms = 12850, hold_ms = 60 },    # still zero
-    { key = "BACK", at_ms = 13650, hold_ms = 60 },  # to the device
-    { key = "BACK", at_ms = 14150, hold_ms = 60 },  # to the list
-    { key = "BACK", at_ms = 14650, hold_ms = 60 },  # home
-    { key = "BACK", at_ms = 15150, hold_ms = 60 },  # leave the app
+    { key = "UP", at_ms = 1000, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 1150, hold_ms = 60 },      # IR
+    { key = "UP", at_ms = 1300, hold_ms = 60 },     # I2C
+    { key = "OK", at_ms = 1600, hold_ms = 60 },     # open the app
+    { key = "OK", at_ms = 2100, hold_ms = 60 },     # Scan: 112 probes through the real driver
+    { key = "OK", at_ms = 3100, hold_ms = 60 },     # open 0x50
+    { key = "OK", at_ms = 3600, hold_ms = 60 },     # Read
+    { key = "DOWN", at_ms = 4000, hold_ms = 60 },   # Register
+    { key = "DOWN", at_ms = 4200, hold_ms = 60 },   # Nibble
+    { key = "DOWN", at_ms = 4400, hold_ms = 60 },   # Length
+    { key = "RIGHT", at_ms = 4600, hold_ms = 60 },  # Length 2 (1 of 7)
+    { key = "RIGHT", at_ms = 4750, hold_ms = 60 },  # Length 3 (2 of 7)
+    { key = "RIGHT", at_ms = 4900, hold_ms = 60 },  # Length 4 (3 of 7)
+    { key = "RIGHT", at_ms = 5050, hold_ms = 60 },  # Length 5 (4 of 7)
+    { key = "RIGHT", at_ms = 5200, hold_ms = 60 },  # Length 6 (5 of 7)
+    { key = "RIGHT", at_ms = 5350, hold_ms = 60 },  # Length 7 (6 of 7)
+    { key = "RIGHT", at_ms = 5500, hold_ms = 60 },  # Length 8 (7 of 7)
+    { key = "DOWN", at_ms = 5800, hold_ms = 60 },   # Read
+    { key = "OK", at_ms = 6100, hold_ms = 60 },     # eight bytes from register 0: zeros
+    { key = "BACK", at_ms = 6900, hold_ms = 60 },   # to the device
+    { key = "DOWN", at_ms = 7300, hold_ms = 60 },   # Dump
+    { key = "DOWN", at_ms = 7500, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 7800, hold_ms = 60 },     # the write editor
+    { key = "DOWN", at_ms = 8200, hold_ms = 60 },   # Register
+    { key = "DOWN", at_ms = 8400, hold_ms = 60 },   # Nibble
+    { key = "DOWN", at_ms = 8600, hold_ms = 60 },   # Bytes
+    { key = "DOWN", at_ms = 8800, hold_ms = 60 },   # Byte 0
+    { key = "RIGHT", at_ms = 9000, hold_ms = 60 },  # Byte 0 = 0x01
+    { key = "DOWN", at_ms = 9300, hold_ms = 60 },   # Write
+    { key = "OK", at_ms = 9600, hold_ms = 60 },     # refused: an alert, no confirmation, no bus traffic
+    { key = "OK", at_ms = 10600, hold_ms = 60 },    # close the alert
+    { key = "BACK", at_ms = 11100, hold_ms = 60 },  # to the device
+    { key = "OK", at_ms = 11600, hold_ms = 60 },    # Read again
+    { key = "DOWN", at_ms = 12100, hold_ms = 60 },  # Register
+    { key = "DOWN", at_ms = 12300, hold_ms = 60 },  # Nibble
+    { key = "DOWN", at_ms = 12500, hold_ms = 60 },  # Length
+    { key = "DOWN", at_ms = 12700, hold_ms = 60 },  # Read
+    { key = "OK", at_ms = 13000, hold_ms = 60 },    # still zero
+    { key = "BACK", at_ms = 13800, hold_ms = 60 },  # to the device
+    { key = "BACK", at_ms = 14300, hold_ms = 60 },  # to the list
+    { key = "BACK", at_ms = 14800, hold_ms = 60 },  # home
+    { key = "BACK", at_ms = 15300, hold_ms = 60 },  # leave the app
 ]
 expect = [
     "lab: pins 38 39",

@@ -9,7 +9,7 @@
 # evidence only (docs/VALIDATION.md §2).
 name = "emu-v07-uart-log"
 image = "storage"
-end_ms = 16600
+end_ms = 16750
 heap_min = 200000
 pokes = [
     { at_ms = 400, var = "emu_lab_uart", value = 3 },  # the text scene: 50 lines, 1 300 bytes
@@ -37,17 +37,18 @@ presses = [
     { key = "OK", at_ms = 8200, hold_ms = 60 },  # Monitor again: the next file
     { key = "BACK", at_ms = 10700, hold_ms = 60 },  # close it
     { key = "BACK", at_ms = 11400, hold_ms = 60 },  # leave the app
-    { key = "UP", at_ms = 12100, hold_ms = 60 },  # NFC
-    { key = "UP", at_ms = 12250, hold_ms = 60 },  # IR
-    { key = "UP", at_ms = 12400, hold_ms = 60 },  # I2C
-    { key = "UP", at_ms = 12550, hold_ms = 60 },  # GPIO
-    { key = "OK", at_ms = 12900, hold_ms = 60 },  # GPIO: both lab pins are free again
-    { key = "OK", at_ms = 13500, hold_ms = 60 },  # open pin 38 (LAB_UART_TX): the tool released it
-    { key = "BACK", at_ms = 14100, hold_ms = 60 },  # release it
-    { key = "BACK", at_ms = 14600, hold_ms = 60 },  # leave the app
+    { key = "UP", at_ms = 12100, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 12250, hold_ms = 60 },  # NFC
+    { key = "UP", at_ms = 12400, hold_ms = 60 },  # IR
+    { key = "UP", at_ms = 12550, hold_ms = 60 },  # I2C
+    { key = "UP", at_ms = 12700, hold_ms = 60 },  # GPIO
+    { key = "OK", at_ms = 13050, hold_ms = 60 },  # GPIO: both lab pins are free again
+    { key = "OK", at_ms = 13650, hold_ms = 60 },  # open pin 38 (LAB_UART_TX): the tool released it
+    { key = "BACK", at_ms = 14250, hold_ms = 60 },  # release it
+    { key = "BACK", at_ms = 14750, hold_ms = 60 },  # leave the app
 ]
 expect = [
-    'menu: sel=16 "UART"',
+    'menu: sel=17 "UART"',
     "uartapp: log on",
     "lab: uart open 115200 8N1",
     "uartapp: monitor 115200 8N1",

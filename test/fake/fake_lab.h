@@ -2,8 +2,8 @@
  * fake_lab.h — the test-only model of the lab's wires (TASKS.md STARK-0701, ADR-0023 §2, §9).
  * Pads (hi-Z, input with a pull, output with a level), each with an external source the
  * harness sets and wires between pads, and the shared I2C bus with five known devices
- * (STARK-0704); SPI devices and the UART peer join in the tasks that need them. Spec-derived,
- * never a recording of a device.
+ * (STARK-0704), the UART peer (STARK-0705) and the SPI devices on a module slot (STARK-0706).
+ * Spec-derived, never a recording of a device.
  *
  * It sits behind stark_lab_transport: the host tests bind the pure lab core to it directly,
  * and the emulator test image's substituted transport (test/emu/storage_image/components/
@@ -31,6 +31,8 @@ typedef enum {
     FAKE_LAB_FAULT_PAD_STUCK_LOW,  /* a read of the pad returns low whatever drives it */
     FAKE_LAB_FAULT_PAD_STUCK_HIGH, /* ... high */
     FAKE_LAB_FAULT_CONFIG_ERROR,   /* pad_in, pad_out and pwm_start fail with STARK_ERR_IO */
+    FAKE_LAB_FAULT_SPI_ERROR,      /* an SPI transfer fails with STARK_ERR_IO (STARK-0706) */
+    FAKE_LAB_FAULT_SPI_NO_ANSWER,  /* ... or the device does not answer: MISO reads all 0xFF */
     FAKE_LAB_FAULT_COUNT
 } fake_lab_fault_t;
 
@@ -232,3 +234,44 @@ size_t fake_lab_uart_scene_len(fake_lab_uart_mode_t mode);
 uint8_t fake_lab_uart_scene_byte(fake_lab_uart_mode_t mode, size_t j);
 uint32_t fake_lab_uart_bits(uint8_t fmt);
 unsigned fake_lab_uart_dropped(void);
+
+/* ---- the SPI devices (STARK-0706, ADR-0023 §6) ---------------------------------------------
+ *
+ * What answers on a module slot's chip select, chosen by a mode (the reset: NONE). One transfer is
+ * a chip-select-framed exchange of n bytes, MISO as MOSI is clocked: NONE   nothing drives MISO: it
+ * idles low and reads 0x00 whatever is sent FLASH  a JEDEC NOR flash class device: while the
+ * command byte is clocked MISO reads 0x00; then 9F returns ef 40 18 (manufacturer, type, capacity)
+ * and zeros after them, 05 returns the status register, 0x00, 03 with three address bytes streams
+ * the counting pattern (the byte at address a is a & 0xFF, wrapping at 24 bits) and every other
+ * command, writes and erases included, is accepted and ignored: the model has no state ECHO   MISO
+ * is the previous MOSI byte (the first MISO byte is 0x00) FAKE_LAB_FAULT_SPI_ERROR makes the
+ * transfer fail and FAKE_LAB_FAULT_SPI_NO_ANSWER makes MISO read all 0xFF (a missing device on a
+ * pulled-up line); both are armed through fake_lab_fault() and count one use per transfer.
+ * fake_lab_spi_ext() binds a chip the model does not know (the host tests bind the fake CC1101 to
+ * slot 0 to prove that nothing reaches it); while bound it answers every transfer instead of the
+ * mode. The model knows no policy: the transport's guard is the policy.
+ */
+typedef enum {
+    FAKE_LAB_SPI_NONE,
+    FAKE_LAB_SPI_FLASH,
+    FAKE_LAB_SPI_ECHO,
+    FAKE_LAB_SPI_MODES
+} fake_lab_spi_mode_t;
+
+typedef stark_err_t (*fake_lab_spi_ext_fn)(uint8_t slot, const uint8_t *tx, uint8_t *rx, size_t n);
+
+void fake_lab_spi_device(fake_lab_spi_mode_t mode); /* a mode past the list is ignored */
+void fake_lab_spi_ext(fake_lab_spi_ext_fn fn);      /* NULL unbinds */
+
+/* One transfer of `n` bytes (1 to 32). STARK_ERR_INVALID_ARG for a NULL or a length outside that.
+ */
+stark_err_t fake_lab_spi_xfer(uint8_t slot, uint32_t hz, uint8_t mode, const uint8_t *tx,
+                              uint8_t *rx, size_t n);
+
+/* Inspection for tests: transfers that reached the model since the reset, and the latest one's
+ * slot, clock, mode and length. */
+unsigned fake_lab_spi_calls(void);
+uint8_t fake_lab_spi_last_slot(void);
+uint32_t fake_lab_spi_last_hz(void);
+uint8_t fake_lab_spi_last_mode(void);
+size_t fake_lab_spi_last_len(void);

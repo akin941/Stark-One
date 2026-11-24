@@ -3,22 +3,23 @@
 # About wraps to the last row, Storage; then Settings, Modules, UART, IR, I2C, GPIO, Hello), refreshes its uptime once a
 # second on the production image, and leaves cleanly.
 name = "emu-v01-hello"
-end_ms = 3920
+end_ms = 4040
 heap_min = 200000
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },     # from About, wrap to Storage
     { key = "UP", at_ms = 420, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 540, hold_ms = 60 },     # past the Device header to Modules
     { key = "UP", at_ms = 660, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
-    { key = "UP", at_ms = 780, hold_ms = 60 },     # IR (NFC 14 is dimmed: no reader in the production image)
-    { key = "UP", at_ms = 900, hold_ms = 60 },     # I2C (STARK-0704: no capability, never dimmed)
-    { key = "UP", at_ms = 1020, hold_ms = 60 },     # GPIO (STARK-0702: no capability, never dimmed)
-    { key = "UP", at_ms = 1140, hold_ms = 60 },    # past the Lab header to Hello
-    { key = "OK", at_ms = 1320, hold_ms = 60 },
-    { key = "BACK", at_ms = 3520, hold_ms = 60 },
+    { key = "UP", at_ms = 780, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 900, hold_ms = 60 },     # IR (NFC 14 is dimmed: no reader in the production image)
+    { key = "UP", at_ms = 1020, hold_ms = 60 },     # I2C (STARK-0704: no capability, never dimmed)
+    { key = "UP", at_ms = 1140, hold_ms = 60 },     # GPIO (STARK-0702: no capability, never dimmed)
+    { key = "UP", at_ms = 1260, hold_ms = 60 },    # past the Lab header to Hello
+    { key = "OK", at_ms = 1440, hold_ms = 60 },
+    { key = "BACK", at_ms = 3640, hold_ms = 60 },
 ]
 expect = [
-    "app: registry n=16 about,diagnostics,inputtest,displaytest,buzzertest,apptest,hello,gpio,i2c,uart,nfc,ir,subghz,modules,storage,settings",
+    "app: registry n=17 about,diagnostics,inputtest,displaytest,buzzertest,apptest,hello,gpio,i2c,spi,uart,nfc,ir,subghz,modules,storage,settings",
     'menu: sel=9 "Hello"',
     "hello: uptime=00:00:01",    # on_start (launched ~1 s in), before the launch is logged
     "app: start hello",

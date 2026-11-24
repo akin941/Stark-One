@@ -3,7 +3,9 @@
  * with a pull, output with a level, external sources, wires and faults. The model carries the
  * evidence of every host and emulator test that uses it, so it is tested on its own first.
  */
+#include <string.h>
 #include "fake_lab.h"
+#include "fake_lab_spi_vectors.h"
 #include "unity.h"
 
 #define PIN_A 38
@@ -998,6 +1000,104 @@ static void test_the_rx_pad_shows_the_peers_stream_and_other_pads_do_not(void)
     TEST_ASSERT_EQUAL_UINT(0, n);
 }
 
+/* ---- the SPI devices (STARK-0706) -------------------------------------------------------------
+ */
+
+static void test_every_spi_device_vector_matches_the_independent_reference(void)
+{
+    TEST_ASSERT_TRUE(FAKE_LAB_SPI_DEV_VECS >= 50u);
+    for (size_t i = 0; i < FAKE_LAB_SPI_DEV_VECS; i++) {
+        const fake_lab_spi_dev_vec_t *v = &fake_lab_spi_dev_vecs[i];
+        uint8_t rx[32];
+        memset(rx, 0xEE, sizeof rx);
+        fake_lab_spi_device((fake_lab_spi_mode_t)v->device);
+        TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, v->tx, rx, v->n));
+        TEST_ASSERT_EQUAL_HEX8_ARRAY(v->rx, rx, v->n);
+        if (v->n < sizeof rx) {
+            TEST_ASSERT_EQUAL_HEX8(0xEE, rx[v->n]); /* nothing written past n */
+        }
+    }
+}
+
+static void test_the_spi_model_is_empty_at_power_on_and_counts_its_transfers(void)
+{
+    uint8_t rx[4];
+    const uint8_t tx[4] = {0x9f, 0, 0, 0};
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_spi_calls());
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(1, 250000u, 3, tx, rx, 4));
+    TEST_ASSERT_EQUAL_HEX8(0, rx[1]); /* no device: MISO idles low */
+    TEST_ASSERT_EQUAL_UINT(1, fake_lab_spi_calls());
+    TEST_ASSERT_EQUAL_UINT8(1, fake_lab_spi_last_slot());
+    TEST_ASSERT_EQUAL_UINT32(250000u, fake_lab_spi_last_hz());
+    TEST_ASSERT_EQUAL_UINT8(3, fake_lab_spi_last_mode());
+    TEST_ASSERT_EQUAL_UINT(4, fake_lab_spi_last_len());
+    fake_lab_spi_device(FAKE_LAB_SPI_FLASH);
+    fake_lab_spi_device(FAKE_LAB_SPI_MODES); /* past the list: ignored */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 4));
+    TEST_ASSERT_EQUAL_HEX8(0xef, rx[1]);
+    fake_lab_reset();
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_spi_calls());
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 4));
+    TEST_ASSERT_EQUAL_HEX8(0, rx[1]); /* the reset forgot the flash */
+}
+
+static void test_the_spi_faults_count_down(void)
+{
+    uint8_t rx[4];
+    const uint8_t tx[4] = {0x9f, 0, 0, 0};
+    fake_lab_spi_device(FAKE_LAB_SPI_FLASH);
+    fake_lab_fault(FAKE_LAB_FAULT_SPI_ERROR, -1, 2);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 4));
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 4));
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 4));
+    TEST_ASSERT_EQUAL_HEX8(0xef, rx[1]);
+    TEST_ASSERT_EQUAL_UINT(3, fake_lab_spi_calls()); /* a failed transfer still reached the model */
+    fake_lab_fault(FAKE_LAB_FAULT_SPI_NO_ANSWER, -1, -1);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 4));
+    TEST_ASSERT_EQUAL_HEX8(0xff, rx[0]);
+    TEST_ASSERT_EQUAL_HEX8(0xff, rx[3]);
+    fake_lab_fault(FAKE_LAB_FAULT_NONE, -1, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 4));
+    TEST_ASSERT_EQUAL_HEX8(0xef, rx[1]);
+}
+
+static stark_err_t spi_chip(uint8_t slot, const uint8_t *tx, uint8_t *rx, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        rx[i] = (uint8_t)(tx[i] ^ (0x40u + slot));
+    }
+    return STARK_OK;
+}
+
+static void test_a_bound_spi_chip_answers_instead_of_the_mode_and_faults_come_first(void)
+{
+    uint8_t rx[2];
+    const uint8_t tx[2] = {0x10, 0x20};
+    fake_lab_spi_device(FAKE_LAB_SPI_ECHO);
+    fake_lab_spi_ext(spi_chip);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 2));
+    TEST_ASSERT_EQUAL_HEX8(0x50, rx[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x60, rx[1]);
+    fake_lab_fault(FAKE_LAB_FAULT_SPI_ERROR, -1, 1);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 2));
+    fake_lab_spi_ext(NULL);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 2));
+    TEST_ASSERT_EQUAL_HEX8(0x00, rx[0]); /* the echo again */
+    TEST_ASSERT_EQUAL_HEX8(0x10, rx[1]);
+}
+
+static void test_spi_bad_arguments_touch_nothing(void)
+{
+    uint8_t rx[33];
+    const uint8_t tx[33] = {0};
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_spi_xfer(0, 1000000u, 0, NULL, rx, 4));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_spi_xfer(0, 1000000u, 0, tx, NULL, 4));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 0));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 33));
+    TEST_ASSERT_EQUAL_UINT(0, fake_lab_spi_calls());
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_spi_xfer(0, 1000000u, 0, tx, rx, 32));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -1042,5 +1142,10 @@ int main(void)
     RUN_TEST(test_a_talking_peer_says_its_scene_once_at_its_own_pace);
     RUN_TEST(test_a_stream_that_outruns_the_receive_buffer_loses_its_oldest_and_counts_an_overrun);
     RUN_TEST(test_the_rx_pad_shows_the_peers_stream_and_other_pads_do_not);
+    RUN_TEST(test_every_spi_device_vector_matches_the_independent_reference);
+    RUN_TEST(test_the_spi_model_is_empty_at_power_on_and_counts_its_transfers);
+    RUN_TEST(test_the_spi_faults_count_down);
+    RUN_TEST(test_a_bound_spi_chip_answers_instead_of_the_mode_and_faults_come_first);
+    RUN_TEST(test_spi_bad_arguments_touch_nothing);
     return UNITY_END();
 }

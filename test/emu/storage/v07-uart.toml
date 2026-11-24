@@ -50,7 +50,7 @@ presses = [
 ]
 expect = [
     "lab: pins 38 39",
-    'menu: sel=16 "UART"',
+    'menu: sel=17 "UART"',
     "lab: uart open 115200 8N1",
     "uartapp: loop view",
     'dialog: open "Drive LAB_UART_TX?"',

@@ -7,7 +7,7 @@
 # only: no carrier, LED, light or receiver is proven (V1 checks).
 name = "emu-v03-protocols"
 image = "storage"
-end_ms = 16900
+end_ms = 17000
 heap_min = 200000
 rmt_loopback = "0:2"
 presses = [
@@ -15,36 +15,37 @@ presses = [
     { key = "UP", at_ms = 400, hold_ms = 60 },  # Settings
     { key = "UP", at_ms = 500, hold_ms = 60 },  # Modules (STARK-0505)
     { key = "UP", at_ms = 600, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
-    { key = "UP", at_ms = 700, hold_ms = 60 },  # NFC (STARK-0404)
-    { key = "UP", at_ms = 800, hold_ms = 60 },  # IR
-    { key = "OK", at_ms = 900, hold_ms = 60 },
-    { key = "DOWN", at_ms = 1200, hold_ms = 60 },  # Browse saved
-    { key = "OK", at_ms = 1400, hold_ms = 60 },  # 9 files
-    { key = "OK", at_ms = 1900, hold_ms = 60 },  # lab_nec.ir
-    { key = "OK", at_ms = 2300, hold_ms = 60 },  # confirm
-    { key = "DOWN", at_ms = 3100, hold_ms = 60 },
-    { key = "OK", at_ms = 3600, hold_ms = 60 },  # lab_necx.ir
-    { key = "OK", at_ms = 4000, hold_ms = 60 },  # confirm
-    { key = "DOWN", at_ms = 4800, hold_ms = 60 },
-    { key = "OK", at_ms = 5300, hold_ms = 60 },  # lab_raw.ir
-    { key = "OK", at_ms = 5700, hold_ms = 60 },  # confirm
-    { key = "DOWN", at_ms = 6500, hold_ms = 60 },
-    { key = "OK", at_ms = 7000, hold_ms = 60 },  # lab_rc5.ir
-    { key = "OK", at_ms = 7400, hold_ms = 60 },  # confirm
-    { key = "DOWN", at_ms = 8200, hold_ms = 60 },
-    { key = "OK", at_ms = 8700, hold_ms = 60 },  # lab_rc6.ir
-    { key = "OK", at_ms = 9100, hold_ms = 60 },  # confirm
-    { key = "DOWN", at_ms = 9900, hold_ms = 60 },
-    { key = "OK", at_ms = 10400, hold_ms = 60 },  # lab_sirc12.ir
-    { key = "OK", at_ms = 10800, hold_ms = 60 },  # confirm
-    { key = "DOWN", at_ms = 11600, hold_ms = 60 },
-    { key = "OK", at_ms = 12100, hold_ms = 60 },  # lab_sirc15.ir
-    { key = "OK", at_ms = 12500, hold_ms = 60 },  # confirm
-    { key = "DOWN", at_ms = 13300, hold_ms = 60 },
-    { key = "OK", at_ms = 13800, hold_ms = 60 },  # lab_sirc20.ir
-    { key = "OK", at_ms = 14200, hold_ms = 60 },  # confirm
-    { key = "BACK", at_ms = 15700, hold_ms = 60 },  # list -> view
-    { key = "BACK", at_ms = 16100, hold_ms = 60 },  # leave the app
+    { key = "UP", at_ms = 700, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 800, hold_ms = 60 },  # NFC (STARK-0404)
+    { key = "UP", at_ms = 900, hold_ms = 60 },  # IR
+    { key = "OK", at_ms = 1000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 1300, hold_ms = 60 },  # Browse saved
+    { key = "OK", at_ms = 1500, hold_ms = 60 },  # 9 files
+    { key = "OK", at_ms = 2000, hold_ms = 60 },  # lab_nec.ir
+    { key = "OK", at_ms = 2400, hold_ms = 60 },  # confirm
+    { key = "DOWN", at_ms = 3200, hold_ms = 60 },
+    { key = "OK", at_ms = 3700, hold_ms = 60 },  # lab_necx.ir
+    { key = "OK", at_ms = 4100, hold_ms = 60 },  # confirm
+    { key = "DOWN", at_ms = 4900, hold_ms = 60 },
+    { key = "OK", at_ms = 5400, hold_ms = 60 },  # lab_raw.ir
+    { key = "OK", at_ms = 5800, hold_ms = 60 },  # confirm
+    { key = "DOWN", at_ms = 6600, hold_ms = 60 },
+    { key = "OK", at_ms = 7100, hold_ms = 60 },  # lab_rc5.ir
+    { key = "OK", at_ms = 7500, hold_ms = 60 },  # confirm
+    { key = "DOWN", at_ms = 8300, hold_ms = 60 },
+    { key = "OK", at_ms = 8800, hold_ms = 60 },  # lab_rc6.ir
+    { key = "OK", at_ms = 9200, hold_ms = 60 },  # confirm
+    { key = "DOWN", at_ms = 10000, hold_ms = 60 },
+    { key = "OK", at_ms = 10500, hold_ms = 60 },  # lab_sirc12.ir
+    { key = "OK", at_ms = 10900, hold_ms = 60 },  # confirm
+    { key = "DOWN", at_ms = 11700, hold_ms = 60 },
+    { key = "OK", at_ms = 12200, hold_ms = 60 },  # lab_sirc15.ir
+    { key = "OK", at_ms = 12600, hold_ms = 60 },  # confirm
+    { key = "DOWN", at_ms = 13400, hold_ms = 60 },
+    { key = "OK", at_ms = 13900, hold_ms = 60 },  # lab_sirc20.ir
+    { key = "OK", at_ms = 14300, hold_ms = 60 },  # confirm
+    { key = "BACK", at_ms = 15800, hold_ms = 60 },  # list -> view
+    { key = "BACK", at_ms = 16200, hold_ms = 60 },  # leave the app
 ]
 expect = [
     "storage: mounted emu-flashfat",

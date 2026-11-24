@@ -1,0 +1,44 @@
+# STARK-0706 on the production image (ADR-0023 §6, §9). esp-emu answers at 0x50 (its built-in
+# EEPROM reads zeros), so slot 0 reads as a generic module and slot 1 has no chip select at all:
+# the SPI app lists both with their reason, OK on either is refused with an alert, no lease is
+# claimed and no transfer is made. The real transport guard and the real module table are in the
+# loop; the SPI device is not modelled here (nothing answers on a bus in the emulator), which the
+# test image's v07-spi scenario covers. UP from About wraps to Storage; the walk is Storage,
+# Settings, Modules, UART, SPI (NFC and Sub-GHz are dimmed without a module). Not connector
+# evidence: no pad moves in the emulator.
+name = "emu-v07-spi-prod"
+end_ms = 6000
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 400, hold_ms = 60 },  # Storage
+    { key = "UP", at_ms = 550, hold_ms = 60 },  # Settings
+    { key = "UP", at_ms = 700, hold_ms = 60 },  # Modules
+    { key = "UP", at_ms = 850, hold_ms = 60 },  # UART
+    { key = "UP", at_ms = 1000, hold_ms = 60 },  # SPI
+    { key = "OK", at_ms = 1500, hold_ms = 60 },  # open the app: both slots listed
+    { key = "OK", at_ms = 2000, hold_ms = 60 },  # Slot 0: refused (generic module), an alert
+    { key = "OK", at_ms = 2700, hold_ms = 60 },  # close the alert
+    { key = "DOWN", at_ms = 3000, hold_ms = 60 },  # Slot 1
+    { key = "OK", at_ms = 3300, hold_ms = 60 },  # refused (no chip select), an alert
+    { key = "OK", at_ms = 4000, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 4500, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "lab: pins 38 39",
+    'menu: sel=15 "SPI"',
+    "spiapp: home",
+    "app: start spi",
+    "spiapp: slot 0 refused: generic module",
+    'dialog: open "No probe"',
+    "spiapp: slot 1 refused: no chip select",
+    "app: stop spi",
+]
+forbid = [
+    "spiapp: open slot",
+    'dialog: open "Send SPI?"',
+    "slot 0 claimed by spiprobe",
+    "lab: spi slot",
+    "lab: spi request",
+    "lab: spi send",
+    "panic",
+]

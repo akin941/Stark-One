@@ -19,7 +19,7 @@ typedef struct {
     bool supported;
 } fake_module_entry_t;
 
-#define FAKE_MODULE_COUNT 33
+#define FAKE_MODULE_COUNT 34
 
 #define FAKE_MODULE_NFC_CARRIER 1 /* 1-based: the emu_mod_slot pokes */
 #define FAKE_MODULE_SPI_IRQ 2 /* 1-based: the emu_mod_slot pokes */
@@ -54,6 +54,7 @@ typedef struct {
 #define FAKE_MODULE_AFTER_NUL 31 /* 1-based: the emu_mod_slot pokes */
 #define FAKE_MODULE_CC1101_MODULE 32 /* 1-based: the emu_mod_slot pokes */
 #define FAKE_MODULE_UNKNOWN_BIT_6 33 /* 1-based: the emu_mod_slot pokes */
+#define FAKE_MODULE_SPI_BREAKOUT 34 /* 1-based: the emu_mod_slot pokes */
 
 static const fake_module_entry_t k_fake_modules[FAKE_MODULE_COUNT] = {
     {"nfc_carrier",
@@ -221,4 +222,9 @@ static const fake_module_entry_t k_fake_modules[FAKE_MODULE_COUNT] = {
       0x46, 0x75, 0x74, 0x75, 0x72, 0x65, 0x20, 0x32, 0x00, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2B, 0xC8},
      MODULE_DESC_OK, 0x0502, 1, 0x80000050u, "Future 2", true},
+    {"spi_breakout",
+     {0x53, 0x4D, 0x01, 0x00, 0x01, 0x0B, 0x01, 0x00, 0x08, 0x00, 0x00, 0x00,
+      0x53, 0x50, 0x49, 0x20, 0x62, 0x72, 0x65, 0x61, 0x6B, 0x6F, 0x75, 0x74,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4A, 0x55},
+     MODULE_DESC_OK, 0x0B01, 1, 0x00000008u, "SPI breakout", true},
 };

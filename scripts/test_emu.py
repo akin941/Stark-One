@@ -132,7 +132,8 @@ POKE_VARS = ("emu_medium_present", "emu_medium_formatted",  # the test medium's 
              "emu_lab_ext_pin", "emu_lab_ext_mode", "emu_lab_ext_hz", "emu_lab_ext_duty",
              "emu_lab_wire", "emu_lab_fault",  # the test pad model's (ADR-0023 §9)
              "emu_lab_i2c_devs", "emu_lab_i2c_fault",  # ... and its I2C bus's (STARK-0704)
-             "emu_lab_uart", "emu_lab_uart_baud", "emu_lab_uart_fmt")  # ... and its UART peer's
+             "emu_lab_uart", "emu_lab_uart_baud", "emu_lab_uart_fmt",  # ... and its UART peer's
+             "emu_lab_spi")  # ... and its SPI device's (STARK-0706)
 
 
 def control_shell(port, command):

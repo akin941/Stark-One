@@ -36,8 +36,13 @@
  * once from the moment the driver opens, and the same scene again and again on the RX pad for
  * auto-baud), 4 the binary scene emu_lab_uart_baud  the peer's baud (a mismatch of more than 3 %
  * garbles and counts errors) emu_lab_uart_fmt   the peer's format index (0 8N1, 1 8E1, 2 8O1, 3
- * 8N2, 4 7E1) Integration evidence only: nothing here shows a level on a pad (docs/VALIDATION.md
- * §2).
+ * 8N2, 4 7E1)
+ * The SPI group (STARK-0706) is the model's SPI device behind the production header's guard
+ * (stark_lab_spi_args_ok(), stark_lab_spi_slot_ok()) and the lease's own checks (a stale lease, a
+ * slot with no chip select), the way stark_module_spi attaches. Pokes: emu_lab_spi 0 none (MISO
+ * idles low), 1 a JEDEC flash (9f returns ef 40 18), 2 an echo; emu_lab_fault 4 fails the transfer
+ * and 5 makes MISO read all 0xFF. Integration evidence only: nothing here shows a level on a pad
+ * (docs/VALIDATION.md §2).
  */
 #include "esp_timer.h"
 #include "fake_lab.h"
@@ -59,6 +64,7 @@ volatile uint8_t emu_lab_i2c_fault;
 volatile uint8_t emu_lab_uart;
 volatile uint32_t emu_lab_uart_baud = 115200;
 volatile uint8_t emu_lab_uart_fmt;
+volatile uint8_t emu_lab_spi;
 
 #define LAB_PROBE_MS 5u /* what the other fakes are asked with; they do not wait */
 
@@ -77,6 +83,7 @@ static uint32_t s_uart_baud_applied;
 static uint8_t s_uart_fmt_applied = 0xFF;
 static bool s_uart_installed;
 static bool s_uart_tx;
+static uint8_t s_spi_applied;
 
 static void follow_pokes(void)
 {
@@ -216,6 +223,7 @@ stark_err_t stark_lab_transport_open(void)
         fake_lab_i2c_ext(i2c_ext_probe, i2c_ext_xfer);
         fake_lab_uart_pins(stark_board_pins()->lab_uart_tx, stark_board_pins()->lab_uart_rx);
         s_uart_applied = 0xFF; /* the reset forgot the peer: follow the pokes again */
+        s_spi_applied = 0;
         s_open = true;
     }
     return STARK_OK;
@@ -488,4 +496,40 @@ void stark_lab_transport_uart_close(void)
         s_uart_installed = false;
         s_uart_tx = false;
     }
+}
+
+/* ---- SPI on a leased module slot (STARK-0706) ---------------------------------------------------
+ */
+
+stark_err_t stark_lab_transport_spi_xfer(const stark_module_lease_t *l, uint32_t hz, uint8_t mode,
+                                         const uint8_t *tx, uint8_t *rx, size_t n)
+{
+    if (l == NULL || tx == NULL || rx == NULL || !stark_lab_spi_args_ok(hz, mode, n)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    stark_module_entry_t list[STARK_MODULE_ENTRIES];
+    size_t count = stark_module_list(list, STARK_MODULE_ENTRIES);
+    if (count > STARK_MODULE_ENTRIES) {
+        count = STARK_MODULE_ENTRIES;
+    }
+    if (!stark_lab_spi_slot_ok(list, count, (int)l->slot)) {
+        return STARK_ERR_NOT_SUPPORTED;
+    }
+    int cs = -1;
+    int irq0 = -1;
+    int irq1 = -1;
+    stark_err_t err = stark_module_lease_pins(l, &cs, &irq0, &irq1);
+    if (err != STARK_OK) {
+        return err;
+    }
+    if (cs < 0) {
+        return STARK_ERR_NOT_SUPPORTED;
+    }
+    follow_pokes(); /* the fault poke */
+    uint8_t dev = emu_lab_spi;
+    if (dev != s_spi_applied && dev < FAKE_LAB_SPI_MODES) {
+        fake_lab_spi_device((fake_lab_spi_mode_t)dev);
+        s_spi_applied = dev;
+    }
+    return fake_lab_spi_xfer(l->slot, hz, mode, tx, rx, n);
 }

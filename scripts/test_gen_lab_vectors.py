@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for scripts/gen_lab_vectors.py (TASKS.md STARK-0703, STARK-0704)."""
+"""Unit tests for scripts/gen_lab_vectors.py (TASKS.md STARK-0703, 0704, 0705, 0706)."""
 import os
 import sys
 import tempfile
@@ -205,11 +205,12 @@ class Output(unittest.TestCase):
 
     def test_check_mode(self):
         with tempfile.TemporaryDirectory() as d:
-            old, old_i2c, old_uart = gen.OUT, gen.OUT_I2C, gen.OUT_UART
+            old = (gen.OUT, gen.OUT_I2C, gen.OUT_UART, gen.OUT_SPI)
             try:
                 gen.OUT = Path(d) / "fake_lab_vectors.h"
                 gen.OUT_I2C = Path(d) / "fake_lab_i2c_vectors.h"
                 gen.OUT_UART = Path(d) / "fake_lab_uart_vectors.h"
+                gen.OUT_SPI = Path(d) / "fake_lab_spi_vectors.h"
                 self.assertEqual(gen.main(["--check"]), 1)  # missing
                 self.assertEqual(gen.main([]), 0)
                 self.assertEqual(gen.main(["--check"]), 0)
@@ -221,8 +222,11 @@ class Output(unittest.TestCase):
                 self.assertEqual(gen.main([]), 0)
                 gen.OUT_UART.write_text("stale")
                 self.assertEqual(gen.main(["--check"]), 1)
+                self.assertEqual(gen.main([]), 0)
+                gen.OUT_SPI.write_text("stale")
+                self.assertEqual(gen.main(["--check"]), 1)
             finally:
-                gen.OUT, gen.OUT_I2C, gen.OUT_UART = old, old_i2c, old_uart
+                gen.OUT, gen.OUT_I2C, gen.OUT_UART, gen.OUT_SPI = old
 
     def test_the_committed_header_is_current(self):
         self.assertEqual(gen.main(["--check"]), 0)
@@ -357,6 +361,77 @@ class UartReference(unittest.TestCase):
                            T)[0], gen.BAUD_INVALID)
         self.assertEqual(A([0] * 2049, T)[0], gen.BAUD_INVALID)
         self.assertEqual(A([i * 2500 for i in range(20)], T)[0], gen.BAUD_UNKNOWN)  # 96 000
+
+
+class SpiReference(unittest.TestCase):
+    """STARK-0706: the independent restatement of the SPI probe's rules."""
+
+    def test_only_a_known_wired_slot_with_spi_and_no_function_is_eligible(self):
+        J = gen.ref_spi_judge
+        K = gen.SPI_KNOWN
+        self.assertEqual(J(True, K, gen.CAP_SPI, False), (True, ""))
+        self.assertEqual(J(True, K, gen.CAP_SPI | gen.CAP_IRQ, False), (True, ""))
+        self.assertEqual(J(True, K, gen.CAP_IRQ, False), (False, "no SPI declared"))
+        self.assertEqual(J(True, K, 0, False), (False, "no SPI declared"))
+        self.assertEqual(J(True, K, 0x38, False), (False, "owned by Sub-GHz"))
+        self.assertEqual(J(True, K, gen.CAP_NFC | gen.CAP_IRQ, False), (False, "owned by NFC"))
+        self.assertEqual(J(True, K, gen.CAP_IR_TX, False), (False, "owned by IR"))
+        self.assertEqual(J(True, K, 0x80000008, False), (False, "owned by unknown"))
+        self.assertEqual(J(True, K, 0x40 | gen.CAP_SPI, False), (False, "owned by unknown"))
+
+    def test_the_reasons_come_in_the_order_they_are_decided(self):
+        J = gen.ref_spi_judge
+        self.assertEqual(J(False, gen.SPI_KNOWN, gen.CAP_SPI, False), (False, "no chip select"))
+        self.assertEqual(J(True, gen.SPI_ABSENT, gen.CAP_SPI, False), (False, "no module"))
+        self.assertEqual(J(True, gen.SPI_GENERIC, gen.CAP_SPI, False), (False, "generic module"))
+        self.assertEqual(J(True, gen.SPI_GENERIC, 0, True), (False, "unsupported module"))
+        self.assertEqual(J(True, gen.SPI_CONFLICT, gen.CAP_SPI, False), (False, "conflict"))
+
+    def test_every_reason_and_both_outcomes_are_in_the_vectors(self):
+        vecs = gen.spi_judge_vectors()
+        self.assertGreater(len(vecs), 150)
+        reasons = {v[5] for v in vecs}
+        for why in ("", "no chip select", "no module", "generic module", "unsupported module",
+                    "conflict", "owned by Sub-GHz", "owned by NFC", "owned by IR",
+                    "owned by unknown", "no SPI declared"):
+            self.assertIn(why, reasons)
+        # nothing that declares a function bit is ever eligible
+        for cs, state, declared, unsupported, ok, why in vecs:
+            if declared & ~(gen.CAP_SPI | gen.CAP_IRQ) & 0xFFFFFFFF:
+                self.assertFalse(ok)
+            if ok:
+                self.assertTrue(cs and state == gen.SPI_KNOWN and declared & gen.CAP_SPI)
+
+    def test_the_fingerprint_changes_with_every_field(self):
+        base = (0, 1000000, 0, [0x9F, 0, 0, 0], 0x0B01, 1, 0x08)
+        seen = {gen.ref_fp_spi(*base)}
+        for i, alt in enumerate((1, 2000000, 1, [0x9F, 0, 0, 1], 0x0B02, 2, 0x18)):
+            args = list(base)
+            args[i] = alt
+            seen.add(gen.ref_fp_spi(*args))
+        self.assertEqual(len(seen), 8)
+        self.assertEqual(len({v[7] for v in gen.spi_fp_vectors()}), len(gen.spi_fp_vectors()))
+
+    def test_the_flash(self):
+        self.assertEqual(gen.ref_spi_flash([0x9F, 0, 0, 0]), [0, 0xEF, 0x40, 0x18])
+        self.assertEqual(gen.ref_spi_flash([0x9F, 0]), [0, 0xEF])
+        self.assertEqual(gen.ref_spi_flash([0x05, 0]), [0, 0])
+        self.assertEqual(gen.ref_spi_flash([0x03, 0, 0, 0xFE, 0, 0, 0]), [0, 0, 0, 0, 0xFE, 0xFF, 0])
+        self.assertEqual(gen.ref_spi_flash([0x03, 0xFF, 0xFF, 0xFF, 0, 0]), [0, 0, 0, 0, 0xFF, 0])
+        self.assertEqual(gen.ref_spi_flash([0x03, 1, 2, 3]), [0, 0, 0, 0])
+        self.assertEqual(gen.ref_spi_flash([0x06]), [0])
+
+    def test_the_echo(self):
+        self.assertEqual(gen.ref_spi_echo([1, 2, 3]), [0, 1, 2])
+        self.assertEqual(gen.ref_spi_echo([7]), [0])
+
+    def test_the_header_declares_what_the_tests_use(self):
+        text = gen.render_spi()
+        for name in ("fake_lab_spi_judge_vecs", "FAKE_LAB_SPI_JUDGE_VECS", "fake_lab_spi_fp_vecs",
+                     "fake_lab_spi_dev_vecs", "FAKE_LAB_SPI_DEV_VECS"):
+            self.assertIn(name, text)
+        self.assertIn("SPEC-DERIVED, NOT A RECORDING", text)
+        self.assertEqual(gen.render_spi(), gen.render_spi())
 
 
 if __name__ == "__main__":

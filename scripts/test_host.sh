@@ -92,6 +92,7 @@ if [[ "$ENABLE_COVERAGE" == "true" ]]; then
             --filter "$PROJECT_ROOT/components/stark_board/stark_board.c" \
             --filter "$PROJECT_ROOT/apps/app_gpio/gpio_views.c" \
             --filter "$PROJECT_ROOT/apps/app_i2c/i2c_views.c" \
+            --filter "$PROJECT_ROOT/apps/app_spi/spi_views.c" \
             --filter "$PROJECT_ROOT/apps/app_uart/uart_views.c" \
             --filter "$PROJECT_ROOT/apps/app_uart/uart_log.c" \
             --filter "$PROJECT_ROOT/test/fake/fake_lab.c" \

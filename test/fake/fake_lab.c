@@ -54,6 +54,15 @@ static unsigned g_i2c_writes;
 static fake_lab_i2c_probe_fn g_i2c_ext_probe;
 static fake_lab_i2c_xfer_fn g_i2c_ext_xfer;
 
+/* the SPI devices */
+static fake_lab_spi_mode_t g_spi_mode;
+static fake_lab_spi_ext_fn g_spi_ext;
+static unsigned g_spi_calls;
+static uint8_t g_spi_slot;
+static uint32_t g_spi_hz;
+static uint8_t g_spi_xmode;
+static size_t g_spi_len;
+
 static void uart_reset(void); /* the UART peer's state, below */
 
 static void i2c_reset(void)
@@ -101,6 +110,13 @@ void fake_lab_reset(void)
     g_epoch = 0;
     i2c_reset();
     uart_reset();
+    g_spi_mode = FAKE_LAB_SPI_NONE;
+    g_spi_ext = NULL;
+    g_spi_calls = 0;
+    g_spi_slot = 0;
+    g_spi_hz = 0;
+    g_spi_xmode = 0;
+    g_spi_len = 0;
 }
 
 void fake_lab_time_us(uint64_t now_us)
@@ -1025,4 +1041,93 @@ size_t fake_lab_uart_read(uint8_t *buf, size_t max, uint32_t *framing, uint32_t 
 unsigned fake_lab_uart_dropped(void)
 {
     return g_uart.dropped;
+}
+
+/* ---- the SPI devices (STARK-0706) ----------------------------------------------------------- */
+
+void fake_lab_spi_device(fake_lab_spi_mode_t mode)
+{
+    if (mode < FAKE_LAB_SPI_MODES) {
+        g_spi_mode = mode;
+    }
+}
+
+void fake_lab_spi_ext(fake_lab_spi_ext_fn fn)
+{
+    g_spi_ext = fn;
+}
+
+/* The flash's MISO for a transfer: zero while the command goes out, then what the command returns.
+ */
+static void spi_flash(const uint8_t *tx, uint8_t *rx, size_t n)
+{
+    static const uint8_t k_jedec[3] = {0xef, 0x40, 0x18};
+    memset(rx, 0, n);
+    if (tx[0] == 0x9f) {
+        for (size_t i = 1; i < n && i <= sizeof(k_jedec); i++) {
+            rx[i] = k_jedec[i - 1];
+        }
+    } else if (tx[0] == 0x03 && n > 4u) {
+        uint32_t addr = ((uint32_t)tx[1] << 16) | ((uint32_t)tx[2] << 8) | tx[3];
+        for (size_t i = 4; i < n; i++) {
+            rx[i] = (uint8_t)((addr + (uint32_t)(i - 4u)) & 0xFFu);
+        }
+    }
+}
+
+stark_err_t fake_lab_spi_xfer(uint8_t slot, uint32_t hz, uint8_t mode, const uint8_t *tx,
+                              uint8_t *rx, size_t n)
+{
+    if (tx == NULL || rx == NULL || n == 0u || n > 32u) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    g_spi_calls++;
+    g_spi_slot = slot;
+    g_spi_hz = hz;
+    g_spi_xmode = mode;
+    g_spi_len = n;
+    if (fault_hits(FAKE_LAB_FAULT_SPI_ERROR, -1)) {
+        return STARK_ERR_IO;
+    }
+    if (fault_hits(FAKE_LAB_FAULT_SPI_NO_ANSWER, -1)) {
+        memset(rx, 0xFF, n);
+        return STARK_OK;
+    }
+    if (g_spi_ext != NULL) {
+        return g_spi_ext(slot, tx, rx, n);
+    }
+    if (g_spi_mode == FAKE_LAB_SPI_FLASH) {
+        spi_flash(tx, rx, n);
+    } else if (g_spi_mode == FAKE_LAB_SPI_ECHO) {
+        rx[0] = 0;
+        memcpy(rx + 1, tx, n - 1u);
+    } else {
+        memset(rx, 0, n);
+    }
+    return STARK_OK;
+}
+
+unsigned fake_lab_spi_calls(void)
+{
+    return g_spi_calls;
+}
+
+uint8_t fake_lab_spi_last_slot(void)
+{
+    return g_spi_slot;
+}
+
+uint32_t fake_lab_spi_last_hz(void)
+{
+    return g_spi_hz;
+}
+
+uint8_t fake_lab_spi_last_mode(void)
+{
+    return g_spi_xmode;
+}
+
+size_t fake_lab_spi_last_len(void)
+{
+    return g_spi_len;
 }

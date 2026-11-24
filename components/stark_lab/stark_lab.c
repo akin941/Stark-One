@@ -14,6 +14,7 @@
 #include "freertos/semphr.h"
 #include "lab_i2c.h"
 #include "lab_pins.h"
+#include "lab_spi.h"
 #include "lab_uart_svc.h"
 #include "stark_caps.h"
 #include "stark_event.h"
@@ -29,6 +30,9 @@ static SemaphoreHandle_t s_lock;
 static StaticSemaphore_t
     s_i2c_lock_buf; /* the I2C bus has its own: a dump must not hold up a pin */
 static SemaphoreHandle_t s_i2c_lock;
+static lab_spi_t s_spi;
+static StaticSemaphore_t s_spi_lock_buf; /* one probe transaction at a time */
+static SemaphoreHandle_t s_spi_lock;
 static lab_uart_ses_t s_uart;
 static StaticSemaphore_t
     s_uart_lock_buf; /* one UART operation at a time (a poll, a send, a test) */
@@ -256,6 +260,45 @@ static void uio_note(void *ctx, lab_uart_note_t what)
     (void)stark_event_publish(&e);
 }
 
+/* The SPI probe's I/O (STARK-0706): the module table and lease, the transport's SPI group. */
+static stark_err_t sio_claim(void *ctx, uint8_t slot, stark_module_lease_t *out)
+{
+    (void)ctx;
+    return stark_module_claim(slot, STARK_CAP_MOD_SPI, LAB_SPI_OWNER, out);
+}
+
+static void sio_release(void *ctx, const stark_module_lease_t *l)
+{
+    (void)ctx;
+    stark_module_release(l);
+}
+
+static stark_err_t sio_xfer(void *ctx, const stark_module_lease_t *l, uint32_t hz, uint8_t mode,
+                            const uint8_t *tx, uint8_t *rx, size_t n)
+{
+    (void)ctx;
+    return stark_lab_transport_spi_xfer(l, hz, mode, tx, rx, n);
+}
+
+static void sio_log(void *ctx, bool warn, const char *text)
+{
+    (void)ctx;
+    if (warn) {
+        STARK_LOGW("lab", "%s", text);
+    } else {
+        STARK_LOGI("lab", "%s", text);
+    }
+}
+
+static void sio_done(void *ctx)
+{
+    (void)ctx;
+    stark_event_t e = {.type = STARK_EVT_SYSTEM};
+    e.system.id = STARK_SYS_LAB;
+    e.system.arg = STARK_LAB_EVT_SPI_DONE;
+    (void)stark_event_publish(&e);
+}
+
 /* `lab: pins <the pins on offer now>`, one number each. */
 static void log_pins(void)
 {
@@ -329,6 +372,15 @@ stark_err_t stark_lab_init(void)
                                  .now_ms = io_now_ms};
     lab_i2c_init(&s_i2c, &i2c_io, stark_board_pins());
     s_i2c_lock = xSemaphoreCreateMutexStatic(&s_i2c_lock_buf);
+    s_spi_lock = xSemaphoreCreateMutexStatic(&s_spi_lock_buf);
+    const lab_spi_io_t spi_io = {.list = io_list,
+                                 .claim = sio_claim,
+                                 .release = sio_release,
+                                 .xfer = sio_xfer,
+                                 .now_ms = io_now_ms,
+                                 .log = sio_log,
+                                 .done = sio_done};
+    lab_spi_init(&s_spi, &spi_io, stark_board_pins());
     s_uart_lock = xSemaphoreCreateMutexStatic(&s_uart_lock_buf);
     s_uart_data = xSemaphoreCreateMutexStatic(&s_uart_data_buf);
     const lab_uart_io_t uart_io = {.pin_acquire = uio_pin_acquire,
@@ -707,6 +759,62 @@ const char *stark_lab_i2c_refusal(uint8_t addr, bool reg16, bool write)
     lab_i2c_refusal_t why = lab_i2c_refusal(&s_i2c, addr, reg16 ? 2u : 1u, write ? 0u : 1u);
     i2c_leave();
     return why == LAB_I2C_REFUSE_NONE ? NULL : lab_i2c_refusal_text(why);
+}
+
+/* ---- the SPI probe (STARK-0706) ------------------------------------------------------------ */
+
+/* Takes the SPI lock; false before init. */
+static bool spi_enter(void)
+{
+    if (!s_inited) {
+        return false;
+    }
+    (void)xSemaphoreTake(s_spi_lock, portMAX_DELAY);
+    return true;
+}
+
+static void spi_leave(void)
+{
+    (void)xSemaphoreGive(s_spi_lock);
+}
+
+size_t stark_lab_spi_slots(stark_lab_spi_slot_t *out, size_t max)
+{
+    if (out == NULL || !spi_enter()) {
+        return 0;
+    }
+    size_t n = lab_spi_slots(&s_spi, out, max);
+    spi_leave();
+    return n;
+}
+
+stark_err_t stark_lab_spi_request(uint8_t slot, uint32_t hz, uint8_t mode, const uint8_t *tx,
+                                  size_t n, stark_lab_spi_req_t *out)
+{
+    if (!spi_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_spi_request(&s_spi, slot, hz, mode, tx, n, out);
+    spi_leave();
+    return err;
+}
+
+stark_err_t stark_lab_spi_send(const stark_lab_spi_req_t *req, uint8_t *rx)
+{
+    if (!spi_enter()) {
+        return STARK_ERR_STATE;
+    }
+    stark_err_t err = lab_spi_send(&s_spi, req, rx);
+    spi_leave();
+    return err;
+}
+
+void stark_lab_spi_cancel(void)
+{
+    if (spi_enter()) {
+        lab_spi_cancel(&s_spi);
+        spi_leave();
+    }
 }
 
 /* ---- the lab UART (STARK-0705) -------------------------------------------------------------- */

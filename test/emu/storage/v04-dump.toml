@@ -5,22 +5,23 @@
 name = "emu-v04-dump"
 image = "storage"
 heap_min = 200000
-end_ms = 7600
+end_ms = 7700
 pokes = [
-    { at_ms = 1600, var = "emu_nfc_tag", value = 1 },  # NTAG213 with a URI
-    { at_ms = 4100, var = "emu_nfc_tag", value = 3 },  # MIFARE Classic 1K
+    { at_ms = 1700, var = "emu_nfc_tag", value = 1 },  # NTAG213 with a URI
+    { at_ms = 4200, var = "emu_nfc_tag", value = 3 },  # MIFARE Classic 1K
 ]
 presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },  # Storage
     { key = "UP", at_ms = 400, hold_ms = 60 },  # Settings
     { key = "UP", at_ms = 500, hold_ms = 60 },  # Modules (STARK-0505)
     { key = "UP", at_ms = 600, hold_ms = 60 },  # UART (STARK-0705): the new row, between Sub-GHz and Modules
-    { key = "UP", at_ms = 700, hold_ms = 60 },  # NFC (Lab: IR 13, NFC 14)
-    { key = "OK", at_ms = 900, hold_ms = 60 },
-    { key = "DOWN", at_ms = 2400, hold_ms = 60 },  # Write URI -> Save dump
-    { key = "OK", at_ms = 2700, hold_ms = 60 },
-    { key = "OK", at_ms = 4900, hold_ms = 60 },  # Save dump (Write is disabled)
-    { key = "BACK", at_ms = 6600, hold_ms = 60 },
+    { key = "UP", at_ms = 700, hold_ms = 60 },  # SPI (STARK-0706): the new row, between NFC and Sub-GHz
+    { key = "UP", at_ms = 800, hold_ms = 60 },  # NFC (Lab: IR 13, NFC 14)
+    { key = "OK", at_ms = 1000, hold_ms = 60 },
+    { key = "DOWN", at_ms = 2500, hold_ms = 60 },  # Write URI -> Save dump
+    { key = "OK", at_ms = 2800, hold_ms = 60 },
+    { key = "OK", at_ms = 5000, hold_ms = 60 },  # Save dump (Write is disabled)
+    { key = "BACK", at_ms = 6700, hold_ms = 60 },
 ]
 expect = [
     "nfc: tag NTAG213 uid=04303B46515C67 atqa=0044 sak=00",

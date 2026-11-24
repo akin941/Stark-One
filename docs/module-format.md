@@ -43,6 +43,13 @@ bit before STARK-0601 (ADR-0022 §2): an older descriptor that sets it without b
 bits is now an unsupported combination (generic entry), the one that sets all three is
 supported. The layout of format v1 does not change.
 
+A module that declares **`MOD_SPI` and no function bit** (`0x00000008`, or `0x00000018` with `MOD_IRQ`) is a *SPI breakout*:
+nothing in this firmware owns it, so the lab's SPI probe (ADR-0023 §6, STARK-0706) may send one bounded, confirmed transaction
+to it on its own chip select. Any function bit (`NFC`, `SUBGHZ`, the IR bits, or a bit this firmware does not know) makes the
+slot a driver's and the probe refuses it. The test catalogue's entry 34 is this module: id `0x0B01`, revision 1, caps
+`0x00000008`, name `SPI breakout` (`scripts/gen_module_vectors.py`; entries 1 to 33 keep their meaning). Declaring `MOD_SPI`
+grants nothing by itself, like any descriptor: the probe checks the table and the lease on every transaction.
+
 ## What a descriptor is not
 
 A descriptor is device metadata. It declares what a module says it is. It is not proof of
