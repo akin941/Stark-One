@@ -160,7 +160,8 @@ commit. Reserved prefixes:
 | `ir:` | `stark_ir` | `ir: init rx=48 tx=47` / `ir: rx on` / `ir: rx NEC addr=0x10 cmd=0x12` / `ir: rx RAW n=67` (STARK-0303) / `ir: tx NEC addr=0x00 cmd=0x12 carrier=38000 dur=68 repeats=0` / `ir: tx done` (STARK-0304) |
 | `irapp:` | IR app | `irapp: view NEC 00/12` / `irapp: saved ir_0001.ir` / `irapp: save refused: no card` (STARK-0305) |
 | `storageapp:` | Storage app | `storageapp: status mounted` / `storageapp: eject requested` / `storageapp: mount requested` (STARK-0202) / `storageapp: wtest ok bytes=102400 crc=<hex> frames=<n>` / `storageapp: wtest failed: <err> at <offset>` (STARK-0203) |
-| `lab:` | `stark_lab` | `lab: pins 38 39` / `lab: pin 40 withdrawn (slot 0)` / `lab: contention pin 38` (STARK-0701; `pins` lists the offer at boot and after each change) |
+| `lab:` | `stark_lab` | `lab: pins 38 39` / `lab: pin 40 withdrawn (slot 0)` / `lab: contention pin 38` (STARK-0701; `pins` lists the offer at boot and after each change) / `lab: armed pin 38` / `lab: pwm pin 38 1000 Hz 25 %` / `lab: pwm stopped` / `lab: pulse pin 38 low 100 us` / `lab: released pin 38` / `lab: released all` (STARK-0702) |
+| `gpioapp:` | GPIO app | `gpioapp: home 38 39` / `gpioapp: open pin 38 LAB_UART_TX` / `gpioapp: pin 38 IN H` / `gpioapp: confirm pin 38 reads floating` / `gpioapp: cancelled pin 38` (STARK-0702; the full list is ADR-0023's 0702 addendum) |
 
 **Scenario budget:** ≤ 20 s of emulated time each. Emulator scenarios are free and
 all run on every push and pull request. (Wokwi's quota once forced a push-only smoke

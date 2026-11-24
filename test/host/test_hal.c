@@ -154,6 +154,76 @@ void test_stark_hal_pad_calls_reject_out_of_range_pins(void)
     TEST_ASSERT_EQUAL_UINT(0, hal_host_pad_calls());
 }
 
+/* ---- STARK-0702: delay, weak drive, PWM stop, injected failures --------------------------- */
+
+void test_stark_hal_delays_are_counted_and_never_wait(void)
+{
+    stark_hal_delay_us(250);
+    stark_hal_delay_ms(3);
+    TEST_ASSERT_EQUAL_UINT64(3250u, hal_host_delayed_us());
+    hal_host_gpio_reset();
+    TEST_ASSERT_EQUAL_UINT64(0u, hal_host_delayed_us());
+}
+
+static unsigned s_hook_calls;
+static void hook(unsigned call)
+{
+    s_hook_calls = call;
+}
+
+void test_stark_hal_delay_hook_runs_after_each_ms_delay(void)
+{
+    s_hook_calls = 0;
+    hal_host_set_delay_hook(hook);
+    stark_hal_delay_ms(1);
+    stark_hal_delay_ms(1);
+    TEST_ASSERT_EQUAL_UINT(2, s_hook_calls);
+    hal_host_set_delay_hook(NULL);
+    stark_hal_delay_ms(1);
+    TEST_ASSERT_EQUAL_UINT(2, s_hook_calls);
+}
+
+void test_stark_hal_drive_weak_marks_the_pad_and_rejects_bad_pins(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_drive_weak(38));
+    TEST_ASSERT_TRUE(hal_host_pad(38)->weak);
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_hal_gpio_drive_weak(-1));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_hal_gpio_drive_weak(49));
+}
+
+void test_stark_hal_pwm_stop_records_only_its_own_channel(void)
+{
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_pwm_init(38, 1000, 2));
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_PWM, hal_host_pad(38)->mode);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_pwm_set_duty_pct(0, 50)); /* the buzzer's channel */
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_pwm_set_duty_pct(1, 80)); /* the backlight's */
+    TEST_ASSERT_FALSE(hal_host_pwm_last_stop()->called);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_pwm_stop(2));
+    TEST_ASSERT_TRUE(hal_host_pwm_last_stop()->called);
+    TEST_ASSERT_EQUAL_UINT8(2, hal_host_pwm_last_stop()->channel);
+    TEST_ASSERT_EQUAL_UINT(1, hal_host_pwm_stops());
+    TEST_ASSERT_EQUAL_UINT8(1, hal_host_pwm_last_set_duty()->channel); /* untouched by the stop */
+    hal_host_pwm_reset();
+    TEST_ASSERT_EQUAL_UINT(0, hal_host_pwm_stops());
+}
+
+void test_stark_hal_failures_can_be_injected_per_call(void)
+{
+    hal_host_fail(HAL_HOST_FAIL_PWM_INIT);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, stark_hal_pwm_init(38, 1000, 2));
+    hal_host_fail(HAL_HOST_FAIL_PWM_DUTY);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, stark_hal_pwm_set_duty_pct(2, 50));
+    hal_host_fail(HAL_HOST_FAIL_DRIVE_WEAK);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, stark_hal_gpio_drive_weak(38));
+    hal_host_fail(HAL_HOST_FAIL_OUT_WEAK);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, stark_hal_gpio_config_out_weak(38, true));
+    hal_host_fail(0);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_gpio_config_out_weak(38, true));
+    hal_host_fail(HAL_HOST_FAIL_PWM_INIT);
+    hal_host_gpio_reset(); /* the reset clears the failures too */
+    TEST_ASSERT_EQUAL(STARK_OK, stark_hal_pwm_init(38, 1000, 2));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -170,5 +240,10 @@ int main(void)
     RUN_TEST(test_stark_hal_pwm_set_duty_pct_clamps_above_100);
     RUN_TEST(test_stark_hal_pad_calls_record_mode_pull_and_drive);
     RUN_TEST(test_stark_hal_pad_calls_reject_out_of_range_pins);
+    RUN_TEST(test_stark_hal_delays_are_counted_and_never_wait);
+    RUN_TEST(test_stark_hal_delay_hook_runs_after_each_ms_delay);
+    RUN_TEST(test_stark_hal_drive_weak_marks_the_pad_and_rejects_bad_pins);
+    RUN_TEST(test_stark_hal_pwm_stop_records_only_its_own_channel);
+    RUN_TEST(test_stark_hal_failures_can_be_injected_per_call);
     return UNITY_END();
 }

@@ -1,0 +1,106 @@
+# STARK-0702 on the test image (ADR-0023 §4, §9): PWM and pulse over the test-only pad model.
+# The pad model has no LEDC (esp-emu routes none to a pad, docs/VALIDATION.md §2), so the
+# duty and frequency arithmetic is proven on the host (test_lab_pwm) and this scenario shows what
+# the emulator can: the confirmation comes before the PWM, the request reaches the pad model as
+# 1 kHz at 25 %, and with pad 38 wired to pad 39 (emu_lab_wire = 38 * 64 + 39) the model's own
+# check samples pad 39 over four periods and logs `lab: wire 38 -> 39 edges=4 high=25%`. Stop
+# needs no confirmation; a pulse is one pulse per key press with no second dialog (the pin is
+# armed); a pad-model fault (emu_lab_fault = 3, CONFIG_ERROR) turns the next pulse into an alert and hi-Z.
+name = "emu-v07-gpio-pwm"
+image = "storage"
+end_ms = 17590
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 400, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (1 of 7)
+    { key = "DOWN", at_ms = 620, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (2 of 7)
+    { key = "DOWN", at_ms = 840, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (3 of 7)
+    { key = "DOWN", at_ms = 1060, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (4 of 7)
+    { key = "DOWN", at_ms = 1280, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (5 of 7)
+    { key = "DOWN", at_ms = 1500, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (6 of 7)
+    { key = "DOWN", at_ms = 1720, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO (7 of 7)
+    { key = "OK", at_ms = 1940, hold_ms = 60 },  # open the app
+    { key = "OK", at_ms = 2340, hold_ms = 60 },  # open pin 38
+    { key = "RIGHT", at_ms = 2740, hold_ms = 60 },  # Mode: Input, Output, PWM (1 of 3)
+    { key = "RIGHT", at_ms = 3040, hold_ms = 60 },  # Mode: Input, Output, PWM (2 of 3)
+    { key = "RIGHT", at_ms = 3340, hold_ms = 60 },  # Mode: Input, Output, PWM (3 of 3)
+    { key = "DOWN", at_ms = 3640, hold_ms = 60 },  # Freq, Duty (1 of 2)
+    { key = "DOWN", at_ms = 3940, hold_ms = 60 },  # Freq, Duty (2 of 2)
+    { key = "LEFT", at_ms = 4240, hold_ms = 60 },  # Duty 50 % down to 25 % (1 of 25)
+    { key = "LEFT", at_ms = 4370, hold_ms = 60 },  # Duty 50 % down to 25 % (2 of 25)
+    { key = "LEFT", at_ms = 4500, hold_ms = 60 },  # Duty 50 % down to 25 % (3 of 25)
+    { key = "LEFT", at_ms = 4630, hold_ms = 60 },  # Duty 50 % down to 25 % (4 of 25)
+    { key = "LEFT", at_ms = 4760, hold_ms = 60 },  # Duty 50 % down to 25 % (5 of 25)
+    { key = "LEFT", at_ms = 4890, hold_ms = 60 },  # Duty 50 % down to 25 % (6 of 25)
+    { key = "LEFT", at_ms = 5020, hold_ms = 60 },  # Duty 50 % down to 25 % (7 of 25)
+    { key = "LEFT", at_ms = 5150, hold_ms = 60 },  # Duty 50 % down to 25 % (8 of 25)
+    { key = "LEFT", at_ms = 5280, hold_ms = 60 },  # Duty 50 % down to 25 % (9 of 25)
+    { key = "LEFT", at_ms = 5410, hold_ms = 60 },  # Duty 50 % down to 25 % (10 of 25)
+    { key = "LEFT", at_ms = 5540, hold_ms = 60 },  # Duty 50 % down to 25 % (11 of 25)
+    { key = "LEFT", at_ms = 5670, hold_ms = 60 },  # Duty 50 % down to 25 % (12 of 25)
+    { key = "LEFT", at_ms = 5800, hold_ms = 60 },  # Duty 50 % down to 25 % (13 of 25)
+    { key = "LEFT", at_ms = 5930, hold_ms = 60 },  # Duty 50 % down to 25 % (14 of 25)
+    { key = "LEFT", at_ms = 6060, hold_ms = 60 },  # Duty 50 % down to 25 % (15 of 25)
+    { key = "LEFT", at_ms = 6190, hold_ms = 60 },  # Duty 50 % down to 25 % (16 of 25)
+    { key = "LEFT", at_ms = 6320, hold_ms = 60 },  # Duty 50 % down to 25 % (17 of 25)
+    { key = "LEFT", at_ms = 6450, hold_ms = 60 },  # Duty 50 % down to 25 % (18 of 25)
+    { key = "LEFT", at_ms = 6580, hold_ms = 60 },  # Duty 50 % down to 25 % (19 of 25)
+    { key = "LEFT", at_ms = 6710, hold_ms = 60 },  # Duty 50 % down to 25 % (20 of 25)
+    { key = "LEFT", at_ms = 6840, hold_ms = 60 },  # Duty 50 % down to 25 % (21 of 25)
+    { key = "LEFT", at_ms = 6970, hold_ms = 60 },  # Duty 50 % down to 25 % (22 of 25)
+    { key = "LEFT", at_ms = 7100, hold_ms = 60 },  # Duty 50 % down to 25 % (23 of 25)
+    { key = "LEFT", at_ms = 7230, hold_ms = 60 },  # Duty 50 % down to 25 % (24 of 25)
+    { key = "LEFT", at_ms = 7360, hold_ms = 60 },  # Duty 50 % down to 25 % (25 of 25)
+    { key = "DOWN", at_ms = 7490, hold_ms = 60 },  # Start
+    { key = "OK", at_ms = 7790, hold_ms = 60 },  # Start: the confirmation opens
+    { key = "OK", at_ms = 8290, hold_ms = 60 },  # confirm: armed, 1 kHz at 25 % on pad 38
+    { key = "OK", at_ms = 9490, hold_ms = 60 },  # Stop (no confirmation)
+    { key = "UP", at_ms = 9990, hold_ms = 60 },  # Mode (1 of 3)
+    { key = "UP", at_ms = 10290, hold_ms = 60 },  # Mode (2 of 3)
+    { key = "UP", at_ms = 10590, hold_ms = 60 },  # Mode (3 of 3)
+    { key = "RIGHT", at_ms = 10890, hold_ms = 60 },  # Mode: Pulse
+    { key = "DOWN", at_ms = 11190, hold_ms = 60 },  # Level, Width, Pulse (1 of 3)
+    { key = "DOWN", at_ms = 11490, hold_ms = 60 },  # Level, Width, Pulse (2 of 3)
+    { key = "DOWN", at_ms = 11790, hold_ms = 60 },  # Level, Width, Pulse (3 of 3)
+    { key = "OK", at_ms = 12090, hold_ms = 60 },  # one pulse, 100 us low (armed, no dialog)
+    { key = "UP", at_ms = 12790, hold_ms = 60 },  # Width
+    { key = "RIGHT", at_ms = 13090, hold_ms = 60 },  # 1 ms
+    { key = "DOWN", at_ms = 13390, hold_ms = 60 },  # Pulse
+    { key = "OK", at_ms = 13690, hold_ms = 60 },  # one pulse, 1 ms low
+    { key = "OK", at_ms = 14490, hold_ms = 60 },  # a pulse into a transport fault -> the alert, hi-Z
+    { key = "OK", at_ms = 15190, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 15790, hold_ms = 60 },  # release pin 38
+    { key = "BACK", at_ms = 16290, hold_ms = 60 },  # leave the app
+]
+pokes = [
+    { at_ms = 400, var = "emu_lab_wire", value = 2471 },  # pad 38's output is the source of pad 39 (38 * 64 + 39)
+    { at_ms = 14390, var = "emu_lab_fault", value = 3 },  # the pad model fails its next configuration
+    { at_ms = 15690, var = "emu_lab_fault", value = 0 },  # the fault is cleared
+]
+expect = [
+    "lab: pins 38 39 40 41 42",
+    'menu: sel=11 "GPIO"',
+    "app: start gpio",
+    "gpioapp: open pin 38 LAB_UART_TX",
+    'dialog: open "Drive pin 38?"',
+    "lab: armed pin 38",
+    "lab: wire 38 -> 39 edges=4 high=25%",
+    "lab: pwm pin 38 1000 Hz 25 %",
+    "gpioapp: pin 38 PWM",
+    "lab: pwm stopped",
+    "gpioapp: pin 38 Hi-Z",
+    "lab: pulse pin 38 low 100 us",
+    "lab: pulse pin 38 low 1000 us",
+    'dialog: open "Contention"',
+    "lab: released all",
+    "app: stop gpio",
+]
+forbid = [
+    "lab init failed",
+    "gpio: conflict",
+    "panic",
+]
+# The PWM waited for its confirmation, and the pulses and the stop needed none.
+forbid_between = [
+    { after = "lab: armed pin 38", before = "lab: released all", text = 'dialog: open "Drive pin 38?"' },
+    { after = "gpioapp: open pin 38", before = 'dialog: open "Drive pin 38?"', text = "lab: pwm pin" },
+]

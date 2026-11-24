@@ -194,6 +194,154 @@ static void test_a_closed_transport_refuses_everything_but_release(void)
     TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pad_in(38, STARK_LAB_PAD_NONE));
 }
 
+/* ---- STARK-0702: the PWM and pulse calls ---------------------------------------------------- */
+
+/* AC 1: every number from -1 to 64 against the PWM and pulse calls of the transport. */
+static void pwm_pulse_sweep(bool slot_pins_offered)
+{
+    for (int pin = -1; pin <= 64; pin++) {
+        bool offered = is_lab_pin(pin) || (slot_pins_offered && pin >= 40 && pin <= 42);
+        bool classified = is_lab_pin(pin) || (pin >= 40 && pin <= 42);
+        unsigned before = hal_host_pad_calls();
+        hal_host_pwm_reset();
+        stark_err_t e_pwm = stark_lab_transport_pwm_start(pin, 1000, 50);
+        stark_err_t e_pulse = stark_lab_transport_pulse(pin, true, 100);
+        if (!offered) {
+            TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, e_pwm);
+            TEST_ASSERT_EQUAL(STARK_ERR_NOT_SUPPORTED, e_pulse);
+            TEST_ASSERT_EQUAL_UINT_MESSAGE(before, hal_host_pad_calls(),
+                                           "an unoffered pin reached the HAL");
+            TEST_ASSERT_FALSE_MESSAGE(hal_host_pwm_last_init()->called,
+                                      "an unoffered pin reached LEDC");
+        } else {
+            TEST_ASSERT_EQUAL(STARK_OK, e_pwm);
+            TEST_ASSERT_EQUAL(STARK_OK, e_pulse);
+        }
+        /* stopping only releases: any classified pin, never a reserved one */
+        hal_host_pwm_reset();
+        stark_err_t e_stop = stark_lab_transport_pwm_stop(pin);
+        TEST_ASSERT_EQUAL(classified ? STARK_OK : STARK_ERR_NOT_SUPPORTED, e_stop);
+        TEST_ASSERT_EQUAL_UINT(classified ? 1u : 0u, hal_host_pwm_stops());
+    }
+}
+
+static void test_the_pwm_and_pulse_sweep(void)
+{
+    pwm_pulse_sweep(true);
+    set_slot0(STARK_MODULE_GENERIC);
+    pwm_pulse_sweep(false);
+    set_slot0(STARK_MODULE_KNOWN);
+    pwm_pulse_sweep(false);
+}
+
+/* AC 4: LEDC channel 2 only, the weakest drive, the duty set, the pad released after. */
+static void test_pwm_uses_the_lab_channel_only_and_stop_releases_the_pad(void)
+{
+    hal_host_pwm_reset();
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pwm_start(38, 2500, 40));
+    const hal_host_pwm_init_call_t *init = hal_host_pwm_last_init();
+    TEST_ASSERT_TRUE(init->called);
+    TEST_ASSERT_EQUAL(38, init->pin);
+    TEST_ASSERT_EQUAL_UINT32(2500, init->hz);
+    TEST_ASSERT_EQUAL_UINT8(STARK_LAB_PWM_CHANNEL, init->channel);
+    TEST_ASSERT_EQUAL_UINT8(2, init->channel); /* neither 0, the buzzer, nor 1, the backlight */
+    TEST_ASSERT_EQUAL_UINT8(2, hal_host_pwm_last_set_duty()->channel);
+    TEST_ASSERT_EQUAL_UINT8(40, hal_host_pwm_last_set_duty()->pct);
+    TEST_ASSERT_FALSE(hal_host_pwm_last_set_freq()->called);
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_PWM, hal_host_pad(38)->mode);
+    TEST_ASSERT_TRUE(hal_host_pad(38)->weak);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pwm_stop(38));
+    TEST_ASSERT_TRUE(hal_host_pwm_last_stop()->called);
+    TEST_ASSERT_EQUAL_UINT8(2, hal_host_pwm_last_stop()->channel);
+    TEST_ASSERT_EQUAL_UINT(1, hal_host_pwm_stops());
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_IN, hal_host_pad(38)->mode); /* the pad is hi-Z again */
+    TEST_ASSERT_EQUAL(STARK_HAL_PULL_NONE, hal_host_pad(38)->pull);
+}
+
+static void test_pwm_arguments_at_every_edge(void)
+{
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_lab_transport_pwm_start(38, 99, 50));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pwm_start(38, 100, 0));
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pwm_start(38, 40000, 100));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_lab_transport_pwm_start(38, 40001, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_lab_transport_pwm_start(38, 1000, 101));
+    TEST_ASSERT_EQUAL_UINT32(40000, hal_host_pwm_last_init()->hz);
+}
+
+static void test_a_failing_pwm_start_stops_the_channel_and_releases_the_pad(void)
+{
+    const unsigned stages[] = {HAL_HOST_FAIL_PWM_INIT, HAL_HOST_FAIL_PWM_DUTY,
+                               HAL_HOST_FAIL_DRIVE_WEAK};
+    for (size_t i = 0; i < 3; i++) {
+        hal_host_gpio_reset();
+        hal_host_pwm_reset();
+        hal_host_fail(stages[i]);
+        TEST_ASSERT_EQUAL(STARK_ERR_IO, stark_lab_transport_pwm_start(39, 1000, 50));
+        TEST_ASSERT_EQUAL_UINT(1, hal_host_pwm_stops());
+        TEST_ASSERT_EQUAL_UINT8(2, hal_host_pwm_last_stop()->channel);
+        TEST_ASSERT_EQUAL(HAL_HOST_PAD_IN, hal_host_pad(39)->mode); /* released */
+    }
+    hal_host_gpio_reset();
+}
+
+static void test_pulse_widths_waits_and_the_pad_after(void)
+{
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_lab_transport_pulse(38, true, 9));
+    TEST_ASSERT_EQUAL(STARK_ERR_INVALID_ARG, stark_lab_transport_pulse(38, true, 1000001));
+    TEST_ASSERT_EQUAL_UINT(0, hal_host_pad_calls());
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pulse(38, true, 10)); /* a busy wait */
+    TEST_ASSERT_EQUAL_UINT64(10u, hal_host_delayed_us());
+    TEST_ASSERT_EQUAL(HAL_HOST_PAD_OUT, hal_host_pad(38)->mode);
+    TEST_ASSERT_TRUE(hal_host_pad(38)->weak);
+    TEST_ASSERT_FALSE(hal_host_pad(38)->level); /* it rests at the opposite level */
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pulse(38, false, 100000));
+    TEST_ASSERT_TRUE(hal_host_pad(38)->level);
+    hal_host_gpio_reset();
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pulse(39, true, 1000)); /* the task delay */
+    TEST_ASSERT_EQUAL_UINT64(1000u, hal_host_delayed_us());
+    hal_host_gpio_reset();
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pulse(39, true, 1000000));
+    TEST_ASSERT_EQUAL_UINT64(1000000u, hal_host_delayed_us()); /* the width, in slices of 10 ms */
+    hal_host_gpio_reset();
+}
+
+static void cancel_at_the_third_slice(unsigned call)
+{
+    if (call == 3) {
+        stark_lab_transport_pulse_cancel();
+    }
+}
+
+/* A cancelled pulse ends within a slice and still rests at the opposite level. */
+static void test_a_pulse_can_be_cut_short(void)
+{
+    hal_host_set_delay_hook(cancel_at_the_third_slice);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pulse(38, true, 1000000));
+    TEST_ASSERT_EQUAL_UINT64(30000u, hal_host_delayed_us()); /* three 10 ms slices, not 1 s */
+    TEST_ASSERT_FALSE(hal_host_pad(38)->level);
+    hal_host_set_delay_hook(NULL);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pulse(38, true, 100000)); /* not sticky */
+    TEST_ASSERT_EQUAL_UINT64(130000u, hal_host_delayed_us());
+}
+
+static void test_a_failing_pulse_drive_is_reported(void)
+{
+    hal_host_fail(HAL_HOST_FAIL_OUT_WEAK);
+    TEST_ASSERT_EQUAL(STARK_ERR_IO, stark_lab_transport_pulse(38, true, 100));
+    TEST_ASSERT_EQUAL_UINT64(0u, hal_host_delayed_us()); /* nothing was waited */
+    hal_host_fail(0);
+}
+
+static void test_a_closed_transport_refuses_pwm_and_pulse(void)
+{
+    hal_host_pwm_reset();
+    stark_lab_transport_close();
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, stark_lab_transport_pwm_start(38, 1000, 50));
+    TEST_ASSERT_EQUAL(STARK_ERR_STATE, stark_lab_transport_pulse(38, true, 100));
+    TEST_ASSERT_FALSE(hal_host_pwm_last_init()->called);
+    TEST_ASSERT_EQUAL(STARK_OK, stark_lab_transport_pwm_stop(38)); /* releasing is always allowed */
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -206,5 +354,13 @@ int main(void)
     RUN_TEST(test_calls_reach_the_hal_with_the_weakest_drive);
     RUN_TEST(test_bad_arguments_never_reach_the_hal);
     RUN_TEST(test_a_closed_transport_refuses_everything_but_release);
+    RUN_TEST(test_the_pwm_and_pulse_sweep);
+    RUN_TEST(test_pwm_uses_the_lab_channel_only_and_stop_releases_the_pad);
+    RUN_TEST(test_pwm_arguments_at_every_edge);
+    RUN_TEST(test_a_failing_pwm_start_stops_the_channel_and_releases_the_pad);
+    RUN_TEST(test_pulse_widths_waits_and_the_pad_after);
+    RUN_TEST(test_a_pulse_can_be_cut_short);
+    RUN_TEST(test_a_failing_pulse_drive_is_reported);
+    RUN_TEST(test_a_closed_transport_refuses_pwm_and_pulse);
     return UNITY_END();
 }

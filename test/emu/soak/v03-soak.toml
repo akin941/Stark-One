@@ -60,6 +60,7 @@ presses = [
     { key = "BACK", at_ms = 19200, hold_ms = 60 },  # receive view
     { key = "OK", at_ms = 19500, hold_ms = 60 },  # Save last -> ir_0002.ir (NEC)
     { key = "BACK", at_ms = 20000, hold_ms = 60 },  # leave IR: RX off
+    { key = "UP", at_ms = 20250, hold_ms = 60 },  # GPIO (STARK-0702): the walk back crosses it
     { key = "UP", at_ms = 20400, hold_ms = 60 },
     { key = "UP", at_ms = 20550, hold_ms = 60 },
     { key = "UP", at_ms = 20700, hold_ms = 60 },

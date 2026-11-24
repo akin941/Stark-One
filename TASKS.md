@@ -5354,6 +5354,59 @@ the read-back on the board.
 
 ---
 
+**As built.** Differences from the plan and the readings the spec left open, each the smallest
+sound choice (ADR-0023's STARK-0702 addendum records them; the probes of STARK-0701 still hold, so
+nothing below depends on LEDC reaching a pad or on a pull-down read in the production image):
+
+* **Keys.** UP and DOWN move the selection in every menu, so "one decade steps on UP/DOWN" became
+  LEFT/RIGHT on the value rows with the frequency moving by the leading digit of its decade (100 to
+  900, 1 000 to 9 000, 10 000 to 40 000: 22 rungs). Duty steps by 1 %; the width goes through the six
+  widths. The step rules are pure (`stark_lab_pwm_step_hz`, `_step_duty`, `stark_lab_pulse_step`,
+  declared in `stark_lab.h` so the app needs no private header).
+* **Pin view.** Rows by mode: Hi-Z (Probe), Input (Pull, Read), Output (Level, Drive, Toggle),
+  PWM (Freq, Duty, Start or Stop), Pulse (Level, Width, Pulse), each ending in the pad row, which
+  carries the pin's number and name and its live state. The home list always reads `Hi-Z`, because
+  BACK from a pin releases it and the app holds nothing at home (`stark_lab_info()` says "not held");
+  the live state is in the pin view. The title stays "GPIO" (the status bar repaints a title only on a
+  push). A mode change releases the pad first; an input applies its pull at once (a read is not a
+  drive); a setting never drives.
+* **Service.** Added: `stark_lab_hiz()`, `stark_lab_info()` (mode, pull, output level, PWM values, arm,
+  tracked by the pure core), `stark_lab_pulse_cancel()`; `stark_lab_pwm_start()` on the pin that
+  has the PWM restarts it (live Freq and Duty), a second pin is `BUSY`; the stop keeps the arm; every
+  other mode of the pin stops the PWM first. `lab_pins.c` stayed at 100 % lines. `lab_pwm.c` (second
+  pure file, 100 % lines) holds the limits, the ladder, the pulse widths and `lab_pwm_plan()`, the
+  LEDC arithmetic the host sweeps: every integer frequency from 100 to 40 000 Hz is reachable with a
+  divider inside LEDC's range and a worst error of 997 ppm (at 39 960 Hz); the plan is also the
+  production validity check.
+* **Pulse.** Idle level first (read back, so a contention is found before anything is sent), the
+  pulse, then the mode the pad had. A short to the idle level is not seen by firmware and is not
+  claimed (V1). The wait is in the transport, in slices of at most 10 ms, cancelled by BACK, by the
+  screen's `on_exit` and by `stark_lab_refresh()`, because the pulse holds the service's mutex for its
+  width and the worker's join timeout is 1 s. It runs on the app worker; every key but BACK is swallowed
+  while it runs.
+* **PWM.** Not read back (a square wave has no one level): the confirmation is the guard. Duty 100 %
+  is 1023 of 1024 ticks because `stark_hal_pwm_set_duty_pct()` is unchanged (the buzzer and
+  backlight use it); the glitch is 0.1 % and inside the plan's accuracy. A pad routed to LEDC is
+  tracked with the outputs, so the next `config_in` resets it.
+* **HAL.** `stark_hal_delay_us()` (busy wait), `stark_hal_gpio_drive_weak()` and `stark_hal_pwm_stop()`;
+  the host fake gained a delay counter and hook, injected failures (`hal_host_fail()`) and the PWM
+  stop record. The buzzer and backlight channels are not touched: `test_lab_service` asserts the
+  channel is 2 on every call and `test_hal` that the stop touches only its own.
+* **Test image.** Pokes: `emu_lab_ext_pin`, `_mode`, `_hz`, `_duty`, `emu_lab_wire`
+  (`from * 64 + to`), `emu_lab_fault`. A PWM start with a wire in place is followed by the model's own check:
+  `lab: wire 38 -> 39 edges=4 high=25%`. The scenario is two files (`storage/v07-gpio`, `v07-gpio-pwm`)
+  for the 20 s budget. Still five substitutions: the pokes live in the one fake component.
+* **Launcher.** Registry `n=14`; GPIO is the first Lab row (11), IR 12, NFC 13, Sub-GHz 14, Modules 16,
+  Settings 17, Storage 18. Pre-existing scenarios changed only by a row index (every
+  `menu: sel=` line of Storage, Settings, Modules, IR, NFC, Sub-GHz), the registry line (`v0-boot`,
+  `v01-hello`) and, in `v01-hello`, one more UP (GPIO is not gated, so the walk to Hello crosses it) with
+  the OK moved from 950 to 1100 ms; comments that name a row follow. Each is listed in the commit message.
+* **Evidence and cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM, flash
+  per component, the PWM arithmetic and the emulator runs.
+* **Not here.** Frequency and duty measurement (STARK-0703), anything physical, I²C, SPI and UART.
+
+---
+
 ## STARK-0703 — Frequency and duty measurement
 
 **Goal.** The GPIO app measures the frequency and duty of a signal on an offered pin

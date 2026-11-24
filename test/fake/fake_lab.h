@@ -28,11 +28,16 @@ typedef enum {
     FAKE_LAB_FAULT_NONE,
     FAKE_LAB_FAULT_PAD_STUCK_LOW,  /* a read of the pad returns low whatever drives it */
     FAKE_LAB_FAULT_PAD_STUCK_HIGH, /* ... high */
-    FAKE_LAB_FAULT_CONFIG_ERROR,   /* pad_in and pad_out fail with STARK_ERR_IO */
+    FAKE_LAB_FAULT_CONFIG_ERROR,   /* pad_in, pad_out and pwm_start fail with STARK_ERR_IO */
     FAKE_LAB_FAULT_COUNT
 } fake_lab_fault_t;
 
-typedef enum { FAKE_LAB_PAD_HIZ, FAKE_LAB_PAD_IN, FAKE_LAB_PAD_OUT } fake_lab_mode_t;
+typedef enum {
+    FAKE_LAB_PAD_HIZ,
+    FAKE_LAB_PAD_IN,
+    FAKE_LAB_PAD_OUT,
+    FAKE_LAB_PAD_PWM /* a square wave of hz and duty, evaluated at fake_lab_time_us() */
+} fake_lab_mode_t;
 
 /* Everything back to the power-on state: all pads hi-Z, no source, no wire, no fault. */
 void fake_lab_reset(void);
@@ -57,8 +62,25 @@ stark_err_t fake_lab_pad_out(int pin, bool level);
 stark_err_t fake_lab_pad_read(int pin, bool *level);
 stark_err_t fake_lab_pad_hiz(int pin);
 
+/*
+ * The PWM and pulse calls of stark_lab_transport.h. A pad in PWM mode drives a square wave on
+ * the pad and on any pad it is wired to; hz and duty are kept as given. fake_lab_pulse() leaves
+ * the pad an output at the opposite level and counts the pulse (the fake has no waiting to do);
+ * its width is recorded for the tests. A pulse is refused like a drive by FAULT_CONFIG_ERROR.
+ */
+stark_err_t fake_lab_pwm_start(int pin, uint32_t hz, uint8_t duty_pct);
+stark_err_t fake_lab_pulse(int pin, bool level, uint32_t us);
+
+/* The square wave at `now_us` (the fake's own formula, shared with the external source). */
+bool fake_lab_square(uint32_t hz, uint8_t duty_pct, uint64_t now_us);
+
 /* Inspection for tests: how many pad calls reached a valid pad, and what a pad is set to. */
 unsigned fake_lab_calls(void);
 fake_lab_mode_t fake_lab_mode(int pin);
 uint8_t fake_lab_pull(int pin);
 bool fake_lab_out_level(int pin);
+uint32_t fake_lab_pwm_hz(int pin);
+uint8_t fake_lab_pwm_duty(int pin);
+unsigned fake_lab_pulses(void);        /* pulses done since the reset */
+uint32_t fake_lab_last_pulse_us(void); /* the width of the latest one */
+bool fake_lab_last_pulse_level(void);

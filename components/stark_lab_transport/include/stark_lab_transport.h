@@ -1,9 +1,9 @@
 /*
  * stark_lab_transport.h — the lab tools' wires (TASKS.md STARK-0701, ADR-0023 §2): the one
  * seam between the lab service and the hardware, and the fifth and last substitution of the
- * emulator test image. Today it carries the pad group (configure, read, hi-Z); later V0.7
- * tasks append the PWM and edge capture, the shared I2C bus, SPI on a leased slot and the
- * lab UART.
+ * emulator test image. Today it carries the pad group (configure, read, hi-Z) and the PWM and
+ * pulse outputs (STARK-0702); later V0.7 tasks append the edge capture, the shared I2C bus,
+ * SPI on a leased slot and the lab UART.
  *
  * Every pad call re-checks the pin against stark_board's classification, whatever the
  * caller says (defence in depth, SECURITY_SCOPE §4.6): a pin that is not offered returns
@@ -24,9 +24,16 @@
 #include "stark_err.h"
 #include "stark_module.h"
 
-#define STARK_LAB_PAD_NONE 0u
-#define STARK_LAB_PAD_UP   1u
-#define STARK_LAB_PAD_DOWN 2u
+#define STARK_LAB_PAD_NONE     0u
+#define STARK_LAB_PAD_UP       1u
+#define STARK_LAB_PAD_DOWN     2u
+
+/* The PWM output (ADR-0023 §4): LEDC channel 2, one pad at a time. */
+#define STARK_LAB_PWM_CHANNEL  2u
+#define STARK_LAB_PWM_HZ_MIN   100u
+#define STARK_LAB_PWM_HZ_MAX   40000u
+#define STARK_LAB_PULSE_US_MIN 10u
+#define STARK_LAB_PULSE_US_MAX 1000000u
 
 /* Prepares the transport. Idempotent. */
 stark_err_t stark_lab_transport_open(void);
@@ -43,6 +50,30 @@ stark_err_t stark_lab_transport_pad_read(int pin, bool *level);
 
 /* Input, no pull, interrupts off. Allowed on any pin the board gives a class (not RESERVED). */
 stark_err_t stark_lab_transport_pad_hiz(int pin);
+
+/*
+ * PWM on a pad at `hz` (STARK_LAB_PWM_HZ_MIN..MAX) and `duty_pct` (0..100), weakest drive
+ * strength, on LEDC channel STARK_LAB_PWM_CHANNEL only (the buzzer's and the backlight's channels
+ * are never touched). STARK_ERR_INVALID_ARG outside those ranges. A failure leaves the pad in hi-Z.
+ */
+stark_err_t stark_lab_transport_pwm_start(int pin, uint32_t hz, uint8_t duty_pct);
+
+/* Stops the PWM channel (idle level low) and returns the pad to hi-Z. Allowed on any classified
+ * pin. */
+stark_err_t stark_lab_transport_pwm_stop(int pin);
+
+/*
+ * One pulse: the pad is driven to `level` (weakest strength) for `us` microseconds
+ * (STARK_LAB_PULSE_US_MIN..MAX, else STARK_ERR_INVALID_ARG), then to the opposite level, where it
+ * stays: the caller restores the mode the pad had. Under 1 ms it is a busy wait, longer ones wait
+ * in 10 ms slices at most (so stark_lab_transport_pulse_cancel() takes effect within one), and a
+ * cancelled pulse still ends at the opposite level.
+ */
+stark_err_t stark_lab_transport_pulse(int pin, bool level, uint32_t us);
+
+/* Ends a pulse that is waiting, early. Any task; no lock; a pulse that starts later is not
+ * affected. */
+void stark_lab_transport_pulse_cancel(void);
 
 /*
  * The offer, as a pure rule: a LAB pin always, a SLOT pin only while its slot is empty

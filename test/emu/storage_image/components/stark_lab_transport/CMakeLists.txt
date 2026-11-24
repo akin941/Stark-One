@@ -12,4 +12,8 @@ idf_component_register(
         stark_err
         stark_board
         stark_module
+    PRIV_REQUIRES
+        stark_log
+        esp_timer
+        freertos
 )

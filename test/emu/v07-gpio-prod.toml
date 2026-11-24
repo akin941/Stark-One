@@ -1,0 +1,52 @@
+# STARK-0702 on the production image (ADR-0023 §3, §9). The GPIO app lists exactly the two
+# pins the board offers here, 38 and 39 (esp-emu answers at 0x50, so slot 0 reads generic and
+# its three lines are withdrawn). Pin 38 is opened and set to an input with a pull-up, which the
+# emulator is verified to read as high (docs/VALIDATION.md §2: it reads every unconnected input
+# high, so the pull-down is not exercised here; the host tests own it). Nothing is driven: an
+# input needs no confirmation and no dialog may open. BACK releases the pin, BACK at home leaves
+# the app, and the service logs `lab: released all`. UP from About wraps to Storage; the walk
+# is Storage, Settings, Modules, IR (NFC and Sub-GHz are dimmed without a module) and GPIO,
+# the first row of Lab. Not connector evidence: no pad moves in the emulator.
+name = "emu-v07-gpio-prod"
+end_ms = 5500
+heap_min = 200000
+presses = [
+    { key = "UP", at_ms = 400, hold_ms = 60 },     # Storage
+    { key = "UP", at_ms = 550, hold_ms = 60 },     # Settings
+    { key = "UP", at_ms = 700, hold_ms = 60 },     # Modules
+    { key = "UP", at_ms = 850, hold_ms = 60 },     # IR
+    { key = "UP", at_ms = 1000, hold_ms = 60 },    # GPIO
+    { key = "OK", at_ms = 1200, hold_ms = 60 },    # open the app
+    { key = "OK", at_ms = 1600, hold_ms = 60 },    # pin 38
+    { key = "RIGHT", at_ms = 2000, hold_ms = 60 }, # Mode: Input
+    { key = "DOWN", at_ms = 2400, hold_ms = 60 },  # Pull
+    { key = "RIGHT", at_ms = 2800, hold_ms = 60 }, # Up
+    { key = "DOWN", at_ms = 3200, hold_ms = 60 },  # Read
+    { key = "OK", at_ms = 3600, hold_ms = 60 },    # read the pad again
+    { key = "BACK", at_ms = 4000, hold_ms = 60 },  # release pin 38
+    { key = "BACK", at_ms = 4400, hold_ms = 60 },  # leave the app
+]
+expect = [
+    "lab: pins 38 39",
+    'menu: sel=11 "GPIO"',
+    "gpioapp: home 38 39",
+    "app: start gpio",
+    "gpioapp: open pin 38 LAB_UART_TX",
+    "gpioapp: pin 38 Hi-Z",
+    "gpioapp: pin 38 IN H",
+    "gpioapp: pin 38 pull up",
+    "gpioapp: pin 38 read H",
+    "lab: released pin 38",
+    "lab: released all",
+    "app: stop gpio",
+]
+forbid = [
+    "gpioapp: home 38 39 4",
+    "gpioapp: open pin 39",
+    "dialog: open",
+    "armed",
+    "contention",
+    "withdrawn",
+    "gpio: conflict",
+    "panic",
+]

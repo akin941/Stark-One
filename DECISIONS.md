@@ -1319,3 +1319,78 @@ was silent, each the smallest sound choice and none changing a rule above:
    `gpio_reset_pin()` revokes. `stark_hal_gpio_*` therefore tracks the pads it made outputs,
    sets only the level when a driven pad is driven again, and resets the pin on any other
    configuration. STARK-0702 relies on this before it routes a pad to LEDC.
+
+**Addendum (2026-11-24, STARK-0702).** The GPIO app and the PWM and pulse outputs. The plan was
+silent or ambiguous on the points below; each is the smallest sound choice and none changes a rule
+above. The emulator probes of the 0701 addendum still hold: no acceptance criterion depends on
+LEDC reaching a pad or on a pull-down read in the production image, so PWM is proven as arithmetic
+on the host and as a request on the test image, and its waveform is a V1 logic-analyser check.
+
+1. **Keys.** The plan's "one decade steps up/down on UP/DOWN" cannot be: UP and DOWN move the
+   selection in every `ui_menu`, and the Mode, Pull, Level, Freq, Duty and Width rows are
+   adjusted with LEFT and RIGHT like every other value row (press and repeat). The frequency row
+   moves by the leading digit of its decade (100, 200, … 900, 1000, … 9000, 10000, … 40000: 22 rungs
+   in 21 steps), so a decade is one press away from a rung and every decade is crossed; duty
+   moves by 1 %; width through the six fixed widths. `lab_pwm_step_hz()` is pure and swept.
+2. **The home list is always `Hi-Z`.** BACK from a pin releases it, so the app holds no pin at
+   home: the state column reads the service (`stark_lab_info()`), which says "not held". The
+   live state is the pad row inside a pin's view (`IN H`, `IN L`, `OUT H`, `OUT L`, `PWM`, `Hi-Z`),
+   refreshed after every action and on a mode change; an input's level is read when the view
+   refreshes and on the Read row, because no timer runs. The pad row carries the pin number and name
+   (the status-bar title only repaints when a screen is pushed, so it stays "GPIO").
+3. **Pin view.** Mode (Hi-Z, Input, Output, PWM, Pulse) is the first row. Changing it releases the
+   pad first (which stops a PWM); an input applies its pull at once (a read is not a drive).
+   Hi-Z has a Probe row (floating, high or low: `stark_lab_state()` then released again), Input a Pull
+   and a Read row, Output a Level, Drive and Toggle, PWM a Freq, Duty and Start (Stop while it
+   runs), Pulse a Level (the pulse's polarity, which the plan left out), a Width and Pulse. A setting
+   never drives: only an action row does. Toggle flips the Level row and drives it.
+4. **The confirmation** runs `stark_lab_state()` for "reads: floating | high | low", releases the
+   pad again, and asks. OK arms the pin for the session and goes on with the action; BACK leaves
+   the pad in hi-Z and logs `gpioapp: cancelled pin <n>`. A failing probe is a log line and no
+   dialog. Stopping a PWM needs no confirmation.
+5. **Service additions** beyond the plan, each small: `stark_lab_hiz(pin)` (release the pad, keep
+   the pin and its arm: the Mode row needs it), `stark_lab_info(pin)` (mode, pull, output level,
+   PWM values, arm: tracked by the pure core so the app never guesses) and
+   `stark_lab_pulse_cancel()` (no lock). `stark_lab_pwm_start()` on the pin that already has the
+   PWM restarts it with the new values, which makes Freq and Duty live while it runs; a second pin is
+   `STARK_ERR_BUSY`. The PWM's stop keeps the arm. Every call that puts the pad in another mode
+   (input, hi-Z, drive, probe, pulse) stops the PWM first, and so does every exit path.
+6. **Pulse.** The pulse is the service's: the idle level (the opposite of the pulse's) is driven
+   and read back after 1 ms, so a pad that does not follow it is a contention before anything is
+   sent; the transport then drives the level for the width and the opposite level again; the service
+   restores the mode the pad had (hi-Z, an input with its pull, or an output at its level, read
+   back). A short to the *idle* level cannot be seen by the read-back and is left to the V1
+   measurement; it is not claimed. The wait is the transport's: under 1 ms a busy wait (`esp_rom_delay_us`,
+   via the new `stark_hal_delay_us()`), otherwise `stark_hal_delay_ms()` in slices of at most 10 ms.
+   The pulse runs on the app worker and holds the service's mutex for its width (up to 1 s), and the
+   worker join timeout is also 1 s, so the wait must end early: `stark_lab_pulse_cancel()` (a
+   volatile flag, no lock) is called by BACK, by the screen's `on_exit` (which the manager calls
+   before it joins the worker) and by `stark_lab_refresh()` (so a hot-plug never waits behind a pulse).
+   A cancelled pulse still ends at the opposite level and the mode is restored. While a pulse runs
+   every key but BACK is swallowed: one pulse per key press.
+7. **PWM details.** The PWM is not read back (a square wave has no one level), so a pad driven by
+   something else is not detected; the confirmation, which shows what the pad reads, is the guard.
+   LEDC channel 2 with its own timer, 10-bit resolution, `stark_hal_pwm_set_duty_pct()` unchanged
+   (the buzzer's and the backlight's channels are never named by the lab, and a host test pins
+   that): duty 100 % is 1023 of 1024 ticks, a low glitch of 0.1 % per period, inside the ±2 point
+   accuracy ADR-0023 §5 allows. `lab_pwm_plan()` models the divider (80 MHz APB, Q8, valid 1.0 to
+   1023.996) and is the production validity check: every integer frequency from 100 to 40 000 Hz is
+   in range with a worst error of 997 ppm (39 960 Hz), bounded at 0.2 % by construction (half a
+   divider step at a divider of 1.0); ESP-IDF's own clock choice may do better. The weakest drive
+   strength of a pad that LEDC drives is set after the routing (`stark_hal_gpio_drive_weak()`), and a
+   pad routed to LEDC is tracked with the outputs, so the next `config_in`/`hiz` resets it.
+8. **Contention and a transport fault are both `STARK_ERR_IO`** (the 0701 contract), so the app's alert
+   ("Contention": the pin did not follow what it drove, released) covers both; the service's own
+   `lab: contention pin <n>` line says which. Every failure ends in hi-Z with the arm cleared.
+9. **Logs (contract).** App: `gpioapp: home <pins>`, `open pin <n> <name>`, `pin <n> <state>` on
+   a change, `pin <n> pull <none|up|down>`, `pin <n> read <H|L>`, `pin <n> probe <…>`,
+   `confirm pin <n> reads <…>`, `cancelled pin <n>`, `pin <n> drive failed: released`, `pin <n>
+   withdrawn`, `close pin <n>`. Service: `lab: armed pin <n>`, `pwm pin <n> <hz> Hz <duty> %`,
+   `pwm stopped`, `pulse pin <n> <high|low> <us> us`, `released pin <n>`, `released all`.
+10. **Test image.** The pokes are `emu_lab_ext_pin` (default 38), `emu_lab_ext_mode` (0 none, 1 high,
+    2 low, 3 square), `emu_lab_ext_hz`, `emu_lab_ext_duty`, `emu_lab_wire` (`from * 64 + to`) and
+    `emu_lab_fault` (a `fake_lab_fault_t`, any pad, until it changes). With a wire in place a PWM start
+    is followed by the model's own check (the destination pad sampled 1000 times over four periods):
+    `lab: wire 38 -> 39 edges=4 high=25%`. The scenario is split in two (`storage/v07-gpio`,
+    `storage/v07-gpio-pwm`) to stay inside the 20 s budget. `check_emu_image.py` still allows five
+    substitutions; the fake adds no sixth.

@@ -1,7 +1,7 @@
 # STARK-0602 on the test image, whose stark_subghz_transport is the test-only fake
 # CC1101 (ADR-0022 §3). The CC1101 module (catalogue entry 32) is in slot 0 and
 # answers; the air holds one carrier at 433.920 MHz, -40 dBm. The production
-# service, app and UI run unchanged: Sub-GHz is opened from the launcher (row 13,
+# service, app and UI run unchanged: Sub-GHz is opened from the launcher (row 14,
 # after NFC), the RSSI meter follows the level the scenario moves (-40, -70, -55;
 # logged because each moved by more than 3 dB), BACK returns the radio to idle
 # (`subghz: idle`, said only once the chip reports MARCSTATE IDLE), the band scan
@@ -25,7 +25,7 @@ presses = [
     { key = "UP", at_ms = 5300, hold_ms = 60 },     # Storage
     { key = "UP", at_ms = 5500, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 5700, hold_ms = 60 },     # Modules
-    { key = "UP", at_ms = 5900, hold_ms = 60 },     # Sub-GHz (Lab: IR 11, NFC 12 dimmed here, Sub-GHz 13)
+    { key = "UP", at_ms = 5900, hold_ms = 60 },     # Sub-GHz (Lab: IR 12, NFC 13 dimmed here, Sub-GHz 14)
     { key = "OK", at_ms = 6300, hold_ms = 60 },
     { key = "OK", at_ms = 7000, hold_ms = 60 },     # RSSI meter
     { key = "BACK", at_ms = 12500, hold_ms = 60 },  # meter -> home
@@ -37,7 +37,7 @@ presses = [
 expect = [
     "subghz: cc1101 version 0x14",
     "module: caps 0x00000027",
-    'menu: sel=13 "Sub-GHz"',
+    'menu: sel=14 "Sub-GHz"',
     "app: start subghz",
     "subghz: meter 433.920 MHz",
     "subghz: rssi -40 dBm",
