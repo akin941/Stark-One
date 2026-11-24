@@ -52,7 +52,7 @@ presses = [
 ]
 expect = [
     "subghz: cc1101 version 0x14",
-    'menu: sel=14 "Sub-GHz"',
+    'menu: sel=15 "Sub-GHz"',
     "app: start subghz",
     "subghz: capture start 433.920 MHz ook",
     "subghzapp: capture 200 sym",

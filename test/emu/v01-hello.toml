@@ -1,6 +1,6 @@
 # STARK-0104: the hello app — added in one new directory plus one registry
 # line in main/ (ADR-0016) — is listed, launches (under Examples: UP from
-# About wraps to the last row, Storage; then Settings, Modules, IR, GPIO, Hello), refreshes its uptime once a
+# About wraps to the last row, Storage; then Settings, Modules, IR, I2C, GPIO, Hello), refreshes its uptime once a
 # second on the production image, and leaves cleanly.
 name = "emu-v01-hello"
 end_ms = 3800
@@ -9,14 +9,15 @@ presses = [
     { key = "UP", at_ms = 300, hold_ms = 60 },     # from About, wrap to Storage
     { key = "UP", at_ms = 420, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 540, hold_ms = 60 },     # past the Device header to Modules
-    { key = "UP", at_ms = 660, hold_ms = 60 },     # IR (NFC 13 is dimmed: no reader in the production image)
-    { key = "UP", at_ms = 780, hold_ms = 60 },     # GPIO (STARK-0702: no capability, never dimmed)
-    { key = "UP", at_ms = 900, hold_ms = 60 },     # past the Lab header to Hello
-    { key = "OK", at_ms = 1100, hold_ms = 60 },
+    { key = "UP", at_ms = 660, hold_ms = 60 },     # IR (NFC 14 is dimmed: no reader in the production image)
+    { key = "UP", at_ms = 780, hold_ms = 60 },     # I2C (STARK-0704: no capability, never dimmed)
+    { key = "UP", at_ms = 900, hold_ms = 60 },     # GPIO (STARK-0702: no capability, never dimmed)
+    { key = "UP", at_ms = 1020, hold_ms = 60 },    # past the Lab header to Hello
+    { key = "OK", at_ms = 1200, hold_ms = 60 },
     { key = "BACK", at_ms = 3400, hold_ms = 60 },
 ]
 expect = [
-    "app: registry n=14 about,diagnostics,inputtest,displaytest,buzzertest,apptest,hello,gpio,nfc,ir,subghz,modules,storage,settings",
+    "app: registry n=15 about,diagnostics,inputtest,displaytest,buzzertest,apptest,hello,gpio,i2c,nfc,ir,subghz,modules,storage,settings",
     'menu: sel=9 "Hello"',
     "hello: uptime=00:00:01",    # on_start (launched ~1 s in), before the launch is logged
     "app: start hello",

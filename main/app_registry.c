@@ -17,6 +17,7 @@ const stark_app_t *const stark_apps[] = {
     &app_apptest,
     &app_hello,
     &app_gpio,
+    &app_i2c,
     &app_nfc,
     &app_ir,
     &app_subghz,

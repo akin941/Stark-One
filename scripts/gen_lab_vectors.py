@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 gen_lab_vectors.py — the frequency and duty edge sets of the lab's measurement (TASKS.md
-STARK-0703, ADR-0023 §4) written as test/fake/fake_lab_vectors.h.
+STARK-0703, ADR-0023 §4) written as test/fake/fake_lab_vectors.h, and the I2C scanner's sweeps,
+fingerprints, refusals and hex text (STARK-0704, ADR-0023 §5) written as
+test/fake/fake_lab_i2c_vectors.h.
 
 Every vector is SPEC-DERIVED, NOT A RECORDING OF A REAL SIGNAL: a square wave of a round
 frequency and duty sampled as the timestamps (CPU cycle counts at 240 MHz) of its edges, with
@@ -18,9 +20,16 @@ frequency and duty it was made at (frequency +-0.5 % to 10 kHz and +-2 % to 50 k
 points to 10 kHz and +-5 to 50 kHz), and the capture window is sized by ref_plan(), the
 independent restatement of the pre-gate rule, from the signal's own gate count.
 
+The I2C vectors are as independent: ref_sweep() restates the sweep rule of lab_i2c.h (112
+probes, three errors in a row end it, a NACK or an ACK starts the count again), ref_fnv1a() is
+the textbook 32-bit FNV-1a over the byte string the fingerprint is defined on, ref_refusal() is
+the refusal table of ADR-0023 §5 (a module ID EEPROM takes a one-byte pointer and a read only,
+the PN532 takes nothing while NFC is confirmed), and ref_hex() the lower-case hex text with the
+whole-bytes-that-fit truncation.
+
 Usage:
-  gen_lab_vectors.py            write test/fake/fake_lab_vectors.h
-  gen_lab_vectors.py --check    exit 1 if the committed file differs (CI lint)
+  gen_lab_vectors.py            write test/fake/fake_lab_vectors.h and fake_lab_i2c_vectors.h
+  gen_lab_vectors.py --check    exit 1 if a committed file differs (CI lint)
 """
 import argparse
 import sys
@@ -30,6 +39,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "test/fake/fake_lab_vectors.h"
+OUT_I2C = ROOT / "test/fake/fake_lab_i2c_vectors.h"
 
 TICK_HZ = 240_000_000
 RING = 1024
@@ -404,17 +414,268 @@ def render():
     return "\n".join(lines)
 
 
+# ---- the I2C scanner (STARK-0704): the reference and its vectors --------------------------
+
+I2C_MIN, I2C_MAX = 0x08, 0x77
+I2C_RUN = 3
+I2C_PN532 = 0x24
+I2C_EEPROMS = (0x50, 0x51)
+SWEEP_OK, SWEEP_IO = 0, 1
+REFUSE_NONE, REFUSE_EEPROM, REFUSE_NFC = 0, 1, 2
+
+
+def ref_sweep(acks, errs):
+    """(found, errors, status, probes): `acks` answer, `errs` time out, the rest NACK."""
+    found, errors, run, probes = [], 0, 0, 0
+    status = SWEEP_OK
+    for a in range(I2C_MIN, I2C_MAX + 1):
+        probes += 1
+        if a in errs:
+            errors += 1
+            run += 1
+            if run >= I2C_RUN:
+                status = SWEEP_IO
+                break
+        else:
+            run = 0
+            if a in acks:
+                found.append(a)
+    return found, errors, status, probes
+
+
+def ref_fnv1a(data):
+    h = 2166136261
+    for b in data:
+        h = ((h ^ b) * 16777619) & 0xFFFFFFFF
+    return h
+
+
+def ref_fp_write(addr, reg, reg16, data):
+    return ref_fnv1a(b"W" + bytes([addr, 1 if reg16 else 0, reg >> 8, reg & 0xFF, len(data)])
+                     + bytes(data))
+
+
+def ref_fp_dump(addr):
+    return ref_fnv1a(b"D" + bytes([addr]))
+
+
+def ref_refusal(addr, wn, rn, nfc):
+    if addr in I2C_EEPROMS and (rn == 0 or wn > 1):
+        return REFUSE_EEPROM
+    if addr == I2C_PN532 and nfc:
+        return REFUSE_NFC
+    return REFUSE_NONE
+
+
+def ref_hex(data, sz, spaced):
+    """The text that fits a buffer of `sz` bytes (NUL included): whole bytes only."""
+    if sz == 0:
+        return ""
+    out = ""
+    for i, b in enumerate(data):
+        piece = ("%02x" % b) if (i == 0 or not spaced) else (" %02x" % b)
+        if len(out) + len(piece) + 1 > sz:
+            break
+        out += piece
+    return out
+
+
+def sweep_vectors():
+    allc = set(range(I2C_MIN, I2C_MAX + 1))
+    return [
+        ("empty", set(), set()),
+        ("one", {0x50}, set()),
+        ("edges", {0x08, 0x77}, set()),
+        ("all_112", allc, set()),
+        ("five", {0x23, 0x3C, 0x48, 0x68, 0x76}, set()),
+        ("one_timeout", {0x23, 0x68}, {0x48}),
+        ("two_in_a_row", {0x50}, {0x30, 0x31}),
+        ("three_at_the_start", {0x23}, {0x08, 0x09, 0x0A}),
+        ("three_after_a_find", {0x23, 0x50}, {0x40, 0x41, 0x42}),
+        ("a_nack_between", set(), {0x30, 0x31, 0x33, 0x34}),
+        ("an_ack_between", {0x32}, {0x30, 0x31, 0x33, 0x34}),
+        ("two_at_the_end", {0x70}, {0x76, 0x77}),
+        ("three_at_the_end", {0x70}, {0x75, 0x76, 0x77}),
+        ("scattered", {0x15, 0x25}, {0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70}),
+        ("all_time_out", set(), allc),
+    ]
+
+
+def refusal_vectors():
+    out = []
+    for addr in (0x08, 0x23, 0x24, 0x50, 0x51, 0x52, 0x77):
+        for wn, rn in ((1, 1), (2, 1), (1, 16), (3, 1), (1, 0), (2, 0), (10, 0), (0, 16)):
+            for nfc in (False, True):
+                out.append((addr, wn, rn, nfc, ref_refusal(addr, wn, rn, nfc)))
+    return out
+
+
+def fp_vectors():
+    out = []
+    for addr, reg, reg16, data in (
+            (0x68, 0x6B, False, [0x01]),
+            (0x68, 0x6B, False, [0x00]),
+            (0x68, 0x6C, False, [0x01]),
+            (0x69, 0x6B, False, [0x01]),
+            (0x68, 0x6B, True, [0x01]),
+            (0x68, 0x006B, True, [0x02]),
+            (0x68, 0x016B, True, [0x01]),
+            (0x48, 0x01, False, [0x60, 0xA0]),
+            (0x76, 0xF4, False, [0x27]),
+            (0x50, 0x00, False, [0xFF] * 8),
+            (0x77, 0xFF, False, list(range(8))),
+            (0x08, 0x00, False, [0x00])):
+        out.append(("W", addr, reg, reg16, data, ref_fp_write(addr, reg, reg16, data)))
+    for addr in (0x08, 0x50, 0x68, 0x77):
+        out.append(("D", addr, 0, False, [], ref_fp_dump(addr)))
+    return out
+
+
+def hex_vectors():
+    out = []
+    ramp = list(range(0x00, 0x100, 0x11))[:16]
+    for data in ([], [0x00], [0x00, 0xFF], [0xA5, 0x5A, 0x01], ramp):
+        for sz in (0, 1, 2, 3, 4, 5, 6, 7, 8, 49, 50):
+            for spaced in (True, False):
+                out.append((data, sz, spaced, ref_hex(data, sz, spaced)))
+    return out
+
+
+def render_i2c():
+    lines = [
+        "/* Generated by scripts/gen_lab_vectors.py — do not edit.",
+        " * SPEC-DERIVED, NOT A RECORDING OF A REAL BUS (ADR-0023 §5): sweeps over made-up answers",
+        " * (ACK, timeout, NACK per address), fingerprints (FNV-1a), the refusal table and hex text,",
+        " * each with the result an independent Python implementation computes.",
+        " * Test infrastructure only. */",
+        "/* clang-format off */",
+        "#pragma once",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "/* status: 0 OK, 1 IO (errors ended the sweep) */",
+        "typedef struct {",
+        "    const char *name;",
+        "    const uint8_t *acks;",
+        "    uint8_t n_acks;",
+        "    const uint8_t *errs;",
+        "    uint8_t n_errs;",
+        "    const uint8_t *found;",
+        "    uint8_t n_found;",
+        "    uint8_t errors;",
+        "    uint8_t status;",
+        "    uint8_t probes;",
+        "} fake_lab_sweep_vec_t;",
+        "",
+        "/* kind 'W' (a write: addr, reg, reg16, data) or 'D' (a dump: addr) */",
+        "typedef struct {",
+        "    char kind;",
+        "    uint8_t addr;",
+        "    uint16_t reg;",
+        "    uint8_t reg16;",
+        "    const uint8_t *data;",
+        "    uint8_t n;",
+        "    uint32_t fp;",
+        "} fake_lab_fp_vec_t;",
+        "",
+        "/* EEPROM addresses 0x50 and 0x51; expect 0 none, 1 module eeprom, 2 nfc reader */",
+        "typedef struct {",
+        "    uint8_t addr;",
+        "    uint8_t wn;",
+        "    uint8_t rn;",
+        "    uint8_t nfc;",
+        "    uint8_t expect;",
+        "} fake_lab_refusal_vec_t;",
+        "",
+        "typedef struct {",
+        "    const uint8_t *data;",
+        "    uint8_t n;",
+        "    uint8_t sz;",
+        "    uint8_t spaced;",
+        "    const char *text;",
+        "} fake_lab_hex_vec_t;",
+        "",
+    ]
+
+    def arr(name, vals):
+        lines.append("static const uint8_t %s[] = {%s};" % (name, ",".join("0x%02x" % v
+                                                                          for v in vals)))
+
+    sw = sweep_vectors()
+    for i, (name, acks, errs) in enumerate(sw):
+        found, errors, status, probes = ref_sweep(acks, errs)
+        for tag, vals in (("acks", sorted(acks)), ("errs", sorted(errs)), ("found", found)):
+            if vals:
+                arr("fake_lab_sw_%d_%s" % (i, tag), vals)
+    lines.append("")
+    lines.append("static const fake_lab_sweep_vec_t fake_lab_sweep_vecs[] = {")
+    for i, (name, acks, errs) in enumerate(sw):
+        found, errors, status, probes = ref_sweep(acks, errs)
+
+        def ref(tag, vals, i=i):
+            return "fake_lab_sw_%d_%s" % (i, tag) if vals else "NULL"
+
+        lines.append('    {"%s", %s, %d, %s, %d, %s, %d, %d, %d, %d},' % (
+            name, ref("acks", acks), len(acks), ref("errs", errs), len(errs),
+            ref("found", found), len(found), errors, status, probes))
+    lines.append("};")
+    lines.append("#define FAKE_LAB_SWEEP_VECS (sizeof(fake_lab_sweep_vecs) / "
+                 "sizeof(fake_lab_sweep_vecs[0]))")
+    lines.append("")
+
+    fps = fp_vectors()
+    for i, (kind, addr, reg, reg16, data, fp) in enumerate(fps):
+        if data:
+            arr("fake_lab_fp_%d" % i, data)
+    lines.append("")
+    lines.append("static const fake_lab_fp_vec_t fake_lab_fp_vecs[] = {")
+    for i, (kind, addr, reg, reg16, data, fp) in enumerate(fps):
+        lines.append("    {'%s', 0x%02x, 0x%04x, %d, %s, %d, %du}," % (
+            kind, addr, reg, int(reg16), "fake_lab_fp_%d" % i if data else "NULL", len(data), fp))
+    lines.append("};")
+    lines.append("#define FAKE_LAB_FP_VECS (sizeof(fake_lab_fp_vecs) / sizeof(fake_lab_fp_vecs[0]))")
+    lines.append("")
+
+    lines.append("static const fake_lab_refusal_vec_t fake_lab_refusal_vecs[] = {")
+    for addr, wn, rn, nfc, expect in refusal_vectors():
+        lines.append("    {0x%02x, %d, %d, %d, %d}," % (addr, wn, rn, int(nfc), expect))
+    lines.append("};")
+    lines.append("#define FAKE_LAB_REFUSAL_VECS (sizeof(fake_lab_refusal_vecs) / "
+                 "sizeof(fake_lab_refusal_vecs[0]))")
+    lines.append("")
+
+    hv = hex_vectors()
+    seen = {}
+    for data, sz, spaced, text in hv:
+        key = tuple(data)
+        if key not in seen:
+            seen[key] = "fake_lab_hexdata_%d" % len(seen)
+            if data:
+                arr(seen[key], data)
+    lines.append("")
+    lines.append("static const fake_lab_hex_vec_t fake_lab_hex_vecs[] = {")
+    for data, sz, spaced, text in hv:
+        lines.append('    {%s, %d, %d, %d, "%s"},' % (
+            seen[tuple(data)] if data else "NULL", len(data), sz, int(spaced), text))
+    lines.append("};")
+    lines.append("#define FAKE_LAB_HEX_VECS (sizeof(fake_lab_hex_vecs) / sizeof(fake_lab_hex_vecs[0]))")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args(argv)
-    text = render()
+    outputs = ((OUT, render()), (OUT_I2C, render_i2c()))
     if args.check:
-        if not OUT.exists() or OUT.read_text() != text:
-            print("STALE: %s — run scripts/gen_lab_vectors.py" % OUT, file=sys.stderr)
-            return 1
-        return 0
-    OUT.write_text(text)
+        stale = [path for path, text in outputs if not path.exists() or path.read_text() != text]
+        for path in stale:
+            print("STALE: %s — run scripts/gen_lab_vectors.py" % path, file=sys.stderr)
+        return 1 if stale else 0
+    for path, text in outputs:
+        path.write_text(text)
     return 0
 
 

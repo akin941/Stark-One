@@ -338,7 +338,7 @@ number of producer tasks; exactly one consumer task (the UI task) calls `wait()`
 | 5 | `STARK_SYS_NFC` | `stark_nfc` (STARK-0402) | `STARK_NFC_EVT_TAG` / `_LEFT` / `_MODULE` / `_WRITE_DONE` / `_WRITE_FAILED` / `_DUMP_DONE` / `_DUMP_FAILED` |
 | 6 | `STARK_SYS_MODULE` | `stark_module` (STARK-0502) | 0: the module table or effective capabilities changed |
 | 7 | `STARK_SYS_SUBGHZ` | `stark_subghz` (STARK-0601) | `STARK_SUBGHZ_EVT_MODULE` (STARK-0601), `_RSSI` / `_SCAN_DONE` (STARK-0602), `_CAPTURE` / `_CAPTURE_DONE` (STARK-0603), `_TX_DONE` (6) / `_TX_FAILED` (7) / `_TX_REFUSED` (8) (STARK-0605) |
-| 8 | `STARK_SYS_LAB` | `stark_lab` (STARK-0701) | `STARK_LAB_EVT_PINS` (the offer changed or a held pin was withdrawn); later `_MEASURE_DONE`, `_SCAN_DONE`, `_UART_DATA`, `_UART_ERROR`, `_SPI_DONE` (STARK-0703…0706) |
+| 8 | `STARK_SYS_LAB` | `stark_lab` (STARK-0701) | `STARK_LAB_EVT_PINS` (the offer changed or a held pin was withdrawn); later `_MEASURE_DONE` (STARK-0703); later `_UART_DATA`, `_UART_ERROR`, `_SPI_DONE` (STARK-0705, 0706); `_SCAN_DONE` stays reserved, the I²C sweep being a synchronous call (STARK-0704) |
 
 Overflow policy: the ring drops the **oldest** event and increments
 `stark_event_stats_t.dropped`, which diagnostics surfaces. Dropping input silently is
@@ -1125,7 +1125,7 @@ applying each pull for 2 ms and leaves it an input with no pull.
 **The transport** (`stark_lab_transport.h`) is the seam and the fifth and last test-image
 substitution: today the pad group (`pad_in`, `pad_out`, `pad_read`, `pad_hiz`) and the PWM and
 pulse outputs (`pwm_start`, `pwm_stop`, `pulse`, `pulse_cancel`; STARK-0702); later V0.7 tasks
-append edge capture, the shared I²C bus, SPI on a leased slot and the lab UART. It re-checks
+append edge capture, the shared I²C bus (STARK-0704), SPI on a leased slot and the lab UART. It re-checks
 the pin on every call (`stark_lab_pad_ok()`: stark_board's class and, for a slot line, the module
 table), so no caller can reach a pin the board does not offer even by bypassing the service; the
 policy is an inline function in the header, shared by the production transport
@@ -1181,6 +1181,33 @@ optional seeded jitter, glitches and a counter epoch; the vectors are
 `scripts/gen_lab_vectors.py`, an independent Python implementation (`test/fake/fake_lab_vectors.h`,
 `--check` in the lint job).
 
+**The I²C scanner (STARK-0704).** The shared I²C bus (`stark_board_i2c_bus()`, the one the NFC and module
+tasks use) gets a bench tool with four rules (ADR-0023 §5 and its 0704 addendum). *Pure core:*
+`lab_i2c.c` (the fourth pure file, with `lab_i2c_hints.c`, 100 % lines) runs over an injected bus
+(`probe`, `xfer`, "is NFC confirmed", a clock): the **sweep** (a probe of 0x08 to 0x77, 5 ms each, a NACK
+is an empty address, three errors in a row end it with the list so far, 112 probes at most whatever the bus
+does), register **read** (1 to 16 bytes, a one- or two-byte register), **dump** (16 transactions of 16 from
+register 0) and **write** (1 to 8 bytes in one transaction). *Writes and dumps need an arm* tied to a 32-bit
+fingerprint of what the dialog showed, spent by the next call whatever it returns and stale after 30 s;
+nothing loops. *Refusals* are one table: a **module ID EEPROM** takes a one-byte pointer and a read and
+nothing else (so a write, and a 16-bit register read, are refused), and the **PN532** (0x24) takes nothing
+while NFC is confirmed, its driver owning the protocol. The service checks it (the reason is the log line,
+`lab: i2c write refused: module eeprom`) and the transport checks it again before the bus is touched
+(`stark_lab_i2c_allowed()`, an inline function in the header shared by the production file, the test image's
+transport and the host shim, so none can do what another refuses). *Service and transport:* the I²C group of
+`stark_lab_transport` is `i2c_probe` and `i2c_xfer` (a write then a read after a repeated start, one handle
+attached for the transaction and removed after it, so it never interleaves with the NFC and module tasks,
+which the bus's own lock guarantees); the production file `lab_transport_i2c.c` is target-only, the host
+builds a shim over `test/fake/fake_lab.c`'s bus of five known devices, and the test image's substituted
+transport (still the fifth and last) routes the module EEPROMs and the PN532 to their own fakes, so one scan
+shows one consistent bus. The service has its own mutex (a dump never holds up a pin) and no task: the sweep
+is a synchronous call, at most 112 x 5 ms. *App:* `apps/app_i2c` (Lab category, title "I2C", launcher row 12 between
+GPIO and IR; no capability required): Scan, Speed
+(100 or 400 kHz), the list of what answered with a "may be ..." hint beside each address (a lookup in a
+table of at most 48 generic phrases; nothing is probed to confirm it), and per device Read, Dump and Write
+editors made of rows (register, width, nibble, length or byte count, bytes) with the confirmations of §5. The
+rows are `i2c_views.c` (pure, 100 % lines).
+
 ### 6.9 Deferred components (contracts only, no V0 code)
 
 | Component | Milestone | One-line contract |
@@ -1191,7 +1218,7 @@ optional seeded jitter, glitches and a counter epoch; the vectors are
 | `stark_nfc` + `stark_nfc_transport` | V0.4 | NDEF, PN532 framing and driver, transport and detection implemented (§6.9e, STARK-0401/0402); the rest planned (ADR-0020, TASKS STARK-0403…0405). Pure L2 cores in `stark_nfc` — NDEF, PN532 framing and protocol driver over an **injected** transport, Type 2 operations, identification, poll state machine, reader, writer, dump format — and the L3 NFC task (polling only while an app asks; RF field off otherwise). `stark_nfc_transport` (L1) is the only code on the I²C bus: ESP-IDF `i2c_master` to the PN532 at 0x24 on `stark_board_i2c_bus()`. Tests inject `test/fake/fake_pn532.c`; the emulator test image substitutes the transport component with one built on it. No raw-command passthrough, no authentication, emulation or UID writes |
 | `stark_module` + `stark_module_transport` | V0.5 | Descriptor, discovery, capabilities, arbitration and the IR/NFC retrofit implemented (§6.9f, STARK-0501…0504); the inspector and gated launcher implemented (STARK-0505); ADR-0009 revisit per STARK-0506 (ADR-0021). Enumerates expansion modules (I²C ID EEPROM), introduces capability bits and `caps_required`, arbitrates bus/CS. A capability is effective only once a driver confirms it. Tests inject `test/fake/fake_24c02.c`; the emulator test image substitutes the transport. **Nothing of this exists before V0.5** — no bits, no fields, no stubs |
 | `stark_subghz` + `stark_subghz_transport` | V0.6 | Chip detection, the 433 MHz register profiles and the capability implemented (§6.9g, STARK-0601); RSSI meter, band scan and the Sub-GHz app implemented (§6.9g, STARK-0602); raw capture, the `rf` file, save and the saved view implemented (§6.9g, STARK-0603); the generic PWM/PPM/Manchester decoders and the read-only analysis view implemented (§6.9g, STARK-0604); the fixed transmit policy and the gated replay of a saved capture implemented (§6.9g, STARK-0605). Tests inject `test/fake/fake_cc1101.c`; the emulator test image substitutes the transport |
-| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C, UART and SPI tools and the self-test are planned (ADR-0023, TASKS STARK-0704…0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
+| `stark_lab` + `stark_lab_transport` | V0.7 | Pin safety, the pad calls and the fifth and last test-image substitution implemented (§6.9h, STARK-0701); the GPIO app with PWM and pulse outputs implemented (§6.9h, STARK-0702); frequency and duty measurement from timestamped edges implemented (§6.9h, STARK-0703); the I²C scanner implemented (§6.9h, STARK-0704); the UART and SPI tools and the self-test are planned (ADR-0023, TASKS STARK-0705…0707). Tests inject `test/fake/fake_lab.c`; the emulator test image substitutes the transport |
 | `stark_power` | V1/V2 | Battery voltage/SoC, charge state, backlight dimming, light-sleep policy |
 | `stark_diag` | V0.7 | v1 is implemented (§6.9a, STARK-0109); self-test routines and log export arrive at V0.7 |
 
@@ -1329,7 +1356,8 @@ to set differently (ADR-0010).
   `stark_subghz_transport → stark_module` (the lease and SPI device), all STARK-0601, and
   `stark_lab → stark_event` (offer-change events), `stark_lab → stark_module` (the table that
   decides which slot pins are offered), `stark_lab → stark_lab_transport` (the pads' wires) and
-  `stark_lab_transport → stark_module` (its pin guard reads the table), all STARK-0701. Pure
+  `stark_lab_transport → stark_module` (its pin guard reads the table), all STARK-0701; the I²C group adds none
+  (`esp_driver_i2c` is a platform component). Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
   or a new sideways edge, updates the script and this table in the same change.
 * Our own components (everything under `components/`, `apps/`, `main/`) build with

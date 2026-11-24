@@ -1,8 +1,9 @@
 /*
  * fake_lab.h — the test-only model of the lab's wires (TASKS.md STARK-0701, ADR-0023 §2, §9).
- * Pads today (hi-Z, input with a pull, output with a level), each with an external source the
- * harness sets and wires between pads; the I2C bus, SPI devices and the UART peer join in the
- * tasks that need them. Spec-derived, never a recording of a device.
+ * Pads (hi-Z, input with a pull, output with a level), each with an external source the
+ * harness sets and wires between pads, and the shared I2C bus with five known devices
+ * (STARK-0704); SPI devices and the UART peer join in the tasks that need them. Spec-derived,
+ * never a recording of a device.
  *
  * It sits behind stark_lab_transport: the host tests bind the pure lab core to it directly,
  * and the emulator test image's substituted transport (test/emu/storage_image/components/
@@ -110,3 +111,58 @@ uint8_t fake_lab_pwm_duty(int pin);
 unsigned fake_lab_pulses(void);        /* pulses done since the reset */
 uint32_t fake_lab_last_pulse_us(void); /* the width of the latest one */
 bool fake_lab_last_pulse_level(void);
+
+/* ---- the I2C bus (STARK-0704, ADR-0023 §5) -------------------------------------------------
+ *
+ * Five spec-derived devices at known addresses, chosen by a bitmask (bit i, the order below):
+ *   0x23  light sensor class: a read returns the two bytes 0x01 0x23, then zeros; writes are
+ *         commands that it accepts and ignores
+ *   0x3C  display class: acks, reads zero, accepts writes and ignores them
+ *   0x48  four 16-bit registers (pointer 0..3): 0 is read-only (0x1900), 1 holds 0x60A0, 2 holds
+ *         0x4B00, 3 holds 0x5000; a write is the pointer then pairs of bytes, high first
+ *   0x68  a 256-register file, WHO_AM_I at 0x75 = 0x68 (read-only), 0x6B = 0x40, the rest zero and
+ *         writable; the first byte written is the pointer, the following bytes are stored from it,
+ *         and a read continues from the pointer, both auto-incrementing (and wrapping at 256)
+ *   0x76  the same file shape with 0xD0 = 0x60 (read-only)
+ * Any other address is NACKed unless the harness binds the module EEPROMs and the PN532 in
+ * (fake_lab_i2c_ext()), so one scan shows one consistent bus. It knows no policy: the transport's
+ * guard and the service's rules are the policy.
+ */
+#define FAKE_LAB_I2C_DEVICES 5
+#define FAKE_LAB_I2C_ALL     0x1Fu
+
+typedef enum {
+    FAKE_LAB_I2C_FAULT_NONE,
+    FAKE_LAB_I2C_NACK_ALL,    /* every probe and transaction is NACKed */
+    FAKE_LAB_I2C_TIMEOUT,     /* the next `count` transactions at `addr` (-1: any) time out */
+    FAKE_LAB_I2C_STUCK,       /* every call times out */
+    FAKE_LAB_I2C_DROP_DEVICE, /* the device at `addr` answers once and then vanishes */
+    FAKE_LAB_I2C_FAULT_COUNT
+} fake_lab_i2c_fault_t;
+
+/* What answers at the addresses the five devices do not use (the module EEPROMs, the PN532). */
+typedef stark_err_t (*fake_lab_i2c_probe_fn)(uint8_t addr);
+typedef stark_err_t (*fake_lab_i2c_xfer_fn)(uint8_t addr, const uint8_t *w, size_t wn, uint8_t *r,
+                                            size_t rn);
+void fake_lab_i2c_ext(fake_lab_i2c_probe_fn probe, fake_lab_i2c_xfer_fn xfer);
+
+/* The devices on the bus, as a bitmask over the five (the reset: all of them). */
+void fake_lab_i2c_devices(uint8_t mask);
+
+/* `count` as for fake_lab_fault() (-1: until cleared, 0: clear); `addr` for TIMEOUT and
+ * DROP_DEVICE. */
+void fake_lab_i2c_fault(fake_lab_i2c_fault_t kind, int addr, int count);
+
+/* An address-only check: STARK_OK, or STARK_ERR_NOT_FOUND (NACK) / STARK_ERR_TIMEOUT. */
+stark_err_t fake_lab_i2c_probe(uint8_t addr);
+
+/* A write of `wn` bytes then a read of `rn` after a repeated start (either may be zero), as the
+ * transport's i2c_xfer(). STARK_ERR_NOT_FOUND for an address that does not answer. */
+stark_err_t fake_lab_i2c_xfer(uint8_t addr, const uint8_t *w, size_t wn, uint8_t *r, size_t rn);
+
+/* Inspection for tests: bus calls since the reset, write transactions that carried data bytes to a
+ * device of the five, a stored register and the 0x48 registers. */
+unsigned fake_lab_i2c_calls(void);
+unsigned fake_lab_i2c_writes(void);
+uint8_t fake_lab_i2c_reg(uint8_t addr, uint8_t reg); /* 0x68 and 0x76 only; 0 otherwise */
+uint16_t fake_lab_i2c_word(uint8_t reg);             /* 0x48, reg 0..3 */

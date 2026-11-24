@@ -2,8 +2,9 @@
  * stark_lab.h — L3 lab service (TASKS.md STARK-0701…0707, ADR-0023): the one place that
  * decides which pins a lab tool may touch and checks every pin call against it. Today the
  * pad group (STARK-0701), the PWM and pulse outputs (STARK-0702) and the frequency and duty
- * measurement (STARK-0703), whose user is the GPIO app; later tasks add I2C, SPI and UART behind
- * the same seam.
+ * measurement (STARK-0703), whose user is the GPIO app; the shared I2C bus (STARK-0704: scan,
+ * hints, register read, dump and write, whose user is the I2C app) follows; later tasks add SPI
+ * and UART behind the same seam.
  *
  * Pins are named only through stark_board (stark_board_pin_class(), stark_board_lab_pins()):
  * a LAB pin is always offered, a SLOT pin only while its slot reads ABSENT, everything else
@@ -222,6 +223,92 @@ void stark_lab_meas_text(const stark_lab_meas_t *m, char *buf, size_t n);
 /* The log form: "1000.0 Hz duty 25.0 %", "too fast", "too slow", "no signal (high)", "overflow",
  * "glitch", "invalid". */
 void stark_lab_meas_log_text(const stark_lab_meas_t *m, char *buf, size_t n);
+
+/* ---- the shared I2C bus (lab_i2c.c, lab_i2c_hints.c; STARK-0704, ADR-0023 §5) -----------------
+ */
+
+#define STARK_LAB_I2C_SPEED_100K 100000u /* the two speeds, in hertz */
+#define STARK_LAB_I2C_SPEED_400K 400000u
+#define STARK_LAB_I2C_ADDRS      112u /* 0x08 to 0x77 */
+#define STARK_LAB_I2C_DUMP_SIZE  256u
+
+typedef struct {
+    uint8_t addr[STARK_LAB_I2C_ADDRS]; /* the addresses that answered, ascending */
+    size_t n;
+    stark_err_t status; /* STARK_OK, or STARK_ERR_IO when errors ended the sweep early */
+    uint8_t errors;     /* probes that timed out or failed (a NACK is not one) */
+} stark_lab_scan_t;
+
+/*
+ * The whole sweep: an address-only probe of 0x08 to 0x77, 5 ms each, in order. Three errors in a
+ * row end it with STARK_ERR_IO and the list so far; a NACK is an empty address. Any task; at
+ * most 112 probes whatever the bus does. Logs `lab: i2c scan found <0x23 0x3c ...|none>`, or
+ * `lab: i2c scan bus error found <...>` when it was cut short.
+ */
+stark_err_t stark_lab_i2c_scan(stark_lab_scan_t *out);
+
+/*
+ * What an address is often used for, "may be ..." (30 characters at most), or NULL. A lookup by
+ * address in a table of at most 48 generic entries: nothing is probed, nothing else is known.
+ */
+const char *stark_lab_i2c_hint(uint8_t addr);
+
+/*
+ * Register read of 1 to 16 bytes at 100000 or 400000 Hz: the register goes out as one byte, or
+ * two when `reg16`, and the bytes follow a repeated start. No arm (a read is not a write, but it
+ * can change a device's state: the app says so). STARK_ERR_INVALID_ARG for a bad address, length,
+ * register or speed; STARK_ERR_NOT_SUPPORTED for a refusal (a 16-bit register on a module ID
+ * EEPROM, the PN532 while NFC is confirmed); STARK_ERR_NOT_FOUND for a NACK, STARK_ERR_TIMEOUT or
+ * STARK_ERR_IO from the bus. Logs `lab: i2c read 0x50 reg 0x00 00 00 ...` and, refused, `lab: i2c
+ * read refused: <reason>`.
+ */
+stark_err_t stark_lab_i2c_read(uint8_t addr, uint16_t reg, bool reg16, uint8_t *buf, size_t n,
+                               uint32_t hz);
+
+/*
+ * 256 bytes from register 0 (16 reads of 16), after a confirmation: STARK_ERR_STATE unless
+ * stark_lab_i2c_arm(stark_lab_i2c_dump_fingerprint(addr)) came first; the arm is consumed by the
+ * call. Otherwise as stark_lab_i2c_read(). Logs `lab: i2c dump 0x68 ok` or `... <error>`.
+ */
+stark_err_t stark_lab_i2c_dump(uint8_t addr, uint8_t *buf256, uint32_t hz);
+
+/*
+ * Register write of 1 to 8 bytes in one transaction, after a confirmation: STARK_ERR_STATE unless
+ * stark_lab_i2c_arm(stark_lab_i2c_write_fingerprint(...)) of exactly these arguments came first
+ * (the arm is consumed by the call, so one confirmation buys one write, and a different payload
+ * is refused). A module ID EEPROM (the board's `module[i].eeprom_addr`, ADR-0021 §2: a descriptor
+ * is never written) and the PN532 while NFC is confirmed are refused with STARK_ERR_NOT_SUPPORTED
+ * before the bus is touched, and no arm is needed to be refused. Logs `lab: i2c write 0x68 reg
+ * 0x6b 01 ok`, `... <error>` and `lab: i2c write refused: module eeprom` / `nfc reader`.
+ */
+stark_err_t stark_lab_i2c_write(uint8_t addr, uint16_t reg, bool reg16, const uint8_t *v, size_t n,
+                                uint32_t hz);
+
+/* The app's OK on the dialog it showed: one confirmation, tied to a fingerprint of its content. A
+ * second call replaces the first; an arm older than 30 s is stale. */
+stark_err_t stark_lab_i2c_arm(uint32_t fingerprint);
+
+/* Clears an arm that no call has consumed (leaving a view, the app stopping). Any task. */
+void stark_lab_i2c_disarm(void);
+
+/*
+ * Why a transaction of this kind would be refused now, or NULL: "module eeprom" for a write to a
+ * module ID EEPROM (`write`) or a 16-bit register read of one, "nfc reader" for the PN532 while
+ * NFC is confirmed. Lets the app say so before it asks for a confirmation; the calls above refuse
+ * all the same.
+ */
+const char *stark_lab_i2c_refusal(uint8_t addr, bool reg16, bool write);
+
+/* The fingerprint of a confirmation's content (lab_i2c.h): address, register and width, count
+ * and bytes; and address alone for a dump. Pure. */
+uint32_t stark_lab_i2c_write_fingerprint(uint8_t addr, uint16_t reg, bool reg16, const uint8_t *v,
+                                         size_t n);
+uint32_t stark_lab_i2c_dump_fingerprint(uint8_t addr);
+
+/* "01 ab ff" (lower case, spaces) and "01abff": whole bytes that fit, NUL terminated, returns the
+ * length. Pure. */
+size_t stark_lab_i2c_hex(const uint8_t *b, size_t n, char *buf, size_t sz);
+size_t stark_lab_i2c_hex_packed(const uint8_t *b, size_t n, char *buf, size_t sz);
 
 /*
  * Recomputes the offer: a held pin that is no longer offered goes to hi-Z at once, loses its

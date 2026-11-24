@@ -5659,6 +5659,66 @@ board, bus recovery after a device is pulled.
 
 ---
 
+**As built.** Differences from the plan and the readings the spec left open, each the smallest sound
+choice (ADR-0023's STARK-0704 addendum records them; the probes of STARK-0701 still hold, so the only
+production-image facts used are that 0x50 answers and nothing else does, and that its EEPROM takes writes):
+
+* **The rules** are `lab_i2c.c` (the fourth pure file, with `lab_i2c_hints.c`; 100 % lines): the sweep,
+  read, dump and write over an injected bus, the refusal table, the fingerprint arm (32-bit FNV-1a, spent
+  by whatever call takes it, stale after 30 s) and the hex text. The service API is the specified one plus
+  `stark_lab_i2c_disarm()`, `stark_lab_i2c_refusal()` (so the app can say why before it asks), the two
+  fingerprint helpers and `stark_lab_i2c_hex()` / `_hex_packed()`; `stark_lab_scan_t` gains `errors`. The sweep
+  is a synchronous call, so `STARK_LAB_EVT_SCAN_DONE` is not added; the I²C group has its own mutex and no
+  task is added.
+* **Refusals go further than the plan's wording**, in the same table at the service and again at the
+  transport: a module ID EEPROM takes a one-byte pointer and a read only (so a **16-bit register read of one
+  is refused**, its second byte would be written), and the PN532 takes **nothing, reads included**, while NFC
+  is confirmed. The scan is address-only and never refused.
+* **Transport.** `lab_transport_i2c.c` (target-only: a probe is `i2c_master_probe()`, a transaction one device
+  handle attached and removed again) and, for the host, `test/host/support/lab_transport_i2c_host.c`, both
+  behind the guard in `stark_lab_transport.h` (`stark_lab_i2c_args_ok()`, `stark_lab_i2c_allowed()`); the test
+  image's transport carries the I²C group too. Still five substitutions.
+* **The fake bus** (`fake_lab.c`): five devices with the semantics specified in `fake_lab.h` (pointer then
+  data, auto-increment, wrap, read-only id registers) and hooks for every other address, bound in the test
+  image to the fake module transport (0x50, 0x51) and the fake PN532 (0x24), so one scan shows one bus.
+  **Consequence:** the fake PN532 is on the bus from boot, so a scan on the test image lists `0x23 0x24 0x3c
+  0x48 0x68 0x76`; the "exactly the five" list of the plan holds with the NFC fake switched off
+  (`emu_nfc_fault = 1`, as `storage/v07-i2c` does) and on the host. Pokes: `emu_lab_i2c_devs` (`0x1F` at boot)
+  and `emu_lab_i2c_fault` (1 NACK_ALL, 2 a timeout at 0x48, 3 STUCK, 4 DROP_DEVICE at 0x68).
+* **App.** Home: Scan and Speed. The editors are rows (UP and DOWN move the selection in every menu):
+  Reg (and Reg high for a 16-bit register), Register width, Nibble (which nibble LEFT and RIGHT change; a
+  nibble wraps inside itself), Length for a read, Bytes and Byte 0 to 7 for a write, then the action; a read
+  shows its bytes in rows of eight, a dump 16 rows of 32 hex digits, a device row the hint beside the
+  address ("may be light sensor (BH1750)"). The register and nibble carry over between the Read and Write
+  editors of one device. A read says it can change a device's state; a dump and a write ask a confirmation
+  naming address, register and bytes ("Own hardware only"), and the app **makes the call even when it
+  already knows the service will refuse** (unarmed), so every refusal is the service's own log line.
+* **Hints.** 31 entries (1 124 B in flash), sorted, "may be ..." wording, at most 30 characters.
+* **Vectors.** `scripts/gen_lab_vectors.py` also writes `test/fake/fake_lab_i2c_vectors.h`: 15 sweeps, 112
+  refusal cases, 16 fingerprints and 110 hex cases, each result from an independent Python restatement; the
+  existing `--check` in the lint job covers both files.
+* **Emulator.** `v07-i2c-prod` (production image): the scan lists `0x50` and nothing else, a read of 0x50
+  returns eight zeros through the real driver, a write to it is refused with no confirmation and no write
+  logged, and a second read is still zero. `storage/v07-i2c` (test image, NFC fake off): the five devices,
+  WHO_AM_I `0x68`, a cancelled then a confirmed write of register 0x6b that reads back, a second press that
+  asks again. `storage/v07-i2c-bus`: a module and the PN532 on the same bus, reads and writes of both refused,
+  a dump behind a confirmation, a stuck bus ending the sweep with `Bus error`, recovery.
+* **AC 3 on the production image.** The module EEPROM refusal runs there (`v07-i2c-prod`); the PN532 one cannot:
+  NFC is never confirmed in the production image (esp-emu has no PN532), so it is proven on the host and the
+  test image, through the same code.
+* **Pre-existing scenarios edited (row indices, the registry line, and one more press where a walk crosses
+  the new row, as STARK-0702 did).** Registry `n=14` to `n=15` (`i2c` after `gpio`): `v0-boot`, `v01-hello`.
+  Launcher rows (+1 from IR down): `v02-settings-persist`, `v04-nfc-absent` (and its forbid line), `soak/v06-soak`,
+  `storage/{v02-eject, v02-log-file, v03-ir-app, v04-nfc-app, v05-hotplug, v06-capture, v06-decode,
+  v06-replay, v06-scan}`; comments naming a row follow (`soak/v04-soak`, `storage/{v04-dump, v04-reads,
+  v04-write-readback}`). One more press: UP in `v01-hello`, `v07-gpio-prod` and `v07-measure-prod` (their next
+  OK moved 100 to 150 ms later), UP in `soak/v03-soak`, DOWN in `v02-no-card` and, twice, in `soak/v01-soak`.
+* **Evidence and cost.** In docs/measurements.md "V0.7 lab tools": boot heap, binary, static RAM and flash
+  per component against the budgets, the host and emulator runs.
+* **Not here.** Anything physical, UART, SPI and the self-test.
+
+---
+
 ## STARK-0705 — UART tools: monitor, send, loopback bridge, auto-baud, SD log
 
 **Goal.** An app watches a serial line in hex and ASCII, sends bounded data, proves a round

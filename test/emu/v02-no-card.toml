@@ -29,7 +29,8 @@ presses = [
     { key = "OK", at_ms = 7400, hold_ms = 60 },
     { key = "BACK", at_ms = 8100, hold_ms = 60 },
     { key = "DOWN", at_ms = 8250, hold_ms = 60 },   # GPIO (STARK-0702): not opened here, skipped
-    { key = "DOWN", at_ms = 8400, hold_ms = 60 },   # IR (STARK-0305)
+    { key = "DOWN", at_ms = 8370, hold_ms = 60 },   # I2C (STARK-0704): not opened here, skipped
+    { key = "DOWN", at_ms = 8490, hold_ms = 60 },   # IR (STARK-0305)
     { key = "OK", at_ms = 8700, hold_ms = 60 },
     { key = "BACK", at_ms = 9000, hold_ms = 60 },
     { key = "DOWN", at_ms = 9300, hold_ms = 60 },   # Modules: NFC is dimmed, skipped

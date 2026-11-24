@@ -6,7 +6,7 @@
 # That is all the emulator can show here (it cannot stimulate a pad from outside); the arithmetic
 # is proven on the host against the Python reference and the edges on the test image. The
 # interrupt is installed and removed again on the way, and the pin is released on leaving.
-# UP from About wraps to Storage; the walk is Storage, Settings, Modules, IR and GPIO.
+# UP from About wraps to Storage; the walk is Storage, Settings, Modules, IR, I2C and GPIO.
 name = "emu-v07-measure-prod"
 end_ms = 10200
 heap_min = 200000
@@ -15,8 +15,9 @@ presses = [
     { key = "UP", at_ms = 550, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 700, hold_ms = 60 },     # Modules
     { key = "UP", at_ms = 850, hold_ms = 60 },     # IR
-    { key = "UP", at_ms = 1000, hold_ms = 60 },    # GPIO
-    { key = "OK", at_ms = 1200, hold_ms = 60 },    # open the app
+    { key = "UP", at_ms = 1000, hold_ms = 60 },    # I2C (STARK-0704)
+    { key = "UP", at_ms = 1150, hold_ms = 60 },    # GPIO
+    { key = "OK", at_ms = 1350, hold_ms = 60 },    # open the app
     { key = "OK", at_ms = 1600, hold_ms = 60 },    # pin 38
     { key = "RIGHT", at_ms = 2000, hold_ms = 60 }, # Mode: Input
     { key = "DOWN", at_ms = 2400, hold_ms = 60 },  # Pull

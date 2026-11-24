@@ -538,6 +538,181 @@ static void test_edge_faults_and_bad_arguments(void)
     TEST_ASSERT_EQUAL_UINT32(0, s_ts[0]);
 }
 
+/* ---- the I2C bus (STARK-0704) ---------------------------------------------------------------- */
+
+static unsigned s_ext_probes;
+static unsigned s_ext_xfers;
+
+static stark_err_t ext_probe(uint8_t addr)
+{
+    s_ext_probes++;
+    return addr == 0x50 ? STARK_OK : STARK_ERR_NOT_FOUND;
+}
+
+static stark_err_t ext_xfer(uint8_t addr, const uint8_t *w, size_t wn, uint8_t *r, size_t rn)
+{
+    (void)w;
+    (void)wn;
+    s_ext_xfers++;
+    if (addr != 0x50) {
+        return STARK_ERR_NOT_FOUND;
+    }
+    for (size_t i = 0; i < rn; i++) {
+        r[i] = 0x5A;
+    }
+    return STARK_OK;
+}
+
+static void test_the_bus_has_the_five_devices_and_nothing_else_at_power_on(void)
+{
+    unsigned found = 0;
+    for (unsigned a = 0x08; a <= 0x77; a++) {
+        stark_err_t err = fake_lab_i2c_probe((uint8_t)a);
+        if (err == STARK_OK) {
+            TEST_ASSERT_TRUE(a == 0x23 || a == 0x3c || a == 0x48 || a == 0x68 || a == 0x76);
+            found++;
+        } else {
+            TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, err);
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT(5, found);
+    TEST_ASSERT_EQUAL_UINT(112, fake_lab_i2c_calls());
+    uint8_t b[2];
+    uint8_t w = 0;
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, fake_lab_i2c_xfer(0x10, &w, 1, b, 2)); /* no ext bound */
+    fake_lab_i2c_devices(0);
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, fake_lab_i2c_probe(0x68));
+    fake_lab_reset(); /* the reset puts all five back */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x68));
+    TEST_ASSERT_EQUAL_UINT(1, fake_lab_i2c_calls());
+}
+
+static void test_each_device_answers_as_documented(void)
+{
+    uint8_t b[4];
+    uint8_t reg = 0x75;
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x68, &reg, 1, b, 1));
+    TEST_ASSERT_EQUAL_HEX8(0x68, b[0]);
+    reg = 0xd0;
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x76, &reg, 1, b, 1));
+    TEST_ASSERT_EQUAL_HEX8(0x60, b[0]);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x23, NULL, 0, b, 3));
+    TEST_ASSERT_EQUAL_HEX8(0x01, b[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x23, b[1]);
+    TEST_ASSERT_EQUAL_HEX8(0x00, b[2]);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x3c, NULL, 0, b, 2));
+    TEST_ASSERT_EQUAL_HEX8(0x00, b[0]);
+    reg = 2; /* 0x48: pointer then pairs */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x48, &reg, 1, b, 2));
+    TEST_ASSERT_EQUAL_HEX8(0x4b, b[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x00, b[1]);
+    const uint8_t set[3] = {3, 0xAB, 0xCD};
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x48, set, 3, NULL, 0));
+    TEST_ASSERT_EQUAL_HEX16(0xABCD, fake_lab_i2c_word(3));
+    TEST_ASSERT_EQUAL_HEX16(0xABCD, fake_lab_i2c_word(7)); /* the pointer is two bits */
+    const uint8_t ro[3] = {0, 0xFF, 0xFF};
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x48, ro, 3, NULL, 0));
+    TEST_ASSERT_EQUAL_HEX16(0x1900, fake_lab_i2c_word(0)); /* register 0 ignores it */
+}
+
+static void test_the_register_files_store_auto_increment_and_wrap(void)
+{
+    const uint8_t w[4] = {0xFE, 0x11, 0x22,
+                          0x33}; /* the pointer 0xFE, then three bytes: wraps to 0 */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x68, w, 4, NULL, 0));
+    TEST_ASSERT_EQUAL_HEX8(0x11, fake_lab_i2c_reg(0x68, 0xFE));
+    TEST_ASSERT_EQUAL_HEX8(0x22, fake_lab_i2c_reg(0x68, 0xFF));
+    TEST_ASSERT_EQUAL_HEX8(0x33, fake_lab_i2c_reg(0x68, 0x00));
+    uint8_t b[3];
+    const uint8_t at = 0xFF;
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x68, &at, 1, b, 3)); /* the read wraps too */
+    TEST_ASSERT_EQUAL_HEX8(0x22, b[0]);
+    TEST_ASSERT_EQUAL_HEX8(0x33, b[1]);
+    TEST_ASSERT_EQUAL_HEX8(0x00, b[2]);
+    TEST_ASSERT_EQUAL_UINT(1, fake_lab_i2c_writes());
+    /* the other file, and an address that has none */
+    const uint8_t w76[2] = {0xF4, 0x27};
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x76, w76, 2, NULL, 0));
+    TEST_ASSERT_EQUAL_HEX8(0x27, fake_lab_i2c_reg(0x76, 0xF4));
+    TEST_ASSERT_EQUAL_HEX8(0x00, fake_lab_i2c_reg(0x68, 0xF4));
+    TEST_ASSERT_EQUAL_HEX8(0x00, fake_lab_i2c_reg(0x50, 0x00));
+    /* the id registers ignore a write and it is not counted as one */
+    unsigned writes = fake_lab_i2c_writes();
+    const uint8_t id[2] = {0xD0, 0x00};
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x76, id, 2, NULL, 0));
+    TEST_ASSERT_EQUAL_HEX8(0x60, fake_lab_i2c_reg(0x76, 0xD0));
+    TEST_ASSERT_EQUAL_UINT(writes, fake_lab_i2c_writes());
+}
+
+static void test_other_addresses_belong_to_the_bound_fakes(void)
+{
+    s_ext_probes = 0;
+    s_ext_xfers = 0;
+    fake_lab_i2c_ext(ext_probe, ext_xfer);
+    uint8_t b[2];
+    uint8_t w = 0;
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x50));
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, fake_lab_i2c_probe(0x51));
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x50, &w, 1, b, 2));
+    TEST_ASSERT_EQUAL_HEX8(0x5A, b[1]);
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, fake_lab_i2c_xfer(0x51, &w, 1, b, 2));
+    TEST_ASSERT_EQUAL_UINT(2, s_ext_probes);
+    TEST_ASSERT_EQUAL_UINT(2, s_ext_xfers);
+    /* the five never reach them */
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x23));
+    TEST_ASSERT_EQUAL_UINT(2, s_ext_probes);
+    /* a fault comes first, for the bound fakes too */
+    fake_lab_i2c_fault(FAKE_LAB_I2C_NACK_ALL, -1, -1);
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, fake_lab_i2c_probe(0x50));
+    TEST_ASSERT_EQUAL_UINT(2, s_ext_probes);
+}
+
+static void test_i2c_faults(void)
+{
+    uint8_t b[1];
+    uint8_t w = 0x75;
+    fake_lab_i2c_fault(FAKE_LAB_I2C_NACK_ALL, -1, -1);
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, fake_lab_i2c_probe(0x68));
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, fake_lab_i2c_xfer(0x68, &w, 1, b, 1));
+    fake_lab_i2c_fault(FAKE_LAB_I2C_STUCK, -1, -1);
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, fake_lab_i2c_probe(0x10));
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, fake_lab_i2c_xfer(0x68, &w, 1, b, 1));
+    fake_lab_i2c_fault(FAKE_LAB_I2C_FAULT_NONE, -1, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x68));
+    /* a timeout at one address, counted */
+    fake_lab_i2c_fault(FAKE_LAB_I2C_TIMEOUT, 0x68, 2);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x48)); /* another address is not hit */
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, fake_lab_i2c_probe(0x68));
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, fake_lab_i2c_xfer(0x68, &w, 1, b, 1));
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x68)); /* spent */
+    /* a timeout on any address, until cleared */
+    fake_lab_i2c_fault(FAKE_LAB_I2C_TIMEOUT, -1, -1);
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, fake_lab_i2c_probe(0x23));
+    TEST_ASSERT_EQUAL(STARK_ERR_TIMEOUT, fake_lab_i2c_probe(0x23));
+    fake_lab_i2c_fault(FAKE_LAB_I2C_TIMEOUT, -1, 0);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x23));
+    /* a device that answers once and vanishes; re-arming brings it back for one more */
+    fake_lab_i2c_fault(FAKE_LAB_I2C_DROP_DEVICE, 0x3c, -1);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x3c));
+    TEST_ASSERT_EQUAL(STARK_ERR_NOT_FOUND, fake_lab_i2c_probe(0x3c));
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x23)); /* the others stay */
+    fake_lab_i2c_fault(FAKE_LAB_I2C_DROP_DEVICE, 0x3c, -1);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x3c));
+    /* a fault kind that is not one changes nothing */
+    fake_lab_i2c_fault(FAKE_LAB_I2C_FAULT_COUNT, -1, -1);
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_probe(0x68));
+}
+
+static void test_a_command_write_to_the_light_sensor_counts_and_a_pointer_alone_does_not(void)
+{
+    const uint8_t cmd[2] = {0x10, 0x01};
+    unsigned writes = fake_lab_i2c_writes();
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x23, cmd, 1, NULL, 0));
+    TEST_ASSERT_EQUAL_UINT(writes, fake_lab_i2c_writes());
+    TEST_ASSERT_EQUAL(STARK_OK, fake_lab_i2c_xfer(0x23, cmd, 2, NULL, 0));
+    TEST_ASSERT_EQUAL_UINT(writes + 1u, fake_lab_i2c_writes());
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -566,5 +741,11 @@ int main(void)
     RUN_TEST(test_glitches_are_half_microsecond_pairs_where_there_is_room);
     RUN_TEST(test_the_epoch_puts_a_window_across_the_counter_wrap);
     RUN_TEST(test_edge_faults_and_bad_arguments);
+    RUN_TEST(test_the_bus_has_the_five_devices_and_nothing_else_at_power_on);
+    RUN_TEST(test_each_device_answers_as_documented);
+    RUN_TEST(test_the_register_files_store_auto_increment_and_wrap);
+    RUN_TEST(test_other_addresses_belong_to_the_bound_fakes);
+    RUN_TEST(test_i2c_faults);
+    RUN_TEST(test_a_command_write_to_the_light_sensor_counts_and_a_pointer_alone_does_not);
     return UNITY_END();
 }

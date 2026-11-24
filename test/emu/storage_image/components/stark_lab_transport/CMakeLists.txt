@@ -14,6 +14,8 @@ idf_component_register(
         stark_module
     PRIV_REQUIRES
         stark_log
+        stark_module_transport
+        stark_nfc_transport
         esp_timer
         freertos
 )

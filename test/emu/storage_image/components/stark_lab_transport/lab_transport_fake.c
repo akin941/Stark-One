@@ -20,7 +20,16 @@
  * The edge capture (STARK-0703) stamps the edges of the pad's source (the external one, or a wire)
  * at 240 MHz from that clock, and then waits the window out in 10 ms slices like the hardware, so
  * a measurement takes the time it would; the tick is the model's, not the CPU's.
- * Integration evidence only: nothing here shows a level on a pad (docs/VALIDATION.md §2).
+ * The I2C group (STARK-0704) is the same bus as everything else in this image: the five lab devices
+ * of the model (0x23, 0x3C, 0x48, 0x68, 0x76), the module ID EEPROMs of the fake 24C02 transport at
+ * 0x50 and 0x51 and the fake PN532 at 0x24 (both asked through their own transports, so one scan
+ * shows one consistent bus and a NACK from either is a NACK here), behind the production header's
+ * guard (stark_lab_i2c_args_ok(), stark_lab_i2c_allowed()). Pokes:
+ *   emu_lab_i2c_devs   a bitmask over the five lab devices (0x1F at boot: all of them)
+ *   emu_lab_i2c_fault  0 none, 1 NACK_ALL, 2 TIMEOUT at 0x48 (the sweep goes on without it), 3
+ * STUCK (every call times out, which ends the sweep after three), 4 DROP_DEVICE at 0x68 (it answers
+ * once and vanishes); until it changes again Integration evidence only: nothing here shows a level
+ * on a pad (docs/VALIDATION.md §2).
  */
 #include "esp_timer.h"
 #include "fake_lab.h"
@@ -28,6 +37,8 @@
 #include "freertos/task.h"
 #include "stark_lab_transport.h"
 #include "stark_log.h"
+#include "stark_module_transport.h"
+#include "stark_nfc_transport.h"
 
 volatile uint8_t emu_lab_ext_pin = 38;
 volatile uint8_t emu_lab_ext_mode;
@@ -35,6 +46,10 @@ volatile uint32_t emu_lab_ext_hz = 1000;
 volatile uint8_t emu_lab_ext_duty = 50;
 volatile uint16_t emu_lab_wire;
 volatile uint8_t emu_lab_fault;
+volatile uint8_t emu_lab_i2c_devs = FAKE_LAB_I2C_ALL;
+volatile uint8_t emu_lab_i2c_fault;
+
+#define LAB_PROBE_MS 5u /* what the other fakes are asked with; they do not wait */
 
 static bool s_open;
 static volatile bool s_cancel;
@@ -44,6 +59,8 @@ static uint32_t s_ext_hz_applied = 0xFFFFFFFFu;
 static uint8_t s_ext_duty_applied = 0xFF;
 static uint16_t s_wire_applied;
 static uint8_t s_fault_applied;
+static uint8_t s_i2c_devs_applied = FAKE_LAB_I2C_ALL;
+static uint8_t s_i2c_fault_applied;
 
 static void follow_pokes(void)
 {
@@ -75,6 +92,69 @@ static void follow_pokes(void)
     }
 }
 
+/* The I2C pokes, applied before each bus call after they change. */
+static void follow_i2c_pokes(void)
+{
+    uint8_t devs = emu_lab_i2c_devs;
+    if (devs != s_i2c_devs_applied) {
+        fake_lab_i2c_devices(devs);
+        s_i2c_devs_applied = devs;
+    }
+    uint8_t fault = emu_lab_i2c_fault;
+    if (fault != s_i2c_fault_applied && fault < FAKE_LAB_I2C_FAULT_COUNT) {
+        switch ((fake_lab_i2c_fault_t)fault) {
+            case FAKE_LAB_I2C_TIMEOUT:
+                fake_lab_i2c_fault(FAKE_LAB_I2C_TIMEOUT, 0x48, -1);
+                break;
+            case FAKE_LAB_I2C_DROP_DEVICE:
+                fake_lab_i2c_fault(FAKE_LAB_I2C_DROP_DEVICE, 0x68, -1);
+                break;
+            case FAKE_LAB_I2C_FAULT_NONE:
+                fake_lab_i2c_fault(FAKE_LAB_I2C_FAULT_NONE, -1, 0);
+                break;
+            case FAKE_LAB_I2C_NACK_ALL:
+            case FAKE_LAB_I2C_STUCK:
+            case FAKE_LAB_I2C_FAULT_COUNT:
+            default:
+                fake_lab_i2c_fault((fake_lab_i2c_fault_t)fault, -1, -1);
+                break;
+        }
+        s_i2c_fault_applied = fault;
+    }
+}
+
+/* The module ID EEPROMs and the PN532 are the other fakes' (their transports), asked here. */
+static stark_err_t i2c_ext_probe(uint8_t addr)
+{
+    if (addr == STARK_LAB_I2C_PN532) {
+        stark_err_t err = stark_nfc_transport_present(LAB_PROBE_MS);
+        return err == STARK_ERR_STATE ? STARK_ERR_NOT_FOUND : err; /* not open: nobody there */
+    }
+    if (addr >= 0x50u && addr <= 0x57u) {
+        return stark_module_transport_probe(addr, LAB_PROBE_MS);
+    }
+    return STARK_ERR_NOT_FOUND;
+}
+
+static stark_err_t i2c_ext_xfer(uint8_t addr, const uint8_t *w, size_t wn, uint8_t *r, size_t rn)
+{
+    if (addr == STARK_LAB_I2C_PN532) {
+        stark_err_t err = wn > 0u ? stark_nfc_transport_write(w, wn, LAB_PROBE_MS) : STARK_OK;
+        if (err == STARK_OK && rn > 0u) {
+            err = stark_nfc_transport_read(r, rn, LAB_PROBE_MS);
+        }
+        return err == STARK_ERR_STATE ? STARK_ERR_NOT_FOUND : err;
+    }
+    if (addr >= 0x50u && addr <= 0x57u) {
+        /* The EEPROM transport reads only (ADR-0021 §2); a write never gets here (the guard). */
+        if (wn == 1u && rn > 0u) {
+            return stark_module_transport_read(addr, w[0], r, rn, LAB_PROBE_MS);
+        }
+        return STARK_ERR_NOT_SUPPORTED;
+    }
+    return STARK_ERR_NOT_FOUND;
+}
+
 /* The model's own check of a wire: the destination pad over four periods of the PWM output. */
 static void check_wire(int from, uint32_t hz)
 {
@@ -101,6 +181,7 @@ stark_err_t stark_lab_transport_open(void)
 {
     if (!s_open) {
         fake_lab_reset();
+        fake_lab_i2c_ext(i2c_ext_probe, i2c_ext_xfer);
         s_open = true;
     }
     return STARK_OK;
@@ -246,4 +327,28 @@ void stark_lab_transport_edges_cancel(void)
 uint32_t stark_lab_transport_tick_hz(void)
 {
     return FAKE_LAB_TICK_HZ;
+}
+
+stark_err_t stark_lab_transport_i2c_probe(uint8_t addr, uint32_t timeout_ms)
+{
+    if (!stark_lab_i2c_args_ok(addr, 0u, 0u, 0u, timeout_ms)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    follow_i2c_pokes();
+    return fake_lab_i2c_probe(addr);
+}
+
+stark_err_t stark_lab_transport_i2c_xfer(uint8_t addr, uint32_t hz, const uint8_t *w, size_t wn,
+                                         uint8_t *r, size_t rn, uint32_t timeout_ms)
+{
+    if (!stark_lab_i2c_args_ok(addr, wn, rn, hz, timeout_ms) || (wn > 0u && w == NULL) ||
+        (rn > 0u && r == NULL)) {
+        return STARK_ERR_INVALID_ARG;
+    }
+    if (!stark_lab_i2c_allowed(stark_board_pins(), (stark_module_caps() & STARK_CAP_NFC) != 0u,
+                               addr, wn, rn)) {
+        return STARK_ERR_NOT_SUPPORTED;
+    }
+    follow_i2c_pokes();
+    return fake_lab_i2c_xfer(addr, w, wn, r, rn);
 }

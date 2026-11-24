@@ -87,8 +87,9 @@ tasks:
    pins and an empty slot's pins are offered (HARDWARE §2.4); every drive needs an arm after
    a confirmation, uses the weakest drive strength, is read back for contention, and ends in
    hi-Z; a pin is withdrawn the moment a module or driver takes its slot. The I²C tool never
-   writes the module ID EEPROMs, writes only after a confirmation each time, and never
-   loops; the SPI probe works only on a slot whose module declares no function (it is
+   writes the module ID EEPROMs (nor reads one with a 16-bit register, which would), never
+   touches the PN532 while the NFC driver owns it, writes only after a confirmation each time,
+   and never loops; the SPI probe works only on a slot whose module declares no function (it is
    refused on a Sub-GHz module, so it cannot bypass guardrail 3), one confirmed transaction
    at a time. Bench tools never bypass another owner's policy.
 7. **Test vectors come from our own hardware** and are documented as such.

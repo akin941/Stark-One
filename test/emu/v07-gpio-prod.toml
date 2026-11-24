@@ -5,7 +5,7 @@
 # high, so the pull-down is not exercised here; the host tests own it). Nothing is driven: an
 # input needs no confirmation and no dialog may open. BACK releases the pin, BACK at home leaves
 # the app, and the service logs `lab: released all`. UP from About wraps to Storage; the walk
-# is Storage, Settings, Modules, IR (NFC and Sub-GHz are dimmed without a module) and GPIO,
+# is Storage, Settings, Modules, IR (NFC and Sub-GHz are dimmed without a module), I2C and GPIO,
 # the first row of Lab. Not connector evidence: no pad moves in the emulator.
 name = "emu-v07-gpio-prod"
 end_ms = 5500
@@ -15,8 +15,9 @@ presses = [
     { key = "UP", at_ms = 550, hold_ms = 60 },     # Settings
     { key = "UP", at_ms = 700, hold_ms = 60 },     # Modules
     { key = "UP", at_ms = 850, hold_ms = 60 },     # IR
-    { key = "UP", at_ms = 1000, hold_ms = 60 },    # GPIO
-    { key = "OK", at_ms = 1200, hold_ms = 60 },    # open the app
+    { key = "UP", at_ms = 1000, hold_ms = 60 },    # I2C (STARK-0704)
+    { key = "UP", at_ms = 1150, hold_ms = 60 },    # GPIO
+    { key = "OK", at_ms = 1350, hold_ms = 60 },    # open the app
     { key = "OK", at_ms = 1600, hold_ms = 60 },    # pin 38
     { key = "RIGHT", at_ms = 2000, hold_ms = 60 }, # Mode: Input
     { key = "DOWN", at_ms = 2400, hold_ms = 60 },  # Pull

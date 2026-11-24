@@ -1,0 +1,124 @@
+# STARK-0704 on the test image (ADR-0023 §5, §9): one bus. A module (emu_mod_slot0 = 1, an NFC
+# carrier with an ID EEPROM) puts the 24C02 of the fake module transport at 0x50, and the fake PN532
+# answers at 0x24 (both are asked through their own transports), so one scan shows
+# 0x23 0x24 0x3c 0x48 0x50 0x68 0x76. NFC is confirmed, so reading the PN532 is refused by the
+# service (`nfc reader`: not even a status read, and no write either, the NFC driver owns the
+# protocol), and a write to the module's ID EEPROM is refused (`module eeprom`: a descriptor is
+# never written), each with an alert, no confirmation and no bus traffic. A dump of 0x68 asks first
+# (BACK touches nothing), then makes 16
+# transactions of 16. A stuck bus (emu_lab_i2c_fault = 3) ends the sweep after three probes with
+# `Bus error` and no hang, and a rescan after it is cleared finds everything again. Integration
+# evidence; the model is spec-derived (docs/VALIDATION.md §2).
+name = "emu-v07-i2c-bus"
+image = "storage"
+end_ms = 17580
+heap_min = 200000
+presses = [
+    { key = "DOWN", at_ms = 540, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (1 of 8)
+    { key = "DOWN", at_ms = 680, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (2 of 8)
+    { key = "DOWN", at_ms = 820, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (3 of 8)
+    { key = "DOWN", at_ms = 960, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (4 of 8)
+    { key = "DOWN", at_ms = 1100, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (5 of 8)
+    { key = "DOWN", at_ms = 1240, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (6 of 8)
+    { key = "DOWN", at_ms = 1380, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (7 of 8)
+    { key = "DOWN", at_ms = 1520, hold_ms = 60 },  # About -> Diagnostics, App Test, Buzzer, Display, Input, Hello, GPIO, I2C (8 of 8)
+    { key = "OK", at_ms = 1770, hold_ms = 60 },  # open the app
+    { key = "OK", at_ms = 2020, hold_ms = 60 },  # Scan: 0x23 0x24 0x3c 0x48 0x50 0x68 0x76
+    { key = "DOWN", at_ms = 2160, hold_ms = 60 },  # 0x24
+    { key = "OK", at_ms = 2360, hold_ms = 60 },  # open the PN532
+    { key = "OK", at_ms = 2560, hold_ms = 60 },  # Read
+    { key = "DOWN", at_ms = 2700, hold_ms = 60 },  # Register, Nibble, Length, Read (1 of 4)
+    { key = "DOWN", at_ms = 2840, hold_ms = 60 },  # Register, Nibble, Length, Read (2 of 4)
+    { key = "DOWN", at_ms = 2980, hold_ms = 60 },  # Register, Nibble, Length, Read (3 of 4)
+    { key = "DOWN", at_ms = 3120, hold_ms = 60 },  # Register, Nibble, Length, Read (4 of 4)
+    { key = "OK", at_ms = 3370, hold_ms = 60 },  # refused: nfc reader (an alert, no bus traffic)
+    { key = "OK", at_ms = 4070, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 4320, hold_ms = 60 },  # to the device
+    { key = "DOWN", at_ms = 4460, hold_ms = 60 },  # Dump, Write (1 of 2)
+    { key = "DOWN", at_ms = 4600, hold_ms = 60 },  # Dump, Write (2 of 2)
+    { key = "OK", at_ms = 4800, hold_ms = 60 },  # the write editor
+    { key = "DOWN", at_ms = 4940, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (1 of 5)
+    { key = "DOWN", at_ms = 5080, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (2 of 5)
+    { key = "DOWN", at_ms = 5220, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (3 of 5)
+    { key = "DOWN", at_ms = 5360, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (4 of 5)
+    { key = "DOWN", at_ms = 5500, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (5 of 5)
+    { key = "OK", at_ms = 5750, hold_ms = 60 },  # refused too: nfc reader
+    { key = "OK", at_ms = 6450, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 6700, hold_ms = 60 },  # to the device
+    { key = "BACK", at_ms = 6900, hold_ms = 60 },  # to the list
+    { key = "DOWN", at_ms = 7040, hold_ms = 60 },  # 0x3c, 0x48, 0x50 (1 of 3)
+    { key = "DOWN", at_ms = 7180, hold_ms = 60 },  # 0x3c, 0x48, 0x50 (2 of 3)
+    { key = "DOWN", at_ms = 7320, hold_ms = 60 },  # 0x3c, 0x48, 0x50 (3 of 3)
+    { key = "OK", at_ms = 7520, hold_ms = 60 },  # open the module EEPROM
+    { key = "DOWN", at_ms = 7660, hold_ms = 60 },  # Dump, Write (1 of 2)
+    { key = "DOWN", at_ms = 7800, hold_ms = 60 },  # Dump, Write (2 of 2)
+    { key = "OK", at_ms = 8000, hold_ms = 60 },  # the write editor
+    { key = "DOWN", at_ms = 8140, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (1 of 5)
+    { key = "DOWN", at_ms = 8280, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (2 of 5)
+    { key = "DOWN", at_ms = 8420, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (3 of 5)
+    { key = "DOWN", at_ms = 8560, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (4 of 5)
+    { key = "DOWN", at_ms = 8700, hold_ms = 60 },  # Register, Nibble, Bytes, Byte 0, Write (5 of 5)
+    { key = "OK", at_ms = 8950, hold_ms = 60 },  # refused: module eeprom
+    { key = "OK", at_ms = 9650, hold_ms = 60 },  # close the alert
+    { key = "BACK", at_ms = 9900, hold_ms = 60 },  # to the device
+    { key = "BACK", at_ms = 10100, hold_ms = 60 },  # to the list
+    { key = "DOWN", at_ms = 10240, hold_ms = 60 },  # 0x68
+    { key = "OK", at_ms = 10440, hold_ms = 60 },  # open 0x68
+    { key = "DOWN", at_ms = 10580, hold_ms = 60 },  # Dump
+    { key = "OK", at_ms = 10830, hold_ms = 60 },  # the confirmation opens
+    { key = "BACK", at_ms = 11230, hold_ms = 60 },  # cancel
+    { key = "OK", at_ms = 11630, hold_ms = 60 },  # Dump again
+    { key = "OK", at_ms = 12030, hold_ms = 60 },  # confirm: 16 transactions of 16
+    { key = "BACK", at_ms = 12530, hold_ms = 60 },  # to the device
+    { key = "BACK", at_ms = 12780, hold_ms = 60 },  # to the list
+    { key = "BACK", at_ms = 13030, hold_ms = 60 },  # home
+    { key = "OK", at_ms = 13630, hold_ms = 60 },  # Scan with a stuck bus: three probes and out
+    { key = "BACK", at_ms = 14230, hold_ms = 60 },  # home
+    { key = "OK", at_ms = 15430, hold_ms = 60 },  # Scan again: the bus is back
+    { key = "BACK", at_ms = 15830, hold_ms = 60 },  # home
+    { key = "BACK", at_ms = 16080, hold_ms = 60 },  # leave the app
+]
+pokes = [
+    { at_ms = 300, var = "emu_mod_slot0", value = 1 },  # a module with an ID EEPROM in slot 0
+    { at_ms = 13430, var = "emu_lab_i2c_fault", value = 3 },  # the bus sticks: every call times out
+    { at_ms = 15030, var = "emu_lab_i2c_fault", value = 0 },  # the bus is released again
+]
+expect = [
+    "lab: pins 38 39",
+    "i2capp: home",
+    "app: start i2c",
+    "lab: i2c scan found 0x23 0x24 0x3c 0x48 0x50 0x68 0x76",
+    "i2capp: scan 7 found",
+    "i2capp: open 0x24",
+    "lab: i2c read refused: nfc reader",
+    "i2capp: Read refused: nfc reader",
+    "lab: i2c write refused: nfc reader",
+    "i2capp: Write refused: nfc reader",
+    "i2capp: open 0x50",
+    "lab: i2c write refused: module eeprom",
+    "i2capp: Write refused: module eeprom",
+    "i2capp: open 0x68",
+    'dialog: open "Dump 0x68?"',
+    "dialog: cancel",
+    "i2capp: cancelled dump 0x68",
+    'dialog: open "Dump 0x68?"',
+    "dialog: ok",
+    "lab: i2c dump 0x68 ok",
+    "i2capp: dump 0x68 ok",
+    "lab: i2c scan bus error found none",
+    "i2capp: scan bus error after 0 found",
+    "lab: i2c scan found 0x23 0x24 0x3c 0x48 0x50 0x68 0x76",
+    "app: stop i2c",
+]
+forbid = [
+    "lab: i2c scan found 0x23 0x3c 0x48 0x68 0x76",
+    'dialog: open "Write 0x50?"',
+    "lab: i2c write 0x",
+    "lab: i2c read 0x24",
+    "panic",
+]
+# The refusals left the bus alone: no read of the PN532 and no write at all, and a dump that was
+# cancelled made no transaction.
+forbid_between = [
+    { after = "i2capp: cancelled dump 0x68", before = "dialog: ok", text = "lab: i2c dump 0x68" },
+]

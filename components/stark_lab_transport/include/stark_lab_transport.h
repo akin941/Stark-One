@@ -2,8 +2,9 @@
  * stark_lab_transport.h — the lab tools' wires (TASKS.md STARK-0701, ADR-0023 §2): the one
  * seam between the lab service and the hardware, and the fifth and last substitution of the
  * emulator test image. Today it carries the pad group (configure, read, hi-Z), the PWM and
- * pulse outputs (STARK-0702) and the edge capture (STARK-0703); later V0.7 tasks append the
- * shared I2C bus, SPI on a leased slot and the lab UART.
+ * pulse outputs (STARK-0702), the edge capture (STARK-0703) and the shared I2C bus (STARK-0704:
+ * probe and one transaction at a time); later V0.7 tasks append SPI on a leased slot and the
+ * lab UART.
  *
  * Every pad call re-checks the pin against stark_board's classification, whatever the
  * caller says (defence in depth, SECURITY_SCOPE §4.6): a pin that is not offered returns
@@ -144,4 +145,88 @@ static inline bool stark_lab_pad_ok(int pin)
 static inline bool stark_lab_pad_hiz_ok(int pin)
 {
     return stark_board_pin_class(pin, NULL) != STARK_PIN_RESERVED;
+}
+
+/* ---- the shared I2C bus (STARK-0704, ADR-0023 §5) ---------------------------------------------
+ *
+ * One probe or one transaction at a time on the board's I2C bus (stark_board_i2c_bus()), which
+ * the NFC and module tasks share: the bus's own lock keeps a lab transaction from interleaving
+ * with theirs, and a transaction attaches a device handle for itself and removes it again. The
+ * call is refused, before any bus traffic, by the shared guard below: an address outside 0x08 to
+ * 0x77, a write to a module ID EEPROM (ADR-0021 §2: a descriptor is never written; a read may
+ * carry a one-byte pointer only), and any data transaction with the PN532 while NFC is confirmed
+ * (its driver owns the protocol). The same guard is applied by the test image's transport and by
+ * the host shim, so none can do what another refuses (defence in depth, SECURITY_SCOPE §4.6; the
+ * service applies it first).
+ */
+#define STARK_LAB_I2C_ADDR_MIN       0x08u
+#define STARK_LAB_I2C_ADDR_MAX       0x77u
+#define STARK_LAB_I2C_PN532          0x24u
+#define STARK_LAB_I2C_W_MAX          10u /* a 16-bit register and 8 data bytes */
+#define STARK_LAB_I2C_R_MAX          16u
+#define STARK_LAB_I2C_HZ_STD         100000u
+#define STARK_LAB_I2C_HZ_FAST        400000u
+#define STARK_LAB_I2C_TIMEOUT_MS_MAX 1000u
+
+/*
+ * An address-only check: STARK_OK on an ACK, STARK_ERR_NOT_FOUND on a NACK, STARK_ERR_TIMEOUT on
+ * a timeout, STARK_ERR_IO on any other bus error, STARK_ERR_INVALID_ARG for an address outside the
+ * range or a timeout of 0 or more than STARK_LAB_I2C_TIMEOUT_MS_MAX. STARK_ERR_NOT_SUPPORTED when
+ * the board has no I2C bus. Needs no open (the bus belongs to stark_board).
+ */
+stark_err_t stark_lab_transport_i2c_probe(uint8_t addr, uint32_t timeout_ms);
+
+/*
+ * One transaction at `hz` (STARK_LAB_I2C_HZ_STD or _FAST): `wn` bytes written (0 to
+ * STARK_LAB_I2C_W_MAX) and then `rn` bytes read (0 to STARK_LAB_I2C_R_MAX) after a repeated start;
+ * at least one of them is not zero (else STARK_ERR_INVALID_ARG, as for a speed that is not
+ * 100 000 or 400 000 Hz). A module ID EEPROM address takes only a one-byte pointer and a
+ * read: a write (`rn` == 0) or more than one byte before the read is refused with
+ * STARK_ERR_NOT_SUPPORTED; any transaction with the PN532 is refused while NFC is confirmed. Errors
+ * as for the probe; an address NACK is STARK_ERR_NOT_FOUND.
+ */
+stark_err_t stark_lab_transport_i2c_xfer(uint8_t addr, uint32_t hz, const uint8_t *w, size_t wn,
+                                         uint8_t *r, size_t rn, uint32_t timeout_ms);
+
+static inline bool stark_lab_i2c_hz_ok(uint32_t hz)
+{
+    return hz == STARK_LAB_I2C_HZ_STD || hz == STARK_LAB_I2C_HZ_FAST;
+}
+
+/* True when `addr` is one of the module slots' ID EEPROM addresses in the board's pin map. */
+static inline bool stark_lab_i2c_is_module_eeprom(const stark_board_pins_t *pins, uint8_t addr)
+{
+    for (size_t i = 0; i < STARK_BOARD_MODULE_SLOTS; i++) {
+        if (pins->module[i].eeprom_addr != 0u && pins->module[i].eeprom_addr == addr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* True when the arguments of a probe or transaction are well formed: the address, the sizes (at
+ * least one byte moves), the speed (xfer only: pass 0 for a probe) and the timeout. */
+static inline bool stark_lab_i2c_args_ok(uint8_t addr, size_t wn, size_t rn, uint32_t hz,
+                                         uint32_t timeout_ms)
+{
+    return addr >= STARK_LAB_I2C_ADDR_MIN && addr <= STARK_LAB_I2C_ADDR_MAX &&
+           wn <= STARK_LAB_I2C_W_MAX && rn <= STARK_LAB_I2C_R_MAX &&
+           ((wn == 0u && rn == 0u) == (hz == 0u)) && (hz == 0u || stark_lab_i2c_hz_ok(hz)) &&
+           timeout_ms > 0u && timeout_ms <= STARK_LAB_I2C_TIMEOUT_MS_MAX;
+}
+
+/*
+ * The shared I2C guard as a pure rule: `nfc_confirmed` is stark_module_caps() & STARK_CAP_NFC.
+ * A write to a module ID EEPROM (rn == 0, or more than a one-byte pointer before a read) and any
+ * transaction with the PN532 while NFC is confirmed are refused.
+ */
+static inline bool stark_lab_i2c_allowed(const stark_board_pins_t *pins, bool nfc_confirmed,
+                                         uint8_t addr, size_t wn, size_t rn)
+{
+    /* NOTE: a read that carries more than a one-byte pointer would write the rest into the chip,
+     * so a module ID EEPROM takes exactly: no write at all, or a one-byte pointer and a read. */
+    if (stark_lab_i2c_is_module_eeprom(pins, addr) && (rn == 0u || wn > 1u)) {
+        return false;
+    }
+    return !(addr == STARK_LAB_I2C_PN532 && nfc_confirmed);
 }
