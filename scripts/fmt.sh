@@ -26,13 +26,22 @@ if ! command -v clang-format >/dev/null 2>&1; then
     exit 1
 fi
 
-# Gather all C/H sources, excluding build artefacts.
-mapfile -d '' SOURCES < <(find "$PROJECT_ROOT" \
+# Gather all C/H sources, excluding build artefacts and the local Python
+# virtual environment (`.venv/`, git-ignored; docs/DEVELOPMENT.md §7 creates it
+# at the repository root for the host tests' cmake and gcovr, and the headers of
+# the Python it bundles are not ours to format).
+# A read loop rather than `mapfile -d`, which needs bash 4.4: the maintainer's
+# macOS ships bash 3.2 (PROJECT.md §7).
+SOURCES=()
+while IFS= read -r -d '' src; do
+    SOURCES+=("$src")
+done < <(find "$PROJECT_ROOT" \
     -name '*.[ch]' \
     -not -path '*/build/*' \
     -not -path '*/build-*/*' \
     -not -path '*/managed_components/*' \
     -not -path '*/.git/*' \
+    -not -path '*/.venv/*' \
     -print0 2>/dev/null || true)
 
 if [[ ${#SOURCES[@]} -eq 0 ]]; then
