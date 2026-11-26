@@ -6347,6 +6347,35 @@ its checkout has no `.venv/` and ubuntu-24.04 has bash 5.
 
 ---
 
+## STARK-0802 — V1 prototype parts and instruments list, prototype circuit values
+
+**Goal.** One list of everything the V1 breadboard and its five bring-up procedures need,
+so parts can be bought and instruments borrowed before the first check, and the three
+circuit values the procedures measure against but no document chose are decided.
+
+**Files.** `docs/bringup/v1-parts.md` (new), `DECISIONS.md` (ADR-0024), `HARDWARE.md` §3
+(pointer), `ROADMAP.md` "V1 prototype" (pointer), `TASKS.md` (this entry).
+
+**Deps.** none.
+
+**AC.**
+1. Every part and instrument named in HARDWARE §3 and in `docs/bringup/v1-ir.md`,
+   `v1-nfc.md`, `v1-modules.md`, `v1-subghz.md` and `v1-labtools.md` appears in the list
+   with a quantity, a rule and the procedure that needs it.
+2. The list chooses the IR driver and receiver-filter values (v1-ir check 3), the card
+   breakout's MISO rule (V1 exit 8, v1-modules check 14), the I²C pull-ups (v1-modules check
+   5, v1-labtools check 21) and the ID EEPROM straps and programming voltage; ADR-0024 records
+   each with the alternatives rejected.
+3. Nothing in the list puts more than 3.3 V on a GPIO or bus; the one 5 V node (the IR LED)
+   is named.
+4. No procedure, firmware source, test or limit changes; no V1 exit criterion is claimed.
+5. HARDWARE §3 and ROADMAP "V1 prototype" point to the list.
+
+**Security.** None (SECURITY_SCOPE §1, §2: own parts only). **Physical HIL.** None: the list
+is read, not executed.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and

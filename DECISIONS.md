@@ -2028,3 +2028,55 @@ and no gate was loosened: the boot-heap gate stays 200 kB and the V0.7 boot-heap
 **Revisit trigger (V0.7 exit):** the V1 lab header or a second UART (the GPIO app could then hold two pins and the plan's PWM loop
 could be wired), a size task if the image approaches the partition (the UART driver of point 3), or the first V1 reading of drive
 strength, ISR latency or auto-baud.
+
+---
+
+## ADR-0024 — V1 prototype parts: one list, prototype circuit values, 3.3 V only
+
+**Status:** accepted (2026-11-26). The owner delegated product decisions and asked for
+autonomous progress; recorded here rather than taken silently. STARK-0802 writes
+`docs/bringup/v1-parts.md`.
+
+**Context.** V0 to V0.7 are complete in software and every physical gate is V1 (ROADMAP V1
+exits 1–13). The parts and instruments those gates need are spread over HARDWARE §3 and five
+bring-up procedures, and three procedure rows depend on circuit values no document chose:
+v1-ir check 3 measures "the design value of the driver resistor", v1-labtools records "pull-up
+values" without a target, and V1 exit 8 and v1-modules check 14 test MISO release by a card
+breakout that no document specified. Nothing has been bought.
+
+**Decision.**
+1. **One list.** `docs/bringup/v1-parts.md` is the buying and borrowing list for the
+   breadboard prototype. Each row names the procedure that needs it; part numbers are examples
+   of a class. It adds no requirement to a procedure, and a procedure's setup table still
+   records the part actually used.
+2. **IR driver:** GPIO 47 → 1 kΩ → NPN base, 10 kΩ base pull-down, LED and 33 Ω from 5 V (USB)
+   into the collector: about 105 mA peak, 35 mA average in a mark at 33 % carrier duty. The
+   receiver gets the datasheet's 100 Ω / 4.7 µF supply filter. 5 V touches the LED and the
+   collector only.
+3. **microSD breakout:** 3.3 V direct-connect, one that releases MISO when deselected; the
+   regulator-and-buffer 5 V modules are excluded because SPI2 is shared (HARDWARE §2.3).
+4. **I²C pull-ups:** the internal pull-ups stay enabled (`board_devkitc1.c`); one 4.7 kΩ pair
+   is fitted unless a breakout provides pull-ups, every pull-up present is recorded, and the
+   parallel value is kept at 2 kΩ or more.
+5. **ID EEPROMs** are programmed off the device at 3.3 V (A0 strap for slot 1, WP to GND); a
+   programmer that drives the chip at 5 V is excluded until measured at 3.3 V.
+6. **Logic analyser rule:** ≥ 100 MS/s for the lab-tool checks; a 24 MS/s analyser is enough
+   for the IR, NFC, module and Sub-GHz procedures.
+7. **3.3 V only** on every GPIO and bus, as the procedures already require.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| Driving the IR LED straight from GPIO 47 | 20–40 mA at most from a pad; range and the v1-ir current check need a driver |
+| IR LED from 3V3 | Up to 100 mA pulses on the DevKit's 3V3 regulator, which also feeds the panel backlight (HARDWARE §3.1) |
+| No external I²C pull-ups | About 45 kΩ cannot meet 400 kHz rise times (v1-labtools check 21) |
+| Leaving parts to the person doing the bring-up | Three checks would measure against values nobody chose |
+
+**Consequences.** HARDWARE §3 points to the list. The procedures are unchanged; the values in
+§3 of the list are what their checks measure against. A value that fails its check is
+changed in a new task and recorded here, never tuned silently.
+
+**Revisit trigger:** the first bring-up reading of the IR current, an I²C rise time, or MISO
+release; or the V1 PCB schematic (HARDWARE §8), which replaces these breadboard values.
+

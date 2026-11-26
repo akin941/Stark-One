@@ -203,6 +203,11 @@ Later milestones add: microSD breakout (V0.2), TSOP38238 + IR LED + NPN driver (
 PN532 or ST25R-class NFC module (V0.4), CC1101 433 MHz module + SMA antenna (V0.6),
 Li-ion cell + TP4056-class charger + gauge (V1).
 
+The full V1 prototype list, with quantities, the procedure that needs each part, the
+instruments and the prototype circuit values (IR driver, receiver filter, card breakout,
+I²C pull-ups, ID EEPROM straps), is [docs/bringup/v1-parts.md](docs/bringup/v1-parts.md)
+(STARK-0802, ADR-0024).
+
 ### 3.1 Power notes (breadboard)
 
 * Panel backlight draws 60–100 mA — feed it from the DevKit's 3V3 only if the USB
