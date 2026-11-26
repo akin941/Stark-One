@@ -6465,6 +6465,33 @@ accepts no GDB log), `TESTING.md` §5, `docs/bringup/v1-parts.md` §3.4, `TASKS.
 
 ---
 
+## STARK-0806 — V1 functional re-verification procedure (exit 1)
+
+**Goal.** ROADMAP V1 exit 1 ("every V0–V0.7 functional exit criterion re-verified on hardware
+where applicable") is the only V1 exit without a procedure. Write it: the replayable
+production scenarios as numbered rows on bench E, the two visual checks the emulator cannot
+make, and a table tracing every V0–V0.7 criterion to its hardware evidence or to why it has
+none.
+
+**Files.** `docs/bringup/v1-functional.md` (new), `ROADMAP.md` "V1 prototype", `TESTING.md`
+§5, `docs/bringup/v1-parts.md` (pointers), `TASKS.md` (this entry).
+
+**Deps.** STARK-0805.
+
+**AC.**
+1. Bench E is specified item by item, each with the emulator behaviour it reproduces.
+2. Every scenario `check_hw_log.py --list` reports as replayable is a numbered row with blank
+   result and evidence, and no other scenario is.
+3. Every V0–V0.7 exit criterion in ROADMAP appears once in the traceability table, mapped to
+   replay rows, checks in the other bring-up procedures (by number, matching their titles), or
+   a stated reason it has no hardware half.
+4. Every quoted log line exists in the firmware; no firmware, scenario, limit or gate changes;
+   no V1 exit is claimed.
+
+**Security.** None. **Physical HIL.** The whole of `docs/bringup/v1-functional.md`.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and
