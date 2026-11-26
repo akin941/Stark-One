@@ -8,6 +8,11 @@ docs/module-format.md, never read from a real module.
 Usage:
   gen_module_vectors.py            write test/fake/fake_module_catalog.h
   gen_module_vectors.py --check    exit 1 if the committed file differs (CI lint)
+  gen_module_vectors.py --list     print the catalogue: 1-based index, label, result
+  gen_module_vectors.py --emit DIR [LABEL ...]
+                                   write 256-byte 24C02 images for an external
+                                   programmer (STARK-0803): every entry, or the
+                                   labels given, as DIR/NN_label.bin
 """
 import argparse
 import sys
@@ -141,10 +146,62 @@ def render():
     return "\n".join(lines)
 
 
+EEPROM_SIZE = 256  # a 24C02: 2 kbit
+
+
+def eeprom_image(desc):
+    """The whole chip as a programmer writes it: the descriptor at offset 0, the
+    rest erased (0xFF), as docs/module-format.md "Programming a chip" says."""
+    if len(desc) != 32:
+        raise ValueError("a descriptor is 32 bytes, got %d" % len(desc))
+    return desc + b"\xFF" * (EEPROM_SIZE - len(desc))
+
+
+def emit(out_dir, labels=None):
+    """Write NN_label.bin per entry (NN = the 1-based catalogue index, the number
+    the emu_mod_slot pokes and docs/bringup use). Returns the paths written."""
+    es = entries()
+    index = {e[0]: i for i, e in enumerate(es)}
+    wanted = list(labels) if labels else [e[0] for e in es]
+    unknown = [lb for lb in wanted if lb not in index]
+    if unknown:
+        raise KeyError("unknown catalogue label(s): %s" % ", ".join(unknown))
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for lb in wanted:
+        i = index[lb]
+        path = out_dir / ("%02d_%s.bin" % (i + 1, lb))
+        path.write_bytes(eeprom_image(es[i][1]))
+        paths.append(path)
+    return paths
+
+
+def listing():
+    return ["%2d  %-16s %s" % (i + 1, e[0], e[2]) for i, e in enumerate(entries())]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--emit", metavar="DIR")
+    ap.add_argument("labels", nargs="*", metavar="LABEL")
     args = ap.parse_args(argv)
+    if args.labels and not args.emit:
+        ap.error("LABEL needs --emit DIR")
+    if args.list:
+        print("\n".join(listing()))
+        return 0
+    if args.emit:
+        try:
+            paths = emit(args.emit, args.labels)
+        except KeyError as err:
+            print("ERROR: %s (see --list)" % err.args[0], file=sys.stderr)
+            return 2
+        for path in paths:
+            print(path)
+        return 0
     text = render()
     if args.check:
         if not OUT.exists() or OUT.read_text() != text:

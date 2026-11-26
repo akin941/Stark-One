@@ -21,7 +21,7 @@ EEPROMs off the device: the firmware cannot write one.
 | `I2C_SDA` / `I2C_SCL` | GPIO 1 / GPIO 2 (record pull-up values) | HARDWARE.md §2.2 |
 | Slot 0 | EEPROM 0x50, `MOD_CS` 40, `MOD_IRQ0` 41, `MOD_IRQ1` 42 | HARDWARE.md §6 |
 | Slot 1 | EEPROM 0x51; lines not allocated yet | ADR-0021 §5 |
-| Test EEPROMs | 24C02 programmed from `test/fake/fake_module_catalog.h` images | docs/module-format.md |
+| Test EEPROMs | 24C02 programmed from `test/fake/fake_module_catalog.h` images (`scripts/gen_module_vectors.py --emit DIR`, STARK-0803) | docs/module-format.md |
 | Firmware | production image, the main SHA under test: `________` | — |
 
 ## Decisions the board must make first

@@ -130,7 +130,8 @@ way.
 * **Straps.** Slot 0's EEPROM answers at 0x50 (A2 A1 A0 = 000), slot 1's at 0x51
   (A0 = 1); WP to GND; 100 nF on its supply.
 * **Contents.** Each chip holds a 32-byte descriptor at offset 0 (docs/module-format.md), the
-  rest 0xFF. Six chips cover the procedures: the Sub-GHz module (catalogue entry 32, id
+  rest 0xFF: `scripts/gen_module_vectors.py --emit DIR cc1101_module spi_breakout nfc_carrier
+  blank bad_crc` writes those five as 256-byte images for the programmer (STARK-0803). Six chips cover the procedures: the Sub-GHz module (catalogue entry 32, id
   0x0A01, caps 0x38), the SPI breakout (entry 34), the PN532 carrier, one blank (all 0xFF)
   and one with a corrupted CRC for MOD check 3, and one spare.
 * **Programming** happens off the device: the firmware cannot write a chip (ADR-0021 §2), and

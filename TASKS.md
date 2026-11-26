@@ -6376,6 +6376,35 @@ is read, not executed.
 
 ---
 
+## STARK-0803 — 24C02 images for an external programmer
+
+**Goal.** The ID EEPROMs of the V1 procedures can be programmed from the same descriptors the
+firmware's parser is tested on, without hand-copying bytes.
+
+**Files.** `scripts/gen_module_vectors.py` (`--list`, `--emit`), `scripts/test_gen_module_vectors.py`,
+`docs/module-format.md` ("Programming a chip"), `docs/bringup/v1-parts.md` §3.4,
+`docs/bringup/v1-modules.md` (setup row), `TASKS.md` (this entry).
+
+**Deps.** STARK-0802.
+
+**AC.**
+1. `--emit DIR [LABEL ...]` writes every catalogue entry, or the labels given, as
+   `DIR/NN_label.bin`: 256 bytes, the descriptor at offset 0, 0xFF after it; `NN` is the
+   1-based catalogue index. `--list` prints index, label and expected result.
+2. A test reads the images back from the committed `test/fake/fake_module_catalog.h` text and
+   proves every emitted file starts with exactly those 32 bytes; a second decodes the bring-up
+   modules (CC1101, SPI breakout, NFC carrier) with `struct` and `binascii`'s CRC, independently
+   of the encoder; the blank and bad-CRC chips are what MOD check 3 needs.
+3. An unknown label writes nothing and exits 2; a label without `--emit` is a usage error.
+4. `--check` and the generated header are unchanged; no firmware source changes (the firmware
+   still has no encoder and cannot write a chip).
+5. The procedure documents name the command.
+
+**Security.** None: a descriptor is metadata, not a credential (docs/module-format.md).
+**Physical HIL.** Programming and reading a real chip is v1-modules check 1.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and
