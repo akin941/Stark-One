@@ -15,7 +15,7 @@ ours. **Logic is 3.3 V only**: nothing on this list may put more than 3.3 V (3.6
 ceiling) on a GPIO, the I²C bus or the SPI bus. The only 5 V node on the breadboard is the IR
 LED's supply (§3.1), which never reaches a GPIO.
 
-Procedures: **core** = ROADMAP V1 exits 2–8 (display, input, buzzer, LED, storage);
+Procedures: **core** = [v1-core.md](v1-core.md), ROADMAP V1 exits 2–8 (display, input, buzzer, LED, storage);
 **IR** = [v1-ir.md](v1-ir.md); **NFC** = [v1-nfc.md](v1-nfc.md); **MOD** =
 [v1-modules.md](v1-modules.md); **RF** = [v1-subghz.md](v1-subghz.md); **LAB** =
 [v1-labtools.md](v1-labtools.md).

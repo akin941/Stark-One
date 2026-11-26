@@ -250,7 +250,8 @@ the root menu, full-screen refresh ≤ 60 ms, key-to-pixel latency ≤ 50 ms, no
 overruns over 60 s. Each figure is measured, recorded in `docs/measurements.md`
 alongside its simulated counterpart, and is a pass/fail condition for the milestone.
 
-**Breadboard bring-up checklist (V1 prototype), abbreviated**
+**Breadboard bring-up checklist (V1 prototype), abbreviated** — written out as 35 numbered
+checks in [docs/bringup/v1-core.md](docs/bringup/v1-core.md) (STARK-0804)
 
 1. Power: 3V3 rail within ±3 %, current at idle recorded.
 2. Boot: device enumerates, console at 115200, `boot:` lines appear; boot time measured.
