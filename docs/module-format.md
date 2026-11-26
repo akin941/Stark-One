@@ -50,6 +50,19 @@ slot a driver's and the probe refuses it. The test catalogue's entry 34 is this 
 `0x00000008`, name `SPI breakout` (`scripts/gen_module_vectors.py`; entries 1 to 33 keep their meaning). Declaring `MOD_SPI`
 grants nothing by itself, like any descriptor: the probe checks the table and the lease on every transaction.
 
+## Programming a chip
+
+The firmware never writes an ID EEPROM (ADR-0021 §2; the lab tools refuse writes to the
+slot addresses, ADR-0023 §5), so a module's chip is programmed off the device.
+`scripts/gen_module_vectors.py --emit DIR [LABEL ...]` writes each catalogue entry as a
+256-byte 24C02 image, `DIR/NN_label.bin`: the 32-byte descriptor at offset 0 and the rest
+erased (0xFF). `NN` is the 1-based catalogue index the `emu_mod_slot` pokes and the
+bring-up procedures use (32 the CC1101 module, 34 the SPI breakout); `--list` prints the
+catalogue. The images are byte-identical to the ones the firmware's parser is host-tested
+on (`test/fake/fake_module_catalog.h`), so a chip programmed from one reads back with the
+result the catalogue names (STARK-0803). The programmer must drive the chip at 3.3 V
+([docs/bringup/v1-parts.md](bringup/v1-parts.md) §3.4, ADR-0024).
+
 ## What a descriptor is not
 
 A descriptor is device metadata. It declares what a module says it is. It is not proof of
