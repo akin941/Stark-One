@@ -351,6 +351,9 @@ became +90 kB, with the boot-heap budget (16 kB, gate 200 kB) unchanged.
 
 **Goal:** everything validated in simulation runs on real silicon.
 
+**Parts and instruments:** [docs/bringup/v1-parts.md](docs/bringup/v1-parts.md) (STARK-0802,
+ADR-0024), one list for every procedure below, with the prototype circuit values.
+
 **Scope:** breadboard assembly, hardware bring-up checklist, SPI timing at 20/40 MHz,
 display panel configuration (rotation/mirror/BGR), real button bounce, buzzer volume,
 SD reliability, IR/NFC/Sub-GHz module bring-up, thermal and current measurements,
