@@ -6405,6 +6405,32 @@ firmware's parser is tested on, without hand-copying bytes.
 
 ---
 
+## STARK-0804 — V1 core bring-up procedure (exits 2–8)
+
+**Goal.** The platform's own physical gates (ROADMAP V1 exits 2–8: boot time, first pixel,
+refresh, FPS, key latency, overruns, the records, the pin map, and the V0.2 storage gates)
+have a numbered procedure like the radio and lab ones, instead of TESTING §5's abbreviated
+list.
+
+**Files.** `docs/bringup/v1-core.md` (new), `TESTING.md` §5 (pointer), `ROADMAP.md` "V1
+prototype" (pointer), `docs/bringup/v1-parts.md` (link), `TASKS.md` (this entry).
+
+**Deps.** STARK-0802.
+
+**AC.**
+1. Every gate in ROADMAP V1 exits 2–8 and every item of TESTING §5's abbreviated checklist and
+   V0.2 storage paragraph is a numbered check with how, a pass criterion, and blank result and
+   evidence columns.
+2. Each check names the log line or instrument it reads; every quoted log line exists in the
+   firmware as written (checked against the sources).
+3. The setup names the breadboard build setting the default would get wrong
+   (`STARK_DISPLAY_SPI_HZ` defaults to the PCB's 40 MHz) and the panel settings to record.
+4. No firmware, test, limit or gate changes; no V1 exit is claimed.
+
+**Security.** None. **Physical HIL.** The whole of `docs/bringup/v1-core.md`.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and
