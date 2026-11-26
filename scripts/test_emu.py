@@ -309,9 +309,10 @@ def image_mismatch(scenario, image):
 
 
 def check_log(scenario, log, gdb_log):
-    """List of failure messages (empty = pass)."""
+    """List of failure messages (empty = pass). gdb_log None: no GDB schedule ran
+    (a capture from real hardware, scripts/check_hw_log.py), so none is checked."""
     failures = []
-    if END_MARK not in gdb_log:
+    if gdb_log is not None and END_MARK not in gdb_log:
         failures.append("GDB schedule did not reach end_ms=%s (gdb log tail: %s)"
                         % (scenario["end_ms"], gdb_log.strip().splitlines()[-3:]))
     lines = log.splitlines()

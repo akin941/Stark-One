@@ -253,6 +253,16 @@ alongside its simulated counterpart, and is a pass/fail condition for the milest
 **Breadboard bring-up checklist (V1 prototype), abbreviated** — written out as 35 numbered
 checks in [docs/bringup/v1-core.md](docs/bringup/v1-core.md) (STARK-0804)
 
+**Replaying emulator scenarios on the breadboard** (ROADMAP V1 exit 1, STARK-0805). Every
+production-image scenario of §4 that needs no emulator-only feature can be replayed by hand:
+`scripts/check_hw_log.py --list` says which; `--steps SCENARIO` prints the key sequence as
+operator steps; `check_hw_log.py SCENARIO LOG` checks a console capture
+(`idf.py monitor | tee LOG`, from before the reset) with the emulator's own rules — order,
+forbids, heap gates, drops=0. The scenarios assume what esp-emu models, so they run on
+"bench E": no card, no PN532, no radio, nothing on the IR pins, slot 0's ID EEPROM holding the
+`zeroes` image (`gen_module_vectors.py --emit DIR zeroes`), nothing at 0x51.
+
+
 1. Power: 3V3 rail within ±3 %, current at idle recorded.
 2. Boot: device enumerates, console at 115200, `boot:` lines appear; boot time measured.
 3. Display: correct orientation, no mirroring, colours correct (red is red — if not,

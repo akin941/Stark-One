@@ -131,9 +131,12 @@ way.
   (A0 = 1); WP to GND; 100 nF on its supply.
 * **Contents.** Each chip holds a 32-byte descriptor at offset 0 (docs/module-format.md), the
   rest 0xFF: `scripts/gen_module_vectors.py --emit DIR cc1101_module spi_breakout nfc_carrier
-  blank bad_crc` writes those five as 256-byte images for the programmer (STARK-0803). Six chips cover the procedures: the Sub-GHz module (catalogue entry 32, id
+  blank bad_crc zeroes` writes those six as 256-byte images for the programmer (STARK-0803).
+  Six chips cover the procedures: the Sub-GHz module (catalogue entry 32, id
   0x0A01, caps 0x38), the SPI breakout (entry 34), the PN532 carrier, one blank (all 0xFF)
-  and one with a corrupted CRC for MOD check 3, and one spare.
+  and one with a corrupted CRC for MOD check 3, and one holding `zeroes` (entry 16) for
+  "bench E", the emulator-equivalent setup in which the esp-emulator scenarios are replayed
+  on silicon (`scripts/check_hw_log.py`, STARK-0805).
 * **Programming** happens off the device: the firmware cannot write a chip (ADR-0021 §2), and
   the lab tools refuse writes to 0x50/0x51 (ADR-0023 §5). The programmer must drive the chip at
   **3.3 V**: the common CH341A-class programmers output 5 V on their 24-series socket unless

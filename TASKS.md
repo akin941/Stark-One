@@ -6431,6 +6431,40 @@ prototype" (pointer), `docs/bringup/v1-parts.md` (link), `TASKS.md` (this entry)
 
 ---
 
+## STARK-0805 — Replay emulator scenarios on the breadboard and check the log
+
+**Goal.** The production-image esp-emulator scenarios already state, line by line, what the
+firmware must print for each V0–V0.7 functional flow. Make them usable on silicon for ROADMAP
+V1 exit 1: the same key sequence as operator steps, and the real console capture checked by
+the same rules, so a hardware re-verification is a pass/fail against the committed
+expectations rather than a reading by eye.
+
+**Files.** `scripts/check_hw_log.py` (new), `scripts/test_check_hw_log.py` (new),
+`scripts/testdata/emu-v0-boot-and-menu.log` (new fixture), `scripts/test_emu.py` (`check_log`
+accepts no GDB log), `TESTING.md` §5, `docs/bringup/v1-parts.md` §3.4, `TASKS.md` (this entry).
+
+**Deps.** STARK-0803 (the `zeroes` image for the 0x50 chip).
+
+**AC.**
+1. `check_hw_log.py --list` classifies every committed scenario as replayable on hardware or
+   not, naming why not (storage test image, RMT loopback, UART1 peer, pokes, a control-channel
+   command other than a reset).
+2. `--steps` turns a replayable scenario into numbered operator steps: presses, long holds,
+   chords (overlapping presses), resets between phases, waits, an erase-flash step when the
+   scenario expects the default settings, and a final wait for a `diag:` line.
+3. Checking a log uses `test_emu.check_log` itself (order, regexes, forbids, heap gates,
+   drops=0), skipping only the GDB schedule check and the harness's `--- phase N ---`
+   markers, and tolerates `idf.py monitor` output (CRLF, ANSI colours).
+4. Every replayable production scenario passes on CI's real emulator console logs (main
+   6b492f5); one of them is committed as a fixture and a test; failing variants fail.
+5. The setup the scenarios assume on silicon ("bench E": no card, no PN532, no radio, nothing
+   on the IR pins, the `zeroes` image at 0x50, nothing at 0x51) is written down.
+6. No firmware, scenario, limit or gate changes; the emulator harness behaves as before.
+
+**Security.** None. **Physical HIL.** Running it is part of V1 exit 1; nothing is claimed.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and
