@@ -478,6 +478,12 @@ Software evidence only: no pad, wire, pull, drive, device or adapter exists befo
 To be filled in at the V1 prototype milestone (ROADMAP.md "V1 prototype"), with the
 simulated figure above kept alongside for reference.
 
+`scripts/bringup_figures.py` (STARK-0807) reads the bring-up console captures and prints the
+logged figures (`boot: ui_ready`, full refresh, root heap, `diag:` fps, drops, overruns, Display
+Test fps) with worst and median over the boots. `--compare` adds the same figures from
+esp-emulator logs. First pixel and key-to-pixel latency come from the logic analyser only
+(docs/bringup/v1-core.md checks 4, 5, 17).
+
 | Metric | Target | Measured | Date |
 | --- | --- | --- | --- |
 | `boot: ui_ready` from reset | ≤ 600 ms | | |

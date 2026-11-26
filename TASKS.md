@@ -6492,6 +6492,36 @@ none.
 
 ---
 
+## STARK-0807 — Bring-up figures from console captures
+
+**Goal.** V1 exit 6 records measured figures next to the simulated ones. Several of them
+(`boot: ui_ready`, full refresh, root heap, FPS, drops, overruns) are printed by the firmware
+itself, and v1-core.md asks for worst and median over ten resets. Compute them from the
+captures by script instead of by hand, from the same lines the emulator gates read.
+
+**Files.** `scripts/bringup_figures.py` (new), `scripts/test_bringup_figures.py` (new),
+`docs/bringup/v1-core.md` check 34, `docs/measurements.md` "Hardware", `TASKS.md` (this entry).
+
+**Deps.** STARK-0805 (fixture).
+
+**AC.**
+1. One or more captures, several boots each, `idf.py monitor` formatting allowed, give per-boot
+   and overall figures: `boot: ui_ready` and full refresh worst and median, lowest root heap,
+   `diag:` fps range, drops, overruns added during a boot, heap first to last `diag:` line,
+   lowest `min=`, Display Test fps.
+2. Gated figures (ui_ready ≤ 600 ms, refresh ≤ 60 ms, root heap ≥ 200 kB, drops 0, overruns 0)
+   carry a verdict and set the exit status; FPS and recorded figures carry none; a missing
+   figure is "—", never a pass.
+3. Figures that need a logic analyser (first pixel, key-to-pixel, ui_ready from the EN edge)
+   are listed as such and never taken from the log.
+4. `--compare` adds the same figures from esp-emulator logs; tested on the committed firmware
+   fixture and synthetic captures; checked against CI's emulator logs.
+5. No firmware, limit or gate changes; no V1 exit is claimed.
+
+**Security.** None. **Physical HIL.** Its input is v1-core.md's captures; nothing is claimed.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and
