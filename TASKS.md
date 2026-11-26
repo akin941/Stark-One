@@ -6305,6 +6305,48 @@ addendum; the short version, with the files that carry each point:
 
 ---
 
+# V1 prototype — preparation without hardware
+
+**Scope source:** [ROADMAP.md](ROADMAP.md) "V1 prototype". V0 to V0.7 are complete in
+software; the V1 prototype needs the breadboard, its parts and the instruments of
+`docs/bringup/*.md`. The tasks in this section are the work that needs **no hardware**:
+tooling and documents that make the physical bring-up cheaper to start. None of them
+claims a V1 exit criterion. Task numbers continue at STARK-0801.
+
+## STARK-0801 — `fmt.sh` skips `.venv/` and runs on macOS bash 3.2
+
+**Goal.** The formatter check works on the maintainer's machine as documented: a
+repository-root `.venv/` (the host tests' CMake and gcovr) is not formatted, and the script
+runs under the bash 3.2 that macOS ships.
+
+**Files.** `scripts/fmt.sh`, `scripts/test_fmt.py` (new), `docs/DEVELOPMENT.md` §7,
+`TASKS.md` (this entry).
+
+**Deps.** none.
+
+**Notes.** Found while setting up a new macOS machine (2026-11-26): with `.venv/` at the root,
+`scripts/fmt.sh --check` reported the bundled Python headers as unformatted, and
+`mapfile -d` (bash 4.4) does not exist in macOS's `/bin/bash` 3.2. CI was green because
+its checkout has no `.venv/` and ubuntu-24.04 has bash 5.
+
+**AC.**
+1. `scripts/fmt.sh` excludes `*/.venv/*` beside the existing build, managed-component and
+   `.git` exclusions; nothing else is excluded or added.
+2. The source list is gathered without `mapfile`, so the script runs under bash 3.2;
+   file names with spaces stay one argument.
+3. `scripts/test_fmt.py` (run by `check.sh`'s `script-unit-tests`) proves, with a stub
+   formatter in a throwaway tree, that exactly our sources reach clang-format in both modes,
+   that `--check` fails when the formatter reports a diff, and that a path with spaces is
+   one file; the tests fail against the previous `fmt.sh`.
+4. `scripts/fmt.sh --check` with clang-format 18 is clean on the tree with a populated
+   `.venv/`; `scripts/check.sh` passes.
+5. `docs/DEVELOPMENT.md` §7 documents the `.venv` host-tool setup and running clang-format
+   18 from an `ubuntu:24.04` container.
+
+**Security.** None. **Physical HIL.** None.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and

@@ -277,6 +277,20 @@ scripts/fmt.sh --check
 scripts/build.sh          # or scripts/build.sh --docker
 ```
 
+**Host tools without a system install (STARK-0801).** The host tests need CMake and,
+for `--coverage`, gcovr; a git-ignored virtual environment at the repository root
+provides both:
+```bash
+uv venv --seed .venv && .venv/bin/python -m pip install cmake gcovr
+PATH=.venv/bin:$PATH scripts/test_host.sh
+```
+`scripts/fmt.sh` skips `.venv/` (the bundled Python headers are not ours) and runs on
+macOS's bash 3.2. The formatter must be clang-format 18.x, the version CI's
+ubuntu-24.04 lint job installs; where the host has another version, run it from an
+`ubuntu:24.04` container with `clang-format` installed, mounting the tree at `/p`
+(`docker run --rm -v "$PWD":/p -w /p <image> scripts/fmt.sh --check`). Such an image is
+a local convenience and is not part of the repository.
+
 ---
 
 ## 8. Project Structure Overview
