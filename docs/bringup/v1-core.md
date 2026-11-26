@@ -107,7 +107,7 @@ Do them in order: a failing check in a group stops that group (HARDWARE §8 brin
 | --- | --- | --- | --- | --- | --- |
 | 32 | Thermals | 15 minutes of Display Test; thermometer or IR thermometer on the module can | Temperature recorded (ambient too) | | |
 | 33 | One hour, no leak | One hour at the root menu with a key press every few minutes; first and last `diag:` line | `heap=` within 1 kB of the first line, `drops=0`, no reset | | |
-| 34 | Figures recorded (V1 exit 6) | docs/measurements.md "Hardware" section | Boot time, first pixel, refresh, FPS, key latency, free heap, binary size and current recorded next to the simulated figures | | |
+| 34 | Figures recorded (V1 exit 6) | docs/measurements.md "Hardware" section; the logged figures from this procedure's captures with `scripts/bringup_figures.py LOG... --compare EMU_LOG...` (STARK-0807), the analyser figures from checks 4, 5 and 17 | Boot time, first pixel, refresh, FPS, key latency, free heap, binary size and current recorded next to the simulated figures | | |
 | 35 | Pin map unchanged (V1 exit 7) | Compare the wiring with HARDWARE §2 and `stark_board` | Unchanged, or every change made in `stark_board` and `diagram.json` together in a task | | |
 
 ## After the procedure
