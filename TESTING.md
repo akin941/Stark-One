@@ -260,7 +260,8 @@ operator steps; `check_hw_log.py SCENARIO LOG` checks a console capture
 (`idf.py monitor | tee LOG`, from before the reset) with the emulator's own rules — order,
 forbids, heap gates, drops=0. The scenarios assume what esp-emu models, so they run on
 "bench E": no card, no PN532, no radio, nothing on the IR pins, slot 0's ID EEPROM holding the
-`zeroes` image (`gen_module_vectors.py --emit DIR zeroes`), nothing at 0x51.
+`zeroes` image (`gen_module_vectors.py --emit DIR zeroes`), nothing at 0x51. The procedure that
+uses it is [docs/bringup/v1-functional.md](docs/bringup/v1-functional.md) (STARK-0806).
 
 
 1. Power: 3V3 rail within ±3 %, current at idle recorded.

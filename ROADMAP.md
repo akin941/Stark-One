@@ -354,7 +354,9 @@ became +90 kB, with the boot-heap budget (16 kB, gate 200 kB) unchanged.
 **Parts and instruments:** [docs/bringup/v1-parts.md](docs/bringup/v1-parts.md) (STARK-0802,
 ADR-0024), one list for every procedure below, with the prototype circuit values. Exits 2–8
 are the procedure [docs/bringup/v1-core.md](docs/bringup/v1-core.md) (STARK-0804, 35 blank
-checks), done first.
+checks), done first. Exit 1 is [docs/bringup/v1-functional.md](docs/bringup/v1-functional.md)
+(STARK-0806): the production emulator scenarios replayed on "bench E" and checked by
+`scripts/check_hw_log.py`, and every V0–V0.7 criterion traced to its hardware check.
 
 **Scope:** breadboard assembly, hardware bring-up checklist, SPI timing at 20/40 MHz,
 display panel configuration (rotation/mirror/BGR), real button bounce, buzzer volume,

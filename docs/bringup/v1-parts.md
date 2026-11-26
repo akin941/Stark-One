@@ -15,7 +15,8 @@ ours. **Logic is 3.3 V only**: nothing on this list may put more than 3.3 V (3.6
 ceiling) on a GPIO, the I²C bus or the SPI bus. The only 5 V node on the breadboard is the IR
 LED's supply (§3.1), which never reaches a GPIO.
 
-Procedures: **core** = [v1-core.md](v1-core.md), ROADMAP V1 exits 2–8 (display, input, buzzer, LED, storage);
+Procedures: **core** = [v1-core.md](v1-core.md), ROADMAP V1 exits 2–8 (display, input, buzzer, LED, storage),
+and [v1-functional.md](v1-functional.md), exit 1, on the same parts;
 **IR** = [v1-ir.md](v1-ir.md); **NFC** = [v1-nfc.md](v1-nfc.md); **MOD** =
 [v1-modules.md](v1-modules.md); **RF** = [v1-subghz.md](v1-subghz.md); **LAB** =
 [v1-labtools.md](v1-labtools.md).
@@ -136,7 +137,7 @@ way.
   0x0A01, caps 0x38), the SPI breakout (entry 34), the PN532 carrier, one blank (all 0xFF)
   and one with a corrupted CRC for MOD check 3, and one holding `zeroes` (entry 16) for
   "bench E", the emulator-equivalent setup in which the esp-emulator scenarios are replayed
-  on silicon (`scripts/check_hw_log.py`, STARK-0805).
+  on silicon (`scripts/check_hw_log.py`, STARK-0805; [v1-functional.md](v1-functional.md)).
 * **Programming** happens off the device: the firmware cannot write a chip (ADR-0021 §2), and
   the lab tools refuse writes to 0x50/0x51 (ADR-0023 §5). The programmer must drive the chip at
   **3.3 V**: the common CH341A-class programmers output 5 V on their 24-series socket unless
