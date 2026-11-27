@@ -6657,6 +6657,187 @@ ADR was needed here (analysis, not a decision). No code changed.
 
 ---
 
+# Wi-Fi/BLE analysis (V2, receive-first) — ADR-0025, ADR-0027
+
+**Scope source:** [ROADMAP.md](ROADMAP.md) "V2 — Wi-Fi / BLE analysis (receive-first)", [ADR-0027](DECISIONS.md),
+[docs/SECURITY_SCOPE.md](docs/SECURITY_SCOPE.md) §2 (the Wi-Fi/BLE row) and §3 (the exclusions). The
+first V2 feature family: the ESP32-S3's **onboard** radios as a receive-only analysis instrument.
+The seam is ADR-0027's — a transport component per radio that is the only `esp_wifi` / BLE-controller
+caller, in promiscuous/observer **receive** mode with **no transmit primitive in the type**, and pure
+host-tested dissectors behind it. The offensive half (deauth, jamming, flooding, beacon spam,
+evil-portal, any injection) is absent by construction, not disabled (SECURITY_SCOPE §3). Built and
+**emulator-verified without physical hardware** (a fake transport injecting spec-derived frames), like
+the V0.3–0.7 radios; on-air validation is a later HIL step. The pure dissector tasks (1001–1003) need
+no radio stack at all. Task numbers start at STARK-1001.
+
+## STARK-1001 — 802.11 frame dissection core (pure, host-tested)
+
+**Goal.** Parse a captured IEEE 802.11 MAC frame from a byte buffer into a classified struct: frame
+control (protocol version, type, subtype, to/from-DS), the address fields present for that type, and,
+for a beacon / probe-response, the tagged parameters we analyse — SSID (tag 0), DS channel (tag 3),
+supported rates (tags 1/50). Bytes in, struct out; no I/O, no ESP-IDF.
+
+**Layers.** L2 only: `components/stark_wifi` pure core. No port, no service, no app in this task; the
+host test build is the only caller (as `subghz_decode`/`ndef` were introduced).
+
+**Files.** `components/stark_wifi/{CMakeLists.txt,dot11_frame.c,include/dot11_frame.h}`,
+`test/host/{test_dot11_frame.c,CMakeLists.txt}`, `scripts/check_layers.py` only if the new component
+needs listing, `docs/PLATFORM.md` (the Wi-Fi/BLE core named under the pure cores), `TASKS.md` (this entry).
+
+**Deps.** None.
+
+**AC.**
+1. `dot11_parse(const uint8_t *buf, size_t len, struct dot11_frame *out)` returns `STARK_ERR_OK`
+   for a well-formed frame and classifies type/subtype and the present addresses; a truncated or
+   malformed buffer returns `STARK_ERR_INVALID_ARG` and never reads out of bounds.
+2. Beacon/probe tagged-parameter walk extracts SSID, DS channel and supported rates, stops at the
+   buffer end, and tolerates an unknown or zero-length tag without overrun.
+3. **No credential material is stored:** the parser classifies and counts; it exposes no field that
+   carries another network's key/EAPOL/passphrase bytes (SECURITY_SCOPE §2).
+4. Spec-derived vectors (beacon, probe request/response, data, a truncated frame) pass host tests;
+   `scripts/check_layers.py` green (no ESP-IDF include); `scripts/test_host.sh` green.
+
+**Security.** None (pure parser; receive-only, no I/O). **Physical HIL.** None.
+
+## STARK-1002 — BLE advertising PDU dissection core (pure, host-tested)
+
+**Goal.** Parse a BLE advertising-channel PDU from a byte buffer: the PDU header (type, TxAdd/RxAdd),
+AdvA, and the AD structures (length/type/value) we analyse — Flags (0x01), complete/shortened local
+name (0x08/0x09), 16-bit service UUIDs (0x02/0x03), manufacturer-specific data (0xFF). Bytes in,
+struct out; no I/O, no ESP-IDF.
+
+**Layers.** L2 only: `components/stark_ble` pure core. Host test build is the only caller.
+
+**Files.** `components/stark_ble/{CMakeLists.txt,ble_adv.c,include/ble_adv.h}`,
+`test/host/{test_ble_adv.c,CMakeLists.txt}`, `docs/PLATFORM.md` (named under the pure cores),
+`TASKS.md` (this entry).
+
+**Deps.** None (parallel to STARK-1001).
+
+**AC.**
+1. `ble_adv_parse(const uint8_t *buf, size_t len, struct ble_adv *out)` classifies the PDU type and
+   walks the AD structures, stopping at the declared length and at the buffer end, with no overrun on
+   a malformed length byte.
+2. Local name, flags, service UUIDs and manufacturer data are extracted; an AD structure with an
+   unknown type is skipped by its length, not by guesswork.
+3. No credential/identity material beyond the advertised, public fields is stored (SECURITY_SCOPE §2).
+4. Spec-derived vectors (ADV_IND with a name, a service-UUID advert, manufacturer data, a malformed
+   length) pass host tests; `check_layers.py` green; `test_host.sh` green.
+
+**Security.** None (pure parser). **Physical HIL.** None.
+
+## STARK-1003 — channel/RSSI survey aggregation and capture record (pure, host-tested)
+
+**Goal.** Aggregate dissected frames into a per-channel survey (frame count, min/max/last RSSI,
+distinct BSSIDs seen) and a bounded capture record (a fixed-size ring of summaries, never raw
+credential bytes) with a documented on-card log line format. Pure; the transport feeds it later.
+
+**Layers.** L2: `components/stark_wifi/survey.c` (+ header). Host test build is the only caller.
+
+**Files.** `components/stark_wifi/{survey.c,include/survey.h,CMakeLists.txt}`,
+`test/host/{test_wifi_survey.c,CMakeLists.txt}`, `docs/PLATFORM.md`, `TASKS.md` (this entry).
+
+**Deps.** STARK-1001 (consumes `struct dot11_frame`).
+
+**AC.**
+1. `survey_add(struct survey *s, const struct dot11_frame *f, int8_t rssi)` updates the frame's
+   channel bucket; counts and RSSI min/max/last are correct over a vector sequence; an out-of-range
+   channel is rejected, not written.
+2. The capture ring is fixed-size, overwrites oldest-first, stores only summary fields (never
+   key/EAPOL payload), and the documented log-line format round-trips through a host formatter test.
+3. No allocation after init; bounds hold under a long vector run (host test).
+4. `test_host.sh` green; `check_layers.py` green.
+
+**Security.** None. **Physical HIL.** None.
+
+## STARK-1004 — Wi-Fi transport seam, STARK_CAP_WIFI, fake + emulator
+
+**Goal.** `components/stark_wifi_transport` is the only code that calls `esp_wifi`: open, set channel,
+start promiscuous RX, take frames into the STARK-1001 core, stop. **No transmit/inject function in the
+API** (ADR-0027 §3). `STARK_CAP_WIFI` (bit 6) is declared onboard and confirmed only when
+`esp_wifi` comes up. A fake transport injects spec-derived frame captures for host and emulator.
+
+**Layers.** L1 `components/stark_wifi_transport` (production: `esp_wifi` promiscuous); L3
+`components/stark_wifi/stark_wifi.c` (task: pumps frames into the survey, publishes events);
+root `main/module_bridge.c` (declare onboard + confirm). L2 cores from 1001/1003 unchanged.
+
+**Files.** `components/stark_module/include/stark_caps.h` (bit 6 + `STARK_CAPS_KNOWN`),
+`components/stark_wifi_transport/*`, `components/stark_wifi/stark_wifi.c` + header,
+`main/{module_bridge.c,stark_main.c,CMakeLists.txt,Kconfig.projbuild}`,
+`test/fake/{fake_wifi.c,fake_wifi.h}`, `test/emu/storage_image/components/stark_wifi_transport/*`,
+`test/emu/*.toml` (a Wi-Fi scan scene), `scripts/{check_emu_image.py,test_emu.py,check_caps.py}`,
+`test/host/*`, `docs/PLATFORM.md`, `ARCHITECTURE.md` (§6), `TASKS.md` (this entry).
+
+**Deps.** STARK-1001, STARK-1003.
+
+**AC.**
+1. The transport API is open/set-channel/start-rx/take/stop only; `grep -rn` finds no transmit,
+   inject, deauth or beacon symbol in the tree. `check_caps.py` passes with the new bit used by the app.
+2. `STARK_CAP_WIFI` is confirmed only when the radio initialises; absent otherwise, with a logged
+   reason. The emulator substitutes the seam with the fake and a scan scene drives the survey.
+3. Captures/log go to `logs/…` on the card, never the console; no credential material stored.
+4. `test_host.sh`, `test_emu.sh`, `idf.py build` (zero warnings), `check_layers.py`, `check_caps.py`
+   all green.
+
+**Security.** Receive-only onboard radio; no transmit path exists (ADR-0027 §3). **Physical HIL.**
+Deferred — on-air validation is a later HIL step; this task is emulator-verified.
+
+## STARK-1005 — BLE observer transport seam, STARK_CAP_BLE, fake + emulator
+
+**Goal.** `components/stark_ble_transport` is the only BLE-controller caller: passive **observer**
+scan, advertising reports into the STARK-1002 core, stop. No advertising/transmit API. `STARK_CAP_BLE`
+(bit 7) declared onboard, confirmed when the controller comes up. Fake + emulator scene.
+
+**Layers.** L1 `components/stark_ble_transport` (observer-role scan only); L3
+`components/stark_ble/stark_ble.c` (task, events); root `main/module_bridge.c`. The BLE stack choice
+(NimBLE vs Bluedroid) is decided in its own ADR if it forces a structural choice (ADR-0027 revisit).
+
+**Files.** `components/stark_module/include/stark_caps.h` (bit 7), `components/stark_ble_transport/*`,
+`components/stark_ble/stark_ble.c` + header, `main/{module_bridge.c,...}`, `test/fake/{fake_ble.*}`,
+`test/emu/storage_image/components/stark_ble_transport/*`, `test/emu/*.toml`, the check scripts,
+`test/host/*`, `docs/PLATFORM.md`, `DECISIONS.md` (only if a stack sub-decision is forced),
+`TASKS.md` (this entry).
+
+**Deps.** STARK-1002.
+
+**AC.**
+1. Observer/passive scan only; `grep -rn` finds no BLE advertise/transmit symbol. `check_caps.py`
+   passes with bit 7 used by the app.
+2. `STARK_CAP_BLE` confirmed only when the controller initialises; the emulator fake injects adverts
+   into the dissector.
+3. Reports/log to the card, never the console; only advertised public fields stored.
+4. `test_host.sh`, `test_emu.sh`, `idf.py build` (zero warnings), the layer/caps checks green.
+
+**Security.** Receive-only observer; no advertise/transmit path. **Physical HIL.** Deferred.
+
+## STARK-1006 — the Wi-Fi/BLE analysis app
+
+**Goal.** One app that presents the survey and dissection: a channel/RSSI survey view, an AP/device
+list, a frame/advert detail view, and capture-to-card. `caps_required` names `STARK_CAP_WIFI`; the
+BLE view is gated on `STARK_CAP_BLE`. Receive-first: the app has no transmit control because the
+transports expose none.
+
+**Layers.** L4 `apps/app_wifi` (views + the app descriptor), consuming the 1001–1003 cores and the
+1004/1005 services. No new port code.
+
+**Files.** `apps/app_wifi/*`, `main/{app_manager.c,CMakeLists.txt}` (register + `caps_required`),
+`test/host/*` (view-model tests where pure), `test/emu/*.toml` (the app reachable under the scan
+scene), `docs/PLATFORM.md` (the matrix row), `TASKS.md` (this entry).
+
+**Deps.** STARK-1004 (and STARK-1005 for the BLE view).
+
+**AC.**
+1. The app launches only when `STARK_CAP_WIFI` is confirmed; dimmed and unlaunchable otherwise
+   (capability gating, ADR-0009). The BLE view appears only with `STARK_CAP_BLE`.
+2. The survey and list render from the fake-fed emulator scene; a capture writes to `logs/…` and the
+   console stays clean.
+3. No transmit/offensive control anywhere in the app (SECURITY_SCOPE §3); `grep -rn` clean.
+4. `test_host.sh`, `test_emu.sh`, `idf.py build` (zero warnings), all checks green.
+
+**Security.** Receive-only throughout. **Physical HIL.** Deferred to V1-style on-air bring-up.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and

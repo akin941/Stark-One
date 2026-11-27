@@ -493,6 +493,42 @@ and built behind a transport seam like the V0.3–0.7 radios (software + emulato
 
 ---
 
+## V2 — Wi-Fi / BLE analysis (receive-first) (ADR-0025, ADR-0027)
+
+**Goal:** turn the ESP32-S3's own Wi-Fi and BLE radios into a receive-only analysis instrument —
+scan, channel/RSSI survey, and frame/advertising dissection of the air around us — with everything
+offensive (deauth, jamming, flooding, beacon spam, evil-portal, any injection) absent by
+construction, not merely disabled.
+
+**Scope:** a transport seam per radio (`stark_wifi_transport`, `stark_ble_transport`) that is the
+only code calling `esp_wifi` / the BLE controller, in promiscuous/observer receive mode with **no
+transmit primitive in the type** (ADR-0027 decision 3); pure, host-tested dissectors
+(`stark_wifi`, `stark_ble`) that parse IEEE 802.11 frames and BLE advertising PDUs from a byte
+buffer; a per-channel survey aggregator and a capture log to the user's own card; two onboard,
+driver-confirmed capability bits (`STARK_CAP_WIFI`, `STARK_CAP_BLE`). Credential material of
+networks we do not own is classified and counted, never stored (SECURITY_SCOPE §2). The analysis
+reference is ESP32-Marauder.
+
+**Exit criteria:**
+1. The 802.11 and BLE-advertising dissectors parse spec-derived vectors correctly, host-tested, with
+   no ESP-IDF dependency (`scripts/check_layers.py` green).
+2. A promiscuous Wi-Fi capture and a BLE scan are exercised against a **fake transport that injects
+   captured frames**, in the emulator, with no physical radio (the V0.3–0.7 pattern).
+3. The channel/RSSI survey and the AP/device list render in the app; captures write to
+   `logs/…` on the card and never to the console.
+4. `grep -rn` finds **no** Wi-Fi/BLE transmit, inject, deauth, or beacon primitive anywhere in the
+   tree; the transport API exposes only receive. `STARK_CAP_WIFI`/`STARK_CAP_BLE` gate the app and
+   are confirmed only when the radio actually comes up.
+5. On-air validation (real APs/beacons) is a V1-style HIL step, deferred; everything above is
+   software + emulator.
+
+**Guardrails (acceptance criteria in the tasks):** receive-first by construction (no send path);
+logging to the card only; no storage of others' credential material; capability-gated, dimmed and
+unlaunchable on a build whose radio did not come up. SECURITY_SCOPE §3 exclusions are non-features,
+rejected regardless of quality.
+
+---
+
 ## Sequencing notes (deviations and rationale)
 
 1. **Storage (V0.2) before the radios.** Every radio milestone wants to save captures

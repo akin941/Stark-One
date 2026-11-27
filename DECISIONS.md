@@ -2205,3 +2205,77 @@ flag, the other debt-register item, is untouched.
 
 **Revisit trigger:** a clang-tidy major-version bump that changes the finding set (re-verify on
 ubuntu's pinned image), or a check whose value no longer justifies its suppressions.
+
+## ADR-0027 — Wi-Fi/BLE analysis: an onboard-radio transport seam, receive-first by construction, two SoC capability bits
+
+**Status:** accepted (2026-11-27). The owner prioritised Wi-Fi/BLE analysis as the first V2 feature
+family (ADR-0025 decision 3) and chose receive-first, clean-room-from-spec. This ADR designs the
+seam for it before any code; it extends ADR-0009 (capability bits) and ADR-0025, reverses neither.
+
+**Context.** Unlike the Sub-GHz radio (an external CC1101 on a claimed module slot, ADR-0022), the
+Wi-Fi and BLE radios are **integrated in the ESP32-S3 itself**. There is no slot to claim, no SPI,
+no module descriptor to read — the radio is onboard, exactly as the IR LED/demodulator are onboard
+(`stark_module_provide(STARK_MODULE_ONBOARD, …)`, `main/module_bridge.c`). Three questions follow:
+how the capability is declared and gated when it is a property of the SoC rather than a plugged
+part; where the pure/host-testable logic ends and the ESP-IDF radio code begins; and how
+receive-first (SECURITY_SCOPE §2, guardrail 1) is made structural rather than a runtime check that a
+future change could weaken. The analysis reference is ESP32-Marauder, whose own documentation notes
+ESP-IDF cannot emit deauthentication frames — which matches, rather than limits, our receive-first
+rule.
+
+**Decision.**
+1. **Two onboard capability bits, declared like IR, confirmed by the driver.** `STARK_CAP_WIFI`
+   (bit 6) and `STARK_CAP_BLE` (bit 7) join `stark_caps.h`. They are **declared onboard** —
+   `stark_module_provide(STARK_MODULE_ONBOARD, "WiFi"/"BLE", …)` — and **confirmed** only when the
+   respective driver brings the radio up (`esp_wifi` / the BLE controller init succeeds). This reuses
+   the existing model unchanged (a descriptor declares, a driver confirms, only a confirmed bit
+   satisfies `caps_required`, ADR-0021); no new capability mechanism is introduced for "SoC
+   features". The bits land with their confirming driver (STARK-1004/1005), not in this planning
+   change, so `check_caps.py`'s "every defined bit is used, every used bit is defined" invariant
+   holds at every commit.
+2. **The transport seam is the only code that calls the radio stack.** `components/stark_wifi_transport`
+   (and, separately, `components/stark_ble_transport`) hold every `esp_wifi` / BLE-controller call —
+   promiscuous-mode receive, channel set, the RX callback that hands raw frames to the pure core.
+   Nothing else in the tree includes an ESP-IDF radio header. This is the CC1101-transport pattern
+   (ARCHITECTURE §2, the subghz seam) applied to an onboard radio: the layering check keeps the pure
+   cores clean, and the emulator substitutes the seam with a fake that injects captured frames.
+3. **Receive-first by construction, not by flag.** The transport seam exposes **no transmit, inject,
+   or raw-send function at all** — the API is open/set-channel/start-RX/take-frames/stop-RX. There is
+   no transmit path to gate, rate-limit, or confirm, because none exists in the type. This is
+   stronger than the Sub-GHz transmit policy (which must police a TX path that does exist): here the
+   offensive half (deauth, beacon/SSID flood, evil-portal, any frame injection, SECURITY_SCOPE §3) is
+   unreachable because it is unimplemented and unexposed. A PR adding a Wi-Fi/BLE transmit primitive
+   is a SECURITY_SCOPE §3 change and is rejected on that basis, not merely reviewed.
+4. **The pure cores are the dissectors and the survey, host-tested from published specs.**
+   `components/stark_wifi` parses IEEE 802.11 MAC frames (frame-control type/subtype, addresses,
+   beacon/probe tagged parameters: SSID, DS channel, supported rates) and aggregates a per-channel
+   survey; `components/stark_ble` parses BLE advertising PDUs (PDU type, AdvA, AD structures). Both
+   take a byte buffer and produce a parsed struct — no ESP-IDF, no I/O — and are verified host-side
+   with spec-derived vectors, as `subghz_decode`/`ndef` are. Captures and the survey log go to the
+   user's own card (`logs/…`), never the console, and the dissectors **drop, never store, another
+   network's credential material** (EAPOL key data, passphrase-bearing fields): they are classified
+   and counted, their payload discarded (SECURITY_SCOPE §2 Wi-Fi/BLE note).
+5. **Milestone shape.** The family opens as STARK-1001+ behind this seam and is **emulator-verified
+   without physical hardware** (a fake transport injecting spec-derived frame captures), exactly as
+   the V0.3–0.7 radios were; on-air validation is deferred to a V1-style HIL bring-up. The pure
+   dissector tasks (1001–1003) need no hardware and no radio stack at all.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| A new "SoC capability" mechanism distinct from module bits | Unnecessary: IR is already an onboard-declared, driver-confirmed capability. Reusing it keeps one model and one checker |
+| A transmit primitive behind a confirm + policy (as Sub-GHz) | Invites the §3 offensive features into the type. Receive-first is enforced best by **not having** a send path, not by guarding one |
+| Put `esp_wifi` calls in the pure core and `#ifdef` the host build | Breaks ARCHITECTURE §2 layering and ADR-0010's no-build-flag rule; the dissectors would stop being host-testable |
+| One combined `stark_wireless` component for Wi-Fi + BLE | Different radios, stacks, frame formats and lifecycles; two seams + two cores keep each host-testable and independently gated, one cap bit each |
+| Store full captures including EAPOL/credential frames for "completeness" | SECURITY_SCOPE §2/§3: credential material of networks we do not own is dropped, not written. Analysis counts and classifies; it does not harvest |
+
+**Consequences.** `stark_caps.h` will gain two bits (with their confirming drivers, not here).
+ROADMAP's V2 gains a "Wi-Fi / BLE analysis (receive-first)" milestone with exit criteria; TASKS opens
+the `# Wi-Fi/BLE analysis` section (STARK-1001+), the pure dissectors first. SECURITY_SCOPE already
+carries the family (§2) and its exclusions (§3) from ADR-0025; no scope text changes here. No code
+behaviour changes in this ADR's own change set — it is the plan and the seam contract.
+
+**Revisit trigger:** the first on-air bring-up (does the promiscuous seam hold the pure/port line?);
+any analysis feature that cannot be done receive-only (evaluated against SECURITY_SCOPE §3 before it
+becomes a task); or a BLE stack choice (NimBLE vs Bluedroid) that forces a sub-decision (its own ADR).
