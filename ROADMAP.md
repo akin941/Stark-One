@@ -450,12 +450,46 @@ assembly takes < 10 minutes with documented steps.
 
 ---
 
+## Platform — HAL seam & capability matrix (ADR-0025)
+
+**Goal:** one firmware whose features follow the board and architecture, ready to grow a
+second architecture later without a fork. ESP32-S3 stays the only port; this track draws the
+boundary and proves it, it does not port anything new.
+
+**Scope:** generalise the existing port seam (`stark_hal`, `stark_board`, `stark_storage_medium`)
+into a board-neutral hardware interface that also covers radio, network and USB transports;
+make the capability matrix (board flags + ADR-0009 bits) the single source of what a build
+offers; keep every app and core free of per-feature and per-target build flags (ADR-0010).
+No `#ifdef` per feature, no second binary per platform.
+
+**Exit criteria:**
+1. A documented HAL interface list; ESP32-S3 is one port behind it, behaviour unchanged, host
+   tests green.
+2. The capability matrix (board × feature → present/absent) is defined in one place and read by
+   the launcher and the tests; a feature a board lacks is dimmed and unlaunchable, not compiled out.
+3. `grep -ri '#ifdef.*\(WIFI\|STM32\|RP2350\|LINUX\)' components/ apps/ main/` stays empty.
+4. A written note on what a second port (STM32/RP2350/Linux) would add — the seam's open questions —
+   without implementing one. Multi-architecture porting is a later milestone of its own.
+
+---
+
 ## V2 — advanced modules & power optimisation
 
 **Candidate scope (re-prioritised at entry):** power management (backlight dimming,
 light sleep between inputs, battery SoC and runtime estimate), a second module type,
 LVGL re-evaluation (ADR-0005), scripting or macro support, OTA/USB firmware update,
 capture file format tooling on the host, and any V0.x item deferred for time.
+
+**Feature families accepted for V2 (ADR-0025), each within [docs/SECURITY_SCOPE.md](docs/SECURITY_SCOPE.md)
+and built behind a transport seam like the V0.3–0.7 radios (software + emulator first, physical at HIL):**
+* **Wi-Fi / BLE analysis — receive-first.** Scan, snapshot, channel and RSSI survey, packet/frame
+  dissection and logging to the user's own card. Uses the ESP32-S3's own radio. The §3 exclusions
+  stand: no deauthentication, jamming, flooding, beacon spam or evil-portal capture.
+* **125 kHz RFID + 1-Wire — our own tags/devices.** Low-frequency tag read and identification and
+  iButton/1-Wire read, of credentials we own; Proxmark3 is the spec reference. No key recovery,
+  cloning or spoofing of credentials we do not own (§3).
+* **USB-HID ("BadUSB") — our own, consenting machines.** Scripted HID output on a host we own, a
+  deliberate confirmed action. Not covert, not an access-control bypass (§3).
 
 ---
 

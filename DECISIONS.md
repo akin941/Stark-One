@@ -2080,3 +2080,77 @@ changed in a new task and recorded here, never tuned silently.
 **Revisit trigger:** the first bring-up reading of the IR current, an I²C rise time, or MISO
 release; or the V1 PCB schematic (HARDWARE §8), which replaces these breadboard values.
 
+## ADR-0025 — One firmware, many targets: a capability matrix, the HAL seam first, ESP32-S3 the first port; feature scope within the use policy; clean-room-first licensing
+
+**Status:** accepted (2026-11-27). The owner delegated product decisions, asked to absorb the
+feature space of comparable tools (Flipper Zero, Cardputer/Bruce, Wi-Fi Pineapple) into **one
+firmware whose features follow the board and architecture**, and chose each fork below in chat.
+Recorded here rather than taken silently. ADR-0001 (MCU) and ADR-0009 (capability bits) are the
+decided approaches this extends; neither is reversed.
+
+**Context.** The request is "a single piece of software, not a version per platform, where the
+features a board supports are the features it has." STARK ONE is already built this way: one
+ESP-IDF build, `stark_board` capability flags (ARCHITECTURE §6.1), module capability bits and
+`caps_required` gating (ADR-0009), and a pure-core / thin-port split (ARCHITECTURE §2). What the
+request adds is twofold — (a) **other architectures** (STM32, RP2350, a Linux SoC), which today's
+port layer deliberately does not abstract ("it exists so L2 cores and host tests can be built
+without ESP-IDF, not to abstract all of ESP-IDF", ARCHITECTURE §6.2); and (b) **features we do
+not yet have** (Wi-Fi/BLE, 125 kHz RFID, 1-Wire, USB-HID). A single *binary* cannot run on both a
+bare-metal MCU and a Linux SoC; the achievable shape is **one code base, capability-gated, with
+several build targets**, the pure cores unchanged and a thin port + board package per target.
+
+**Decision.**
+1. **The capability matrix is the contract.** A feature is present on a build iff its board/module
+   declares the capability it needs (`stark_board` flags and ADR-0009 bits). No `#ifdef` per
+   feature in app or core code, as ADR-0010 already forbids for the simulator. A feature a target
+   lacks is dimmed and unlaunchable, never compiled out of the shared logic.
+2. **The HAL seam before any new architecture.** The first and prioritised step is to draw a
+   board-neutral hardware interface (the existing `stark_hal`/`stark_board`/`stark_storage_medium`
+   seam, generalised to cover radio, network and USB transports) and keep **ESP32-S3 as the one
+   and only port behind it**. Behaviour does not change; the boundary is made explicit and
+   host-tested. Only after the seam is clean and proven does a second port (STM32/RP2350/Linux)
+   become a milestone of its own. We do **not** start multi-architecture porting now.
+3. **New features are in scope only within `docs/SECURITY_SCOPE.md`.** The accepted families are
+   **Wi-Fi/BLE analysis (receive-first)**, **125 kHz RFID and 1-Wire of our own tags/devices**,
+   and **USB-HID / "BadUSB" on our own, consenting machines**. The use policy's §3 exclusions are
+   unchanged and explicitly rule out the offensive half of the reference tools: **deauthentication,
+   jamming, flooding, beacon spam, evil-portal credential capture, identifier cloning/spoofing**
+   are non-features and a PR implementing one is rejected regardless of quality. SECURITY_SCOPE §2
+   gains the three families with the same receive-first, explicit-confirm, own-devices guardrails
+   the radios already carry.
+4. **Licensing: clean-room first, GPL fallback (non-commercial, educational).** The reference
+   firmwares are copyleft — Flipper Zero and Proxmark3 **GPL-3.0**, Bruce **AGPL-3.0** (and it
+   bundles GPL-3 Flipper code and ST-SLA NFC drivers). We **reimplement protocols from published
+   specifications and our own analysis**, as we did for NEC/RC5/NDEF/CC1101, and do not copy their
+   source. Where a protocol is impractical to reimplement and a GPL implementation is the only
+   sensible route, we **may** vendor it and carry its licence: the project is personal/educational,
+   not a commercial product, so GPL/AGPL obligations are acceptable; each such import is its own ADR
+   naming the source and licence. Permissively-licensed **data** is used directly — the Flipper IR
+   database is CC0-1.0 (`UberGuidoZ/Flipper-IRDB`) / MIT (`flipperdevices/irdb`) and may be imported
+   with attribution.
+5. **Reference, not dependency.** The repos above are read for behaviour and file-format shape
+   (`.sub`/`.ir`/`.nfc` are formats, not code); Proxmark3 is the RFID/NFC reference, ESP32-Marauder
+   the Wi-Fi/BLE **analysis** reference (its own docs note ESP-IDF cannot emit deauth frames, which
+   matches our receive-first rule). None is a build dependency.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| One binary for every architecture | Impossible: an MCU image and a Linux-SoC program are different artifacts. "One code base, many targets" is the real form |
+| Start multi-architecture porting now | The seam is not yet drawn; porting before the boundary is clean means porting a moving target. Seam first, one port, then expand (owner's choice) |
+| Per-platform forks (a Flipper build, a Cardputer build) | Exactly the "a version per platform" the owner ruled out; the capability matrix gives one code base instead |
+| `#ifdef STARK_HAS_WIFI` through app code | Breaks ADR-0010's no-build-flag rule and the single-logic goal; capability gating at run time is the established pattern |
+| Vendor Flipper/Bruce wholesale to move fast | AGPL/GPL entanglement, ST-SLA drivers, and a large unread codebase; clean-room keeps the tree ours and the option open |
+| Add the offensive Wi-Fi suite (deauth, evil portal, beacon spam) | SECURITY_SCOPE §3: non-features, rejected regardless of quality |
+
+**Consequences.** ROADMAP gains a "Platform — HAL seam & capability matrix" track (ESP32-S3 first
+port) and V2's candidate scope names the three feature families with their scope notes. TASKS opens
+the hardware-free seam tasks first (STARK-0901+); each feature family becomes its own milestone when
+reached, built behind a transport seam and emulator-verified like the V0.3–0.7 radios, with physical
+validation deferred to V1/HIL. ARCHITECTURE §6.2's "small port layer" note gains a forward pointer
+here. No code behaviour changes in this ADR's own change set — it is the plan.
+
+**Revisit trigger:** the first non-ESP32 port attempt (does the seam hold?); any reference import
+that cannot be reimplemented from a spec (opens its own licence ADR); or a feature request that
+tests the SECURITY_SCOPE boundary (evaluated against §3 before it becomes a task).

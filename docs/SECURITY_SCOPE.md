@@ -34,6 +34,9 @@ These are designed properly, thoroughly, and to a professional standard:
 | Replay of **our own** recorded signals to **our own** receivers | Test-rig validation |
 | Protocol dissection and documentation of open/published protocols | Research |
 | Self-test, diagnostics, measurement, logging, export | Product quality. The self-test reads and probes our own hardware and writes nothing the user did not ask for: one transient RAM block, the flash read-only, address-only I²C probes of the module ID EEPROM addresses (never a write), one 4 kB temporary file on the card that is deleted again and, on request, a report to the card (`logs/report_NNNN.txt`, 16 kB at most, control characters stripped, no setting value, file content or credential in it). What only the operator can judge is `attested` or `fail`, never `pass`; nothing is sent anywhere (ADR-0023 §8) |
+| Wi-Fi / BLE observation, scanning, RSSI/channel survey, packet & frame dissection (receive-first) | Wireless analysis (ADR-0025). Receive and analyse only: no frame injection of any kind. Logging goes to the user's own card, never the console, and captures never store another network's credential material |
+| 125 kHz RFID read & identification, 1-Wire / iButton read — **of tags and devices we own** | Credential-technology development (ADR-0025). Read and identify only; no key recovery, no cloning or emulation of identifiers we do not own |
+| USB-HID scripted output ("BadUSB") on **a host we own and consent to** | Automation/testing (ADR-0025). A deliberate, confirmed action on our own machine; not covert, not an access-control bypass |
 
 Receive, analyse, measure and document: these are the core of the product and are not
 limited.
@@ -54,6 +57,8 @@ non-features. A pull request implementing one is rejected regardless of quality.
 * Rolling-code attacks, code-grabbing, or "jam and replay" against garage doors,
   vehicles, or any access system.
 * Jamming, deauthentication, flooding, or any denial-of-service transmission.
+* Beacon/SSID flooding or spam, "evil portal"/captive-portal credential capture, and any
+  Wi-Fi/BLE frame **injection** — the offensive half of comparable tools is out of scope (ADR-0025).
 * Brute-force or dictionary transmission of codes toward a receiver we do not own.
 * Bundled databases of third-party codes, keys, or credentials.
 * Covert operation, detection evasion, or anti-forensic features.
