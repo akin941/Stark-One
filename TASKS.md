@@ -6608,6 +6608,13 @@ forced (a new ADR, per hygiene rule 5), `TASKS.md` (this entry).
    its own, gated on the seam being clean (STARK-0901/0902).
 3. No code changes.
 
+**As built.** `docs/PLATFORM.md` §4: what a port must provide, then STM32-H7 / RP2350 / Linux-SoC
+each with what it satisfies natively, what it lacks (ADR-0001's reasons re-read through ADR-0025),
+and the open question it raises (the emulator gate for STM32; "radios as modules" for RP2350; the
+two-processor real-time question for Linux). States plainly no port is started and that each is its
+own milestone, gated on STARK-0901/0902, with its own ADR when a structural choice is forced. No
+ADR was needed here (analysis, not a decision). No code changed.
+
 **Security.** None. **Physical HIL.** None.
 
 ---
