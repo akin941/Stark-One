@@ -6697,6 +6697,18 @@ needs listing, `docs/PLATFORM.md` (the Wi-Fi/BLE core named under the pure cores
 4. Spec-derived vectors (beacon, probe request/response, data, a truncated frame) pass host tests;
    `scripts/check_layers.py` green (no ESP-IDF include); `scripts/test_host.sh` green.
 
+**As built.** `components/stark_wifi/{dot11_frame.c,include/dot11_frame.h,CMakeLists.txt}` (new,
+L2 pure, `REQUIRES stark_err` only). `dot11_parse` fills frame-control (version/type/subtype,
+to/from-DS, retry, protected), the addresses present for the type (mgmt/data: addr1–3 + sequence;
+control: addr1, and addr2 for PS-Poll/RTS/CF-End variants), and for a beacon/probe-response/
+probe-request the tagged section via `dot11_find_ie` (SSID, DS channel, supported rates). Bytes in,
+views out; no allocation, no body parsing, no credential field. Malformed/truncated input returns
+`STARK_ERR_INVALID_ARG` and never over-reads. Host suite `test/host/test_dot11_frame.c` (new, wired
+in `test/host/CMakeLists.txt`): beacon, probe-req, data, ACK/RTS, a deauth classified-not-parsed,
+the IE-walker bounds, every-byte truncation (ASan), and the malformed paths — 97/97 host tests green.
+`scripts/check_layers.py` classes `stark_wifi` L2 (added to its map + ARCHITECTURE §10);
+`docs/PLATFORM.md` names it under the pure cores. No service, transport or app yet (STARK-1004+).
+
 **Security.** None (pure parser; receive-only, no I/O). **Physical HIL.** None.
 
 ## STARK-1002 — BLE advertising PDU dissection core (pure, host-tested)

@@ -589,6 +589,20 @@ foreach(nfc_test ndef pn532_frame pn532 nfc_ident nfc_type2 nfc_reader nfc_poll 
     add_test(NAME stark_${nfc_test}_tests COMMAND run_${nfc_test}_tests)
 endforeach()
 
+# stark_wifi's pure 802.11 dissector (STARK-1001, ADR-0027) against spec-derived
+# vectors. Only the pure core; stark_err.c is not needed (it uses the enum only).
+set(WIFI_CORE_SOURCES ${STARK_COMPONENTS}/stark_wifi/dot11_frame.c)
+set(WIFI_INCLUDES ${STARK_COMPONENTS}/stark_wifi/include)
+foreach(wifi_test dot11_frame)
+    add_executable(run_${wifi_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${wifi_test}.c
+        ${WIFI_CORE_SOURCES})
+    target_include_directories(run_${wifi_test}_tests PRIVATE ${WIFI_INCLUDES})
+    target_compile_options(run_${wifi_test}_tests PRIVATE ${OUR_C_FLAGS})
+    target_link_options(run_${wifi_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+    target_link_libraries(run_${wifi_test}_tests PRIVATE unity)
+    add_test(NAME stark_${wifi_test}_tests COMMAND run_${wifi_test}_tests)
+endforeach()
+
 # storage_core.c is linked only for stark_storage_state_str(); this copy is
 # built without coverage so the state machine's own suite owns its figure.
 add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_core.c)
