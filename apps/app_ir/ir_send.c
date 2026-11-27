@@ -37,15 +37,15 @@ void irsend_confirm(const char *name)
     ir_tx_plan_t plan;
     char what[24];
     char msg[112];
-    snprintf(s_name, sizeof s_name, "%s", name);
+    (void)snprintf(s_name, sizeof s_name, "%s", name);
     if (ir_tx_check(&irapp_work.signal, 0, &plan) != STARK_OK) {
         STARK_LOGW("irapp", "send refused: %s outside the transmit limits", s_name);
         return;
     }
     irapp_describe(&irapp_work.signal, what, sizeof what);
-    snprintf(msg, sizeof msg, "%s, %u Hz, %u pulses, %u ms. Own devices only.", what,
-             (unsigned)irapp_work.signal.carrier_hz, (unsigned)irapp_work.signal.timings.n,
-             (unsigned)plan.total_ms);
+    (void)snprintf(msg, sizeof msg, "%s, %u Hz, %u pulses, %u ms. Own devices only.", what,
+                   (unsigned)irapp_work.signal.carrier_hz, (unsigned)irapp_work.signal.timings.n,
+                   (unsigned)plan.total_ms);
     STARK_LOGI("irapp", "confirm %s: %s", s_name, msg);
     (void)stark_ui_dialog_confirm("Transmit IR?", msg, send_confirmed, NULL);
 }

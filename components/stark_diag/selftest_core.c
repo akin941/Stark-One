@@ -69,7 +69,7 @@ static void record(selftest_t *t, size_t index, stark_selftest_result_t r, const
     size_t i = 0;
     for (; evidence != NULL && evidence[i] != '\0' && i < STARK_SELFTEST_EVIDENCE; i++) {
         unsigned char c = (unsigned char)evidence[i];
-        row->evidence[i] = (c < 0x20u || c == 0x7fu) ? '.' : evidence[i];
+        row->evidence[i] = (char)((c < 0x20u || c == 0x7fu) ? '.' : evidence[i]);
     }
     row->evidence[i] = '\0';
     if (t->in_flight == index) {

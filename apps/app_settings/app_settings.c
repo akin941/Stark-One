@@ -34,7 +34,7 @@ static const char *value_of(size_t index, void *ctx)
     if (d->labels != NULL) {
         return d->labels[v - d->min];
     }
-    snprintf(s_value, sizeof s_value, "%u%%", (unsigned)v);
+    (void)snprintf(s_value, sizeof s_value, "%u%%", (unsigned)v);
     return s_value;
 }
 

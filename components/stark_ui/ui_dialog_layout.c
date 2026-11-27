@@ -55,7 +55,7 @@ void ui_dialog_layout(const gfx_font_t *title_font, const gfx_font_t *body_font,
         message = "";
     }
     const int16_t inset = UI_DIALOG_BORDER + UI_DIALOG_PAD;
-    int16_t w = content.w < UI_DIALOG_W ? content.w : UI_DIALOG_W;
+    int16_t w = (int16_t)(content.w < UI_DIALOG_W ? content.w : UI_DIALOG_W);
     int16_t inner_w = (int16_t)(w - 2 * inset);
 
     int16_t lines = gfx_text_lines(body_font, message, inner_w);

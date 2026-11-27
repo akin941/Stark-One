@@ -231,7 +231,7 @@ size_t stark_lab_uart_ascii_row(const uint8_t *b, size_t n, char *buf, size_t sz
         return 0;
     }
     for (size_t i = 0; i < n && used + 1u < sz; i++) {
-        buf[used++] = (b[i] >= 0x20u && b[i] <= 0x7Eu) ? (char)b[i] : '.';
+        buf[used++] = (char)((b[i] >= 0x20u && b[i] <= 0x7Eu) ? b[i] : (uint8_t)'.');
     }
     buf[used] = '\0';
     return used;
@@ -362,6 +362,7 @@ stark_err_t stark_lab_uart_log_name_next(uint32_t highest, char *buf, size_t n)
         return STARK_ERR_NO_SPACE;
     }
     uint32_t v = highest + 1u;
+    /* NOLINTNEXTLINE(bugprone-not-null-terminated-result): the digits and NUL follow */
     memcpy(buf, "uart_", 5);
     for (size_t i = 0; i < 4u; i++) {
         buf[8u - i] = (char)('0' + (v % 10u));

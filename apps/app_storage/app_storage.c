@@ -36,26 +36,27 @@ static void refresh_status(void)
     switch (state) {
         case STARK_STORAGE_MOUNTED:
             if (stark_storage_space(&space) == STARK_OK) {
-                snprintf(s_status, sizeof s_status, "Mounted, %" PRIu32 " of %" PRIu32 " MB free",
-                         (uint32_t)(space.free_bytes >> 20), (uint32_t)(space.total_bytes >> 20));
+                (void)snprintf(
+                    s_status, sizeof s_status, "Mounted, %" PRIu32 " of %" PRIu32 " MB free",
+                    (uint32_t)(space.free_bytes >> 20), (uint32_t)(space.total_bytes >> 20));
             } else {
-                snprintf(s_status, sizeof s_status, "Mounted");
+                (void)snprintf(s_status, sizeof s_status, "Mounted");
             }
             break;
         case STARK_STORAGE_ABSENT:
-            snprintf(s_status, sizeof s_status, "No card");
+            (void)snprintf(s_status, sizeof s_status, "No card");
             break;
         case STARK_STORAGE_REMOVED:
-            snprintf(s_status, sizeof s_status, "Card removed");
+            (void)snprintf(s_status, sizeof s_status, "Card removed");
             break;
         case STARK_STORAGE_EJECTED:
-            snprintf(s_status, sizeof s_status, "Ejected - safe to remove");
+            (void)snprintf(s_status, sizeof s_status, "Ejected - safe to remove");
             break;
         case STARK_STORAGE_UNUSABLE:
-            snprintf(s_status, sizeof s_status, "Card not usable");
+            (void)snprintf(s_status, sizeof s_status, "Card not usable");
             break;
         case STARK_STORAGE_NOT_FITTED:
-            snprintf(s_status, sizeof s_status, "No card slot");
+            (void)snprintf(s_status, sizeof s_status, "No card slot");
             break;
     }
     STARK_LOGI("storageapp", "status %s", stark_storage_state_str(state));
@@ -96,7 +97,7 @@ static bool storage_event(stark_screen_t *self, const stark_event_t *e)
         return true;
     }
     if (e->type == STARK_EVT_APP_REQUEST && e->app.id == STARK_APP_REQ_NOTIFY) {
-        snprintf(s_wtest, sizeof s_wtest, "Write test  %d%%", (int)e->app.arg);
+        (void)snprintf(s_wtest, sizeof s_wtest, "Write test  %d%%", (int)e->app.arg);
         stark_ui_invalidate(self, stark_ui_content_rect());
         return true;
     }
@@ -107,7 +108,7 @@ static stark_screen_t *storage_screen(void *state)
 {
     (void)state;
     refresh_status();
-    snprintf(s_wtest, sizeof s_wtest, "Write test (100 kB)");
+    (void)snprintf(s_wtest, sizeof s_wtest, "Write test (100 kB)");
     ui_menu_init(&s_menu, "Storage", s_items, sizeof s_items / sizeof s_items[0], activate, NULL);
     s_menu_event = s_menu.screen.on_event;
     s_menu.screen.on_event = storage_event;

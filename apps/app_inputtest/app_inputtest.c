@@ -46,8 +46,9 @@ static void input_render(stark_screen_t *self, gfx_surface_t *s)
     gfx_fill(s, s->clip, STARK_THEME_BG);
     for (int k = 0; k < STARK_KEY_COUNT; k++) {
         char line[48];
-        snprintf(line, sizeof line, "%-6s %-4s %-8s n=%u", k_names[k], s_down[k] ? "DOWN" : "up",
-                 s_last[k] >= 0 ? k_actions[s_last[k]] : "-", s_presses[k]);
+        (void)snprintf(line, sizeof line, "%-6s %-4s %-8s n=%u", k_names[k],
+                       s_down[k] ? "DOWN" : "up", s_last[k] >= 0 ? k_actions[s_last[k]] : "-",
+                       s_presses[k]);
         uint16_t fg = s_down[k] ? STARK_THEME_ACTIVE : STARK_THEME_FG;
         (void)gfx_text(s, &gfx_font_mono16, STARK_THEME_TEXT_X, (int16_t)(ROW_Y(k) + 6), line, fg,
                        STARK_THEME_BG, true);

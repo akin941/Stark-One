@@ -224,10 +224,8 @@ static bool man_read(const subghz_sym_t *sym, size_t m, uint32_t t, bool shifted
         for (unsigned h = dur(sym[i]) > t ? 2u : 1u; h > 0; h--, half++) {
             if (half % 2u == 0u) {
                 first = high;
-            } else if (first == high) {
-                return false;
-            } else if (bits == SUBGHZ_DEC_MAX_BITS) {
-                return false;
+            } else if (first == high || bits == SUBGHZ_DEC_MAX_BITS) {
+                return false; /* not a Manchester cell, or longer than a burst may be */
             } else {
                 put_bit(b->data, bits++, first);
             }

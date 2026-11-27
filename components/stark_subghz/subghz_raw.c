@@ -483,6 +483,6 @@ stark_err_t subghz_name_next(uint32_t highest, char *out, size_t len)
     if (highest >= SUBGHZ_NAME_MAX - 1u) {
         return STARK_ERR_NO_SPACE;
     }
-    (void)snprintf(out, len, "rf_%04lu.rf", (unsigned long)(highest + 1u));
+    (void)snprintf(out, len, "rf_%04u.rf", (unsigned)(highest + 1u));
     return STARK_OK;
 }

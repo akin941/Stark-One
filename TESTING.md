@@ -111,7 +111,7 @@ Run in CI on every commit, and locally via `scripts/check.sh`:
 | Formatting | `clang-format` 18.x (config committed; CI lint pinned to ubuntu-24.04 to match) | `scripts/fmt.sh --check` must produce no diff |
 | Layer rules | `scripts/check_layers.py` | Component `REQUIRES` must respect the layer table and allowlist in ARCHITECTURE §10 (STARK-0100) |
 | Pin-map consistency | `scripts/check_pins.py` | `diagram.json` connections must match `stark_board` pins |
-| Static analysis | `clang-tidy` (bugprone-*, cert-*, readability-* subset) over `stark_*` sources | Findings fail CI; suppressions require an inline reason comment — **not yet active** (TASKS.md infrastructure debt register) |
+| Static analysis | `clang-tidy` (bugprone-*, cert-*, readability-* subset) over the pure cores, via `scripts/tidy.sh` in the lint job | Findings fail CI; a suppression is `/* NOLINTNEXTLINE(<check>): <reason> */` — the check named and a reason given, never a bare `NOLINT` (ADR-0026, STARK-0808). The disabled families and why are in `.clang-tidy` |
 | Secrets | `gitleaks` | Any hit fails; no exceptions |
 | Binary size | `idf.py size` recorded per build | Recorded per build; the ±10 % regression flag in the PR is **not yet active** (TASKS.md infrastructure debt register) — sizes are tracked in `docs/measurements.md` |
 | Dependency lock | `dependencies.lock` committed | CI fails if `idf.py build` modifies it |
@@ -322,10 +322,12 @@ hardware and must be documented as such in the test file.
 named task or the TASKS.md infrastructure debt register):
 
 ```
-lint      (ubuntu-latest, ~30 s)
+lint      (ubuntu-24.04, ~1-2 min)
   ├─ clang-format --check        (scripts/fmt.sh --check)
+  ├─ clang-tidy                  (scripts/tidy.sh, pure cores; ADR-0026)
   ├─ check_layers.py
   ├─ check_pins.py
+  ├─ check_caps.py               (capability matrix + no feature/target #ifdef; ADR-0025)
   ├─ script unit tests           (emulator harness, check_emu_image, shard partition, Wokwi gate)
   └─ gitleaks
 
@@ -366,7 +368,6 @@ wokwi.yml — OPTIONAL, never required (ADR-0017): manual dispatch or `wokwi` PR
   ├─ scripts/wokwi_gate.py       (runtime-relevant change set? else "not applicable")
   └─ scripts/test_wokwi.sh
 
-clang-tidy on stark_*            (planned: debt register)
 ```
 
 Merge rule: the mandatory, free jobs — `lint`, `firmware`, `host` (both OSes),

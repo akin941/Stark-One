@@ -1455,8 +1455,12 @@ a gate; none blocks V0.1.
 
 | Item | Where promised | Why not in V0.1 |
 | --- | --- | --- |
-| `clang-tidy` (bugprone/cert/readability subset) over `stark_*`, failing CI | TESTING.md §3, §7 | Needs a compile database clang can digest for Xtensa GCC flags, or a host-side run over pure sources only; a scoped decision of its own |
 | Binary-size regression flag (±10 %) and size report as a PR comment | TESTING.md §3, §7 | Needs a stored baseline and PR-comment permissions; sizes are recorded manually in `docs/measurements.md` meanwhile |
+
+Resolved (STARK-0808, ADR-0026): `clang-tidy` (bugprone/cert/readability subset) over the pure
+cores runs in the lint job via `scripts/tidy.sh` — the host build's own compile database gives it
+the right flags for exactly the cores, so no Xtensa database was needed; findings fail CI and a
+suppression names its check with a reason.
 
 Resolved while planning V0.1: the `wokwi` job spent simulator minutes on documentation-only
 change sets and failed once the monthly quota ran out. It now always runs but invokes
@@ -6519,6 +6523,40 @@ captures by script instead of by hand, from the same lines the emulator gates re
 5. No firmware, limit or gate changes; no V1 exit is claimed.
 
 **Security.** None. **Physical HIL.** Its input is v1-core.md's captures; nothing is claimed.
+
+## STARK-0808 — Activate `clang-tidy` over the pure cores (resolve the debt register item)
+
+**Goal.** Turn on the static-analysis gate TESTING §3 promised but left "not yet active". Run
+`clang-tidy` (bugprone/cert/readability subset) over the host-compilable pure cores in the lint
+job, fix the tree's findings, and hold new code to the bar. ADR-0026 records the scope and the
+suppression rule.
+
+**Files.** `.clang-tidy` (new), `scripts/tidy.sh` (new), `.github/workflows/ci.yml` (lint step),
+`DECISIONS.md` (ADR-0026), `TESTING.md` §3 and the CI pipeline diagram, `TASKS.md` (debt register
++ this entry), `.gitignore` (`build-tidy/`), and the source fixes the first clean run requires.
+
+**Deps.** None. **Tests.** The lint-job run is the gate; `scripts/check.sh` stays green.
+
+**AC.**
+1. `scripts/tidy.sh` derives the file list and flags from the host build's `compile_commands.json`
+   (the pure cores only; `--list` shows cores vs ports) and runs `clang-tidy` with `.clang-tidy`.
+2. `.clang-tidy` enables `bugprone-*`, `cert-*`, `readability-*` minus the families that encode
+   house style or the LP64/ILP32 mismatch, each disabled with its reason; `WarningsAsErrors: '*'`.
+3. Findings are fixed, or suppressed as `/* NOLINTNEXTLINE(<check>): <reason> */` — never a bare
+   `NOLINT`. The tree is clean: `scripts/tidy.sh` exits 0.
+4. The lint job installs and runs it; a finding fails CI. The debt register entry is marked resolved.
+5. No firmware behaviour change — the fixes are `(void)` on ignored returns, reasoned suppressions,
+   two removed redundant declarations, and parameter-name / `sizeof` tidies; build + emulator green.
+
+**As built.** `.clang-tidy` + `scripts/tidy.sh` (one `compile_commands.json` entry per source,
+`-n 1` so each file is checked once); lint installs `clang-tidy` and runs `tidy.sh`. Tree findings
+fixed: 42 `(void)snprintf`, `NOLINTNEXTLINE` with reasons on NDEF/UART `memcpy` and the POSIX
+feature macro, two redundant `stark_storage_request_*` declarations removed, an `irapp_describe` /
+`subghz_svc_tx` / `stark_app_init` parameter-name alignment, an `app_manager` pointer-array
+`sizeof` cast, and a few readability tidies. TESTING §3 and the pipeline diagram updated; debt
+register entry resolved. No behaviour change.
+
+**Security.** None. **Physical HIL.** None.
 
 ---
 

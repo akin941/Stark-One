@@ -75,7 +75,7 @@ static void display_render(stark_screen_t *self, gfx_surface_t *s)
     (void)gfx_text(s, &gfx_font_mono10, tx, (int16_t)(c.y + DT_SAMPLE10_DY), DT_SAMPLE_UTF8,
                    STARK_THEME_FG, STARK_THEME_BG, true);
     char fps[24];
-    snprintf(fps, sizeof fps, "FPS %u.%u", s_fps_x10 / 10, s_fps_x10 % 10);
+    (void)snprintf(fps, sizeof fps, "FPS %u.%u", s_fps_x10 / 10, s_fps_x10 % 10);
     (void)gfx_text(s, &gfx_font_mono16, tx, (int16_t)(c.y + DT_FPS_DY), fps, STARK_THEME_ACTIVE,
                    STARK_THEME_BG, true);
 

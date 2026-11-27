@@ -23,7 +23,8 @@ static uint32_t next_cp(const char **p)
     if (cp < 0x80u) {
         *p += 1;
         return cp;
-    } else if ((cp & 0xE0u) == 0xC0u) {
+    }
+    if ((cp & 0xE0u) == 0xC0u) {
         extra = 1;
         cp &= 0x1Fu;
         min = 0x80u;

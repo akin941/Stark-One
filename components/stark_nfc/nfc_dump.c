@@ -249,6 +249,6 @@ stark_err_t nfc_dump_name_next(uint32_t highest, char *out, size_t len)
     if (highest + 1 >= NFC_DUMP_NAME_MAX) {
         return STARK_ERR_NO_SPACE;
     }
-    snprintf(out, len, "nfc_%04u.nfc", (unsigned)(highest + 1));
+    (void)snprintf(out, len, "nfc_%04u.nfc", (unsigned)(highest + 1));
     return STARK_OK;
 }
