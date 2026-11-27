@@ -14,6 +14,7 @@
 #include "stark_lab.h"
 #include "stark_nfc.h"
 #include "stark_subghz.h"
+#include "stark_wifi.h"
 #include "stark_settings.h"
 #include "stark_storage.h"
 #include "settings_apply.h"
@@ -207,5 +208,12 @@ void app_main(void)
     err = stark_subghz_init();
     if (err != STARK_OK) {
         STARK_LOGE("boot", "subghz init failed: %s", stark_err_str(err));
+    }
+
+    /* Not boot-critical: the task is dormant until the analysis app brings the
+     * radio up (STARK-1005, ADR-0028); it never touches the radio at boot. */
+    err = stark_wifi_init();
+    if (err != STARK_OK) {
+        STARK_LOGE("boot", "wifi init failed: %s", stark_err_str(err));
     }
 }

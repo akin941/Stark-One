@@ -60,6 +60,7 @@ idf_component_register(
         stark_settings
         stark_storage
         stark_subghz
+        stark_wifi
         stark_ui
         app_update
         spi_flash

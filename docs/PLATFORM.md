@@ -54,6 +54,7 @@ grep -rlE '#include[ ]+[<"](driver/|esp_|freertos/|hal/|soc/|nvs|sdmmc|esp_priva
 | Module bus: enumeration, SPI/CS arbitration, I²C ID EEPROM | `stark_module/stark_module.c`, `stark_module/stark_module_spi.c`, `stark_module_transport/module_transport_i2c.c` |
 | Sub-GHz service + hardware transport | `stark_subghz/stark_subghz.c`, `stark_subghz_transport/subghz_transport_hw.c` |
 | Lab tools: service + I²C/UART transports | `stark_lab/stark_lab.c`, `stark_lab_transport/lab_transport_i2c.c`, `stark_lab_transport/lab_transport_uart.c` |
+| Wi-Fi analysis service + esp_wifi promiscuous port (receive-only, lazy) | `stark_wifi/stark_wifi.c`, `stark_wifi_transport/wifi_transport.c` |
 | Composition root, settings appliers, target self-test | `main/stark_main.c`, `main/settings_apply.c`, `main/selftest_target.c` |
 | About / Hello apps (firmware description) | `apps/app_about/app_about.c`, `apps/app_hello/app_hello.c` |
 

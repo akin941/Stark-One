@@ -55,11 +55,14 @@ LAYERS = {
     # transport reads stark_module's table for its pin guard, so like the CC1101's it is L3.
     "stark_lab": 3,
     "stark_lab_transport": 3,
-    # L2 pure 802.11 dissector (STARK-1001, ADR-0027). The esp_wifi promiscuous
-    # transport and the service task arrive at STARK-1004 (a separate component).
-    "stark_wifi": 2,
+    # L2 pure cores (dissector/survey/wifi_svc, STARK-1001…1004) + the L3 service
+    # task stark_wifi.c (STARK-1005, ADR-0028), which binds them to the transport.
+    "stark_wifi": 3,
+    # The esp_wifi promiscuous port (STARK-1005, ADR-0027/0028): the only esp_wifi
+    # caller, receive-only. A plain L1 hardware port (no stark_module lease).
+    "stark_wifi_transport": 1,
     # L2 pure BLE advertising-PDU dissector (STARK-1002, ADR-0027). The
-    # BLE-controller observer transport and service arrive at STARK-1005.
+    # BLE-controller observer transport and service arrive at STARK-1006.
     "stark_ble": 2,
     "stark_ui": 4,
     "stark_app": 4,
@@ -77,6 +80,7 @@ SIDEWAYS = {
     ("stark_ir", "stark_event"),  # capture / transmit events (STARK-0303)
     ("stark_nfc", "stark_event"),  # tag / module events (STARK-0403)
     ("stark_module", "stark_event"),  # table and capability changes (STARK-0502)
+    ("stark_wifi", "stark_event"),  # radio up/down events (STARK-1005)
     ("stark_subghz", "stark_event"),  # module events (STARK-0601)
     ("stark_subghz", "stark_module"),  # claims the slot that declares a radio (STARK-0601)
     ("stark_subghz", "stark_subghz_transport"),  # the chip's wires (STARK-0601)

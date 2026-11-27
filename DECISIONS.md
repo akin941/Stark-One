@@ -2280,3 +2280,61 @@ behaviour changes in this ADR's own change set — it is the plan and the seam c
 **Revisit trigger:** the first on-air bring-up (does the promiscuous seam hold the pure/port line?);
 any analysis feature that cannot be done receive-only (evaluated against SECURITY_SCOPE §3 before it
 becomes a task); or a BLE stack choice (NimBLE vs Bluedroid) that forces a sub-decision (its own ADR).
+
+## ADR-0028 — The onboard Wi-Fi/BLE radios come up lazily, driven by the analysis app; the RF path never runs at boot
+
+**Status:** accepted (2026-11-27). Refines ADR-0027 decisions 1 and 5 as the Wi-Fi transport is
+built (STARK-1005). A product/architecture decision delegated to the implementer; recorded rather
+than taken silently. Reverses nothing in ADR-0027 — receive-first by construction and the
+transport-seam split stand.
+
+**Context.** ADR-0027 said `STARK_CAP_WIFI` is "confirmed only when esp_wifi comes up" and left open
+*when* the radio comes up. Building it surfaces three facts the plan did not weigh:
+1. **esp-emu 0.44.0 models no RF** (DECISIONS.md ADR-0017/0019/0022: "RF and analogue behaviour are
+   not modelled"). The Sub-GHz service already keeps its RF path out of the emulator by never opening
+   the transport there (no module declares a radio). The onboard Wi-Fi radio has no such natural gate
+   — a service that brings `esp_wifi` up at boot would run the unmodelled RF path in **every**
+   production emulator scene, where its behaviour (hang, fault, or error) is undefined.
+2. **ADR-0010 forbids an emulator conditional** (`#ifdef WOKWI`/emu in app or core). So "skip the
+   radio in the emulator" is not available; the same binary must boot cleanly in the emulator and on
+   silicon.
+3. **Confirming `STARK_CAP_WIFI` at boot would ripple into ~28 scene assertions.** Eleven emulator
+   scenes assert the exact `module: caps 0x…` mask; a boot-time Wi-Fi confirm changes every one.
+
+**Decision.**
+1. **The radio comes up lazily, not at boot.** `stark_wifi_init()` starts the service task but leaves
+   the radio down. The RF path (`stark_wifi_transport_open` → `esp_wifi`) runs only when the Wi-Fi
+   analysis app calls `stark_wifi_start()` on entry, and `stark_wifi_stop()` closes it on exit. No
+   code path brings the radio up at boot, so no production emulator scene ever exercises the
+   unmodelled RF — the same property the Sub-GHz service has, reached the same way (open only on
+   demand), with no emulator conditional.
+2. **`STARK_CAP_WIFI` and the app's capability gate land with the app (STARK-1007), not here.** Since
+   the radio is not up at boot, the capability is neither declared nor confirmed in STARK-1005, so the
+   caps mask — and every scene that asserts it — is unchanged by the transport/service work. The bit,
+   the onboard declaration and the confirm (on `stark_wifi_start` succeeding) arrive with the app that
+   needs them.
+3. **The emulator exercises the pump through the app, not at boot.** The full receive pump
+   (fake transport → dissector → survey) is verified in the emulator by the app's scan scene
+   (STARK-1007), which triggers `stark_wifi_start`; the storage image substitutes the transport with
+   a fake. STARK-1005 is verified by: the firmware compiling the `esp_wifi` seam, the production
+   emulator scenes still booting unchanged (the radio stays down), and the pure pump already
+   host-tested (`wifi_svc`, STARK-1004).
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| Bring the radio up at boot, confirm `STARK_CAP_WIFI` there | Runs the unmodelled RF path in every production emu scene (undefined), and rewrites ~28 scene caps assertions |
+| `#ifdef`-skip the radio in the emulator | ADR-0010: no emulator conditionals in app or core code |
+| Keep the radio down but confirm `STARK_CAP_WIFI` at boot as a board fact | Decouples "capable" from "radio up" cleanly, but still ripples the caps mask into every scene; deferred until a second board makes the board-flag gate worth its churn |
+| Bundle transport + service + capability + app + emu scan into one task | The emu pump needs the app as its trigger (lazy bring-up); splitting the app out keeps each PR verifiable and the RF path out of boot |
+
+**Consequences.** STARK-1005 ships the `esp_wifi` transport seam + the lazy service, firmware-built
+and verified not to disturb the production emulator; it adds no capability bit and no scene changes.
+STARK-1007 (the app) adds `STARK_CAP_WIFI`, the onboard declaration/confirm on `stark_wifi_start`, the
+capability gate and the emulator scan scene. On-air receive is HIL-deferred (ADR-0027 dec 5 stands).
+
+**Revisit trigger:** a second board without onboard Wi-Fi (makes a board-flag launch gate worth its
+scene churn); an esp-emu release that models Wi-Fi (the RF path could then run in the emulator); or
+the BLE radio (STARK-1006) raising the same bring-up question — it follows this ADR unless NimBLE vs
+Bluedroid forces a sub-decision of its own.

@@ -1422,10 +1422,10 @@ to set differently (ADR-0010).
   | --- | --- |
   | universal | `stark_err` (any layer may require it; it requires nothing) |
   | L0 | `stark_board` |
-  | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018), `stark_nfc_transport` (the PN532's I²C port, ADR-0020), `stark_module_transport` (ID EEPROMs' I²C port, ADR-0021) |
+  | L1 | `stark_hal`, `stark_log`, `stark_storage_medium` (the SD port, ADR-0018), `stark_nfc_transport` (the PN532's I²C port, ADR-0020), `stark_module_transport` (ID EEPROMs' I²C port, ADR-0021), `stark_wifi_transport` (the esp_wifi promiscuous port, receive-only, ADR-0027/0028) |
   | (L3, a port) | `stark_subghz_transport` (the CC1101's SPI and GDO port, ADR-0022) and `stark_lab_transport` (the lab's pad, I²C, SPI and UART port, ADR-0023): hardware ports like the three above, but they use `stark_module`'s lease, SPI device or table, so they are classed L3 and reach `stark_module` over a same-layer edge |
-  | L2 | `stark_gfx` (surfaces, primitives, text), `stark_wifi` (the pure 802.11 frame dissector, STARK-1001/ADR-0027; its `esp_wifi` transport and service arrive at STARK-1004) and `stark_ble` (the pure BLE advertising-PDU dissector, STARK-1002/ADR-0027; its BLE-controller transport and service arrive at STARK-1005) — the all-pure components |
-  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port), `stark_nfc` (L2 NFC core + L3 PN532 task), `stark_module` (L2 descriptor and discovery core + L3 task), `stark_subghz` (L2 register, driver and service cores + L3 task), `stark_lab` (L2 pad cores + L3 service, STARK-0701) |
+  | L2 | `stark_gfx` (surfaces, primitives, text) and `stark_ble` (the pure BLE advertising-PDU dissector, STARK-1002/ADR-0027; its BLE-controller transport and service arrive at STARK-1006) — the all-pure components |
+  | L3 | `stark_event`, `stark_input` (each an L2 core plus an L3 port), `stark_display`, `stark_buzzer`, `stark_diag`, `stark_storage` (L2 core + L3 task), `stark_settings` (L2 core + L3 NVS port), `stark_ir` (L2 codec core + L3 RMT port), `stark_nfc` (L2 NFC core + L3 PN532 task), `stark_module` (L2 descriptor and discovery core + L3 task), `stark_subghz` (L2 register, driver and service cores + L3 task), `stark_lab` (L2 pad cores + L3 service, STARK-0701), `stark_wifi` (L2 dissector/survey/wifi_svc cores + L3 service task, STARK-1001…1005/ADR-0028) |
   | L4 | `stark_ui`, `stark_app` |
   | L5 | every `apps/app_*` |
   | root | `main` — the composition root, may require anything |
@@ -1443,7 +1443,9 @@ to set differently (ADR-0010).
   `stark_subghz_transport → stark_module` (the lease and SPI device), all STARK-0601, and
   `stark_lab → stark_event` (offer-change events), `stark_lab → stark_module` (the table that
   decides which slot pins are offered), `stark_lab → stark_lab_transport` (the pads' wires) and
-  `stark_lab_transport → stark_module` (its pin guard reads the table), all STARK-0701; the I²C group adds none
+  `stark_lab_transport → stark_module` (its pin guard reads the table), all STARK-0701;
+  `stark_wifi → stark_event` (radio up/down events, STARK-1005) and `stark_wifi → stark_wifi_transport`
+  (the esp_wifi port, a downward L3→L1 edge, needs no allowlist entry); the I²C group adds none
   (`esp_driver_i2c` is a platform component), the SPI group adds none (it uses `stark_module`'s lease and SPI device, an edge
   the transport already has), and `apps/app_spi → stark_module` follows `STARK_SYS_MODULE` like `app_modules` (STARK-0706). Pure
   components (`stark_err`, `stark_gfx`) require no platform component. A new component,
