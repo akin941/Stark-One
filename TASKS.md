@@ -6790,39 +6790,80 @@ transport, service or app yet (STARK-1004+).
 
 **Security.** None. **Physical HIL.** None.
 
-## STARK-1004 — Wi-Fi transport seam, STARK_CAP_WIFI, fake + emulator
+## STARK-1004 — Wi-Fi analysis step (wifi_svc), pure core (host-tested)
 
-**Goal.** `components/stark_wifi_transport` is the only code that calls `esp_wifi`: open, set channel,
-start promiscuous RX, take frames into the STARK-1001 core, stop. **No transmit/inject function in the
-API** (ADR-0027 §3). `STARK_CAP_WIFI` (bit 6) is declared onboard and confirmed only when
-`esp_wifi` comes up. A fake transport injects spec-derived frame captures for host and emulator.
+**Goal.** The pure, host-testable heart of the Wi-Fi service: fold one received frame (bytes + RSSI +
+channel) into the survey and the capture ring. Composes the 1001 dissector and the 1003 survey so the
+target service (STARK-1005) is a thin pump with no decisions of its own. No ESP-IDF, no I/O.
 
-**Layers.** L1 `components/stark_wifi_transport` (production: `esp_wifi` promiscuous); L3
-`components/stark_wifi/stark_wifi.c` (task: pumps frames into the survey, publishes events);
-root `main/module_bridge.c` (declare onboard + confirm). L2 cores from 1001/1003 unchanged.
+**Layers.** L2 only: `components/stark_wifi/wifi_svc.c` (added to the existing pure `stark_wifi`
+component). The host test build is the only caller; the transport and the service task arrive at
+STARK-1005.
 
-**Files.** `components/stark_module/include/stark_caps.h` (bit 6 + `STARK_CAPS_KNOWN`),
-`components/stark_wifi_transport/*`, `components/stark_wifi/stark_wifi.c` + header,
-`main/{module_bridge.c,stark_main.c,CMakeLists.txt,Kconfig.projbuild}`,
-`test/fake/{fake_wifi.c,fake_wifi.h}`, `test/emu/storage_image/components/stark_wifi_transport/*`,
-`test/emu/*.toml` (a Wi-Fi scan scene), `scripts/{check_emu_image.py,test_emu.py,check_caps.py}`,
-`test/host/*`, `docs/PLATFORM.md`, `ARCHITECTURE.md` (§6), `TASKS.md` (this entry).
+**Files.** `components/stark_wifi/{wifi_svc.c,include/wifi_svc.h,CMakeLists.txt}`,
+`test/host/{test_wifi_svc.c,CMakeLists.txt}`, `docs/PLATFORM.md`, `TASKS.md` (this entry).
 
 **Deps.** STARK-1001, STARK-1003.
 
 **AC.**
-1. The transport API is open/set-channel/start-rx/take/stop only; `grep -rn` finds no transmit,
-   inject, deauth or beacon symbol in the tree. `check_caps.py` passes with the new bit used by the app.
+1. `wifi_svc_on_frame(s, buf, len, rssi, channel)` dissects the frame and folds it into the survey
+   (preferring a beacon's DS channel, else the radio channel) and the capture ring; a malformed frame
+   or a channel outside 1..14 is dropped without touching the aggregates and returns `STARK_ERR_INVALID_ARG`.
+2. No frame body is retained — only the capture summary fields (SECURITY_SCOPE §2).
+3. Spec-derived vectors (a beacon counted, a data frame on the radio channel, the reject paths) pass
+   host tests; `scripts/check_layers.py` green (no ESP-IDF include); `scripts/test_host.sh` green.
+
+**As built.** `components/stark_wifi/{wifi_svc.c,include/wifi_svc.h}` (added to the pure L2
+`stark_wifi` component). `wifi_svc_t` holds a `wifi_survey_t` + `wifi_capture_t`; `wifi_svc_on_frame`
+runs `dot11_parse` → `survey_set_channel`/`survey_add` → `capture_push`, dropping a malformed frame or
+an out-of-range channel with `STARK_ERR_INVALID_ARG` and recording only the summary (no body). Host
+suite `test/host/test_wifi_svc.c` (new, wired in `test/host/CMakeLists.txt`): a beacon counted on its
+DS channel, a data frame bucketed on the radio channel, and the reject paths — 100/100 host tests
+green. `stark_wifi` stays L2 pure (no new ESP-IDF). No capability bit, transport, service or app yet
+(STARK-1005+).
+
+**Security.** None (pure composition of host-tested cores). **Physical HIL.** None.
+
+## STARK-1005 — Wi-Fi radio: esp_wifi transport, service, STARK_CAP_WIFI, fake + emulator
+
+**Goal.** `components/stark_wifi_transport` is the only code that calls `esp_wifi`: open, set channel,
+promiscuous RX, take frames, stop. **No transmit/inject function in the API** (ADR-0027 §3).
+`components/stark_wifi/stark_wifi.c` is the service task that pumps the transport into `wifi_svc`
+(STARK-1004) and publishes events. `STARK_CAP_WIFI` (bit 6) is declared onboard and confirmed only
+when `esp_wifi` comes up. A fake transport injects spec-derived frames for the emulator; the service
+degrades gracefully (WIFI unconfirmed, no hang) when the radio does not initialise, so the production
+emulator scenes still boot.
+
+**Layers.** L1 `components/stark_wifi_transport` (production: `esp_wifi` promiscuous); the service
+`stark_wifi.c` makes `stark_wifi` an L3 component (its pure cores unchanged); root
+`main/module_bridge.c` (declare onboard + confirm).
+
+**Files.** `components/stark_module/include/stark_caps.h` (bit 6 + `STARK_CAPS_KNOWN`;
+`test/host/test_module_core.c` + the fake catalog follow the new frontier bit),
+`components/stark_wifi_transport/*`, `components/stark_wifi/{stark_wifi.c,include/stark_wifi.h,CMakeLists.txt}`,
+`main/{module_bridge.c,stark_main.c,CMakeLists.txt,Kconfig.projbuild}`,
+`test/emu/storage_image/components/stark_wifi_transport/*`, `test/fake/fake_wifi*`,
+`test/emu/*.toml` (a Wi-Fi scan scene), `scripts/{check_emu_image.py,test_emu.py,check_layers.py}`,
+`docs/PLATFORM.md`, `ARCHITECTURE.md` (§6, §7, §10), `TASKS.md` (this entry).
+
+**Deps.** STARK-1004.
+
+**AC.**
+1. The transport API is open/set-channel/rx/stop only; `grep -rn` finds no transmit, inject, deauth
+   or beacon symbol in the tree. `STARK_CAP_WIFI` is defined and in `STARK_CAPS_KNOWN`; `check_caps.py`
+   passes.
 2. `STARK_CAP_WIFI` is confirmed only when the radio initialises; absent otherwise, with a logged
-   reason. The emulator substitutes the seam with the fake and a scan scene drives the survey.
-3. Captures/log go to `logs/…` on the card, never the console; no credential material stored.
+   reason, and the boot is unaffected. The emulator substitutes the seam with the fake and a scan
+   scene drives the survey (a frame counted); the production scenes still boot.
+3. Survey summaries may be logged (aggregate counts only); captures go to `logs/…` on the card, never
+   the console; no credential material stored.
 4. `test_host.sh`, `test_emu.sh`, `idf.py build` (zero warnings), `check_layers.py`, `check_caps.py`
    all green.
 
 **Security.** Receive-only onboard radio; no transmit path exists (ADR-0027 §3). **Physical HIL.**
 Deferred — on-air validation is a later HIL step; this task is emulator-verified.
 
-## STARK-1005 — BLE observer transport seam, STARK_CAP_BLE, fake + emulator
+## STARK-1006 — BLE observer transport seam, STARK_CAP_BLE, fake + emulator
 
 **Goal.** `components/stark_ble_transport` is the only BLE-controller caller: passive **observer**
 scan, advertising reports into the STARK-1002 core, stop. No advertising/transmit API. `STARK_CAP_BLE`
@@ -6850,21 +6891,21 @@ scan, advertising reports into the STARK-1002 core, stop. No advertising/transmi
 
 **Security.** Receive-only observer; no advertise/transmit path. **Physical HIL.** Deferred.
 
-## STARK-1006 — the Wi-Fi/BLE analysis app
+## STARK-1007 — the Wi-Fi/BLE analysis app
 
 **Goal.** One app that presents the survey and dissection: a channel/RSSI survey view, an AP/device
 list, a frame/advert detail view, and capture-to-card. `caps_required` names `STARK_CAP_WIFI`; the
 BLE view is gated on `STARK_CAP_BLE`. Receive-first: the app has no transmit control because the
 transports expose none.
 
-**Layers.** L4 `apps/app_wifi` (views + the app descriptor), consuming the 1001–1003 cores and the
-1004/1005 services. No new port code.
+**Layers.** L4 `apps/app_wifi` (views + the app descriptor), consuming the 1001–1004 cores and the
+1005/1006 services. No new port code.
 
 **Files.** `apps/app_wifi/*`, `main/{app_manager.c,CMakeLists.txt}` (register + `caps_required`),
 `test/host/*` (view-model tests where pure), `test/emu/*.toml` (the app reachable under the scan
 scene), `docs/PLATFORM.md` (the matrix row), `TASKS.md` (this entry).
 
-**Deps.** STARK-1004 (and STARK-1005 for the BLE view).
+**Deps.** STARK-1005 (and STARK-1006 for the BLE view).
 
 **AC.**
 1. The app launches only when `STARK_CAP_WIFI` is confirmed; dimmed and unlaunchable otherwise

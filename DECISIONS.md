@@ -2230,9 +2230,10 @@ rule.
    respective driver brings the radio up (`esp_wifi` / the BLE controller init succeeds). This reuses
    the existing model unchanged (a descriptor declares, a driver confirms, only a confirmed bit
    satisfies `caps_required`, ADR-0021); no new capability mechanism is introduced for "SoC
-   features". The bits land with their confirming driver (STARK-1004/1005), not in this planning
-   change, so `check_caps.py`'s "every defined bit is used, every used bit is defined" invariant
-   holds at every commit.
+   features". The bits land with their confirming driver (the Wi-Fi/BLE radio tasks), not in a
+   planning or pure-core change, so `check_caps.py`'s invariant — every bit an app names in
+   `caps_required` is a defined bit, and `STARK_CAPS_KNOWN` equals the defined bits — holds at
+   every commit.
 2. **The transport seam is the only code that calls the radio stack.** `components/stark_wifi_transport`
    (and, separately, `components/stark_ble_transport`) hold every `esp_wifi` / BLE-controller call —
    promiscuous-mode receive, channel set, the RX callback that hands raw frames to the pure core.

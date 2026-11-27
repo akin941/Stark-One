@@ -595,7 +595,9 @@ endforeach()
 set(WIFI_INCLUDES ${STARK_COMPONENTS}/stark_wifi/include)
 set(WIFI_SRC_dot11_frame ${STARK_COMPONENTS}/stark_wifi/dot11_frame.c)
 set(WIFI_SRC_wifi_survey ${STARK_COMPONENTS}/stark_wifi/survey.c)
-foreach(wifi_test dot11_frame wifi_survey)
+set(WIFI_SRC_wifi_svc ${STARK_COMPONENTS}/stark_wifi/wifi_svc.c
+    ${STARK_COMPONENTS}/stark_wifi/dot11_frame.c ${STARK_COMPONENTS}/stark_wifi/survey.c)
+foreach(wifi_test dot11_frame wifi_survey wifi_svc)
     add_executable(run_${wifi_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${wifi_test}.c
         ${WIFI_SRC_${wifi_test}})
     target_include_directories(run_${wifi_test}_tests PRIVATE ${WIFI_INCLUDES})
