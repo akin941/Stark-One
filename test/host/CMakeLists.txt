@@ -603,6 +603,20 @@ foreach(wifi_test dot11_frame)
     add_test(NAME stark_${wifi_test}_tests COMMAND run_${wifi_test}_tests)
 endforeach()
 
+# stark_ble's pure advertising-PDU dissector (STARK-1002, ADR-0027) against
+# spec-derived vectors. Only the pure core; stark_err.c is not needed (enum only).
+set(BLE_CORE_SOURCES ${STARK_COMPONENTS}/stark_ble/ble_adv.c)
+set(BLE_INCLUDES ${STARK_COMPONENTS}/stark_ble/include)
+foreach(ble_test ble_adv)
+    add_executable(run_${ble_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${ble_test}.c
+        ${BLE_CORE_SOURCES})
+    target_include_directories(run_${ble_test}_tests PRIVATE ${BLE_INCLUDES})
+    target_compile_options(run_${ble_test}_tests PRIVATE ${OUR_C_FLAGS})
+    target_link_options(run_${ble_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})
+    target_link_libraries(run_${ble_test}_tests PRIVATE unity)
+    add_test(NAME stark_${ble_test}_tests COMMAND run_${ble_test}_tests)
+endforeach()
+
 # storage_core.c is linked only for stark_storage_state_str(); this copy is
 # built without coverage so the state machine's own suite owns its figure.
 add_library(storage_core_nocov OBJECT ${STARK_COMPONENTS}/stark_storage/storage_core.c)
