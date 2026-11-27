@@ -6774,6 +6774,20 @@ credential bytes) with a documented on-card log line format. Pure; the transport
 3. No allocation after init; bounds hold under a long vector run (host test).
 4. `test_host.sh` green; `check_layers.py` green.
 
+**As built.** `components/stark_wifi/{survey.c,include/survey.h}` (added to the existing L2 pure
+`stark_wifi` component). `survey_add` folds a `dot11_frame_t` at an RSSI into a per-channel bucket
+(2.4 GHz channels 1–14: frame count, RSSI min/max/last), resolving the channel from the frame's DS
+parameter or, lacking one, the current radio channel (`survey_set_channel`); an unresolvable channel
+returns `STARK_ERR_INVALID_ARG` and writes nothing. Distinct BSSIDs (addr3) are tracked in a bounded
+32-entry table. `wifi_capture_t` is a fixed 64-entry ring that overwrites oldest-first and stores
+only summaries (channel/type/subtype/RSSI/BSSID/seq — never a body or credential bytes).
+`capture_format` writes the documented log line `ch=<n> t=<t>/<s> rssi=<dbm> bssid=<mac> seq=<n>`;
+its round-trip is proven by a parser kept in the test (the firmware only writes capture lines, never
+reads them). No allocation after init. Host suite `test/host/test_wifi_survey.c` (new, wired in
+`test/host/CMakeLists.txt`): channel stats, current-channel fallback, the bounded BSSID table, the
+ring overwrite, and the format/parse round-trip incl. extremes — 99/99 host tests green. No
+transport, service or app yet (STARK-1004+).
+
 **Security.** None. **Physical HIL.** None.
 
 ## STARK-1004 — Wi-Fi transport seam, STARK_CAP_WIFI, fake + emulator

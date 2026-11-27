@@ -589,13 +589,15 @@ foreach(nfc_test ndef pn532_frame pn532 nfc_ident nfc_type2 nfc_reader nfc_poll 
     add_test(NAME stark_${nfc_test}_tests COMMAND run_${nfc_test}_tests)
 endforeach()
 
-# stark_wifi's pure 802.11 dissector (STARK-1001, ADR-0027) against spec-derived
-# vectors. Only the pure core; stark_err.c is not needed (it uses the enum only).
-set(WIFI_CORE_SOURCES ${STARK_COMPONENTS}/stark_wifi/dot11_frame.c)
+# stark_wifi's pure cores (STARK-1001 dissector, STARK-1003 survey; ADR-0027)
+# against spec-derived vectors. Only the pure cores; stark_err.c is not needed
+# (they use the enum only). Each test names the source it exercises.
 set(WIFI_INCLUDES ${STARK_COMPONENTS}/stark_wifi/include)
-foreach(wifi_test dot11_frame)
+set(WIFI_SRC_dot11_frame ${STARK_COMPONENTS}/stark_wifi/dot11_frame.c)
+set(WIFI_SRC_wifi_survey ${STARK_COMPONENTS}/stark_wifi/survey.c)
+foreach(wifi_test dot11_frame wifi_survey)
     add_executable(run_${wifi_test}_tests ${CMAKE_CURRENT_SOURCE_DIR}/test_${wifi_test}.c
-        ${WIFI_CORE_SOURCES})
+        ${WIFI_SRC_${wifi_test}})
     target_include_directories(run_${wifi_test}_tests PRIVATE ${WIFI_INCLUDES})
     target_compile_options(run_${wifi_test}_tests PRIVATE ${OUR_C_FLAGS})
     target_link_options(run_${wifi_test}_tests PRIVATE ${OUR_SANITIZER_FLAGS} ${OUR_COVERAGE_FLAGS})

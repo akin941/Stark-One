@@ -4,6 +4,7 @@
 idf_component_register(
     SRCS
         "dot11_frame.c"
+        "survey.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
