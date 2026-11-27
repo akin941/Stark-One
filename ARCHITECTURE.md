@@ -213,7 +213,7 @@ degrading, not by failing the boot.
 A deliberately *small* port layer — it exists so L2 cores and host tests can be built
 without ESP-IDF, not to abstract all of ESP-IDF. (ADR-0025 generalises this seam into
 a board-neutral interface so one firmware's features can follow the board and architecture, with
-ESP32-S3 the first port (planned inventory: docs/PLATFORM.md, STARK-0901). No feature is compiled out per board or per target —
+ESP32-S3 the first port; the seam and capability matrix as built are inventoried in docs/PLATFORM.md. No feature is compiled out per board or per target —
 the capability matrix gates it at run time.)
 
 ```c
