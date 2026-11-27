@@ -6581,6 +6581,15 @@ the pin map — by script, not by eye.
 3. `scripts/test_check_caps.py` covers the pass and each failure; `python3 -m unittest` green.
 4. No firmware behaviour change (the matrix equals today's flags/bits); host tests green.
 
+**As built.** The single source stays the code itself — `stark_caps.h` defines the bits once,
+each app declares its need once in `.caps_required`; no second matrix literal is introduced.
+`scripts/check_caps.py` (new, CI lint step) derives the matrix and enforces: distinct single
+bits, `STARK_CAPS_KNOWN` equals the defined bits, every `caps_required` token is a defined bit,
+and no `#if[def]` on WIFI/STM32/RP2350/LINUX under components/apps/main. `--list` prints the
+app → capabilities view. `scripts/test_check_caps.py` (new, 9 tests) covers the pass and each
+failure; it runs in the existing script-unit-tests lint step. `docs/PLATFORM.md` cites it. No
+firmware behaviour change.
+
 **Security.** None. **Physical HIL.** None.
 
 ## STARK-0903 — Second-port open questions (no port)
