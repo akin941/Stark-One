@@ -55,6 +55,9 @@ LAYERS = {
     # transport reads stark_module's table for its pin guard, so like the CC1101's it is L3.
     "stark_lab": 3,
     "stark_lab_transport": 3,
+    # L2 pure 802.11 dissector (STARK-1001, ADR-0027). The esp_wifi promiscuous
+    # transport and the service task arrive at STARK-1004 (a separate component).
+    "stark_wifi": 2,
     "stark_ui": 4,
     "stark_app": 4,
 }
