@@ -6522,6 +6522,81 @@ captures by script instead of by hand, from the same lines the emulator gates re
 
 ---
 
+# Platform — HAL seam & capability matrix (ADR-0025)
+
+**Scope source:** [ROADMAP.md](ROADMAP.md) "Platform — HAL seam & capability matrix" and
+[ADR-0025](DECISIONS.md). One firmware whose features follow the board and architecture; this
+track draws and proves the boundary with **ESP32-S3 as the only port** and ports nothing new.
+The tasks here need **no hardware** — they are inventory, a single-source capability matrix with
+its checker, and a written note on a future second port. The feature families (Wi-Fi/BLE analysis,
+125 kHz RFID + 1-Wire, USB-HID) are V2 milestones opened when reached, each behind a transport seam
+and emulator-verified like the V0.3–0.7 radios. Task numbers continue at STARK-0901.
+
+## STARK-0901 — Port-seam and capability inventory
+
+**Goal.** Before generalising the seam, know exactly where it is. List every component that calls
+ESP-IDF directly (the ports), every pure core that must not (ARCHITECTURE §2), every `stark_board`
+capability flag and every ADR-0009 module capability bit, and which app each gates. This is the
+input to the matrix and the boundary a second port would sit behind.
+
+**Files.** `docs/PLATFORM.md` (new: the seam inventory and the capability matrix as it stands),
+pointers from `ARCHITECTURE.md` §6.2 (the "small port layer" note → ADR-0025 and PLATFORM.md),
+`TASKS.md` (this entry).
+
+**Deps.** None (reads the tree as built).
+
+**AC.**
+1. `docs/PLATFORM.md` lists the port components (direct ESP-IDF users) and the pure cores, and the
+   layering check (`scripts/check_layers.py`) is cited as what already enforces the split.
+2. Every board capability flag and module capability bit is tabled with the app(s) it gates.
+3. The (board × feature → present/absent) matrix is rendered for the one board that exists.
+4. No code changes; no behaviour change.
+
+**Security.** None (documentation). **Physical HIL.** None.
+
+## STARK-0902 — Capability matrix in one place, with a checker
+
+**Goal.** Make the capability matrix a single source the launcher and the tests read, and prove the
+no-per-feature / no-per-target rule (ROADMAP platform exits 2 and 3) the way `check_pins.py` proves
+the pin map — by script, not by eye.
+
+**Files.** the single-source matrix (header or committed table) under `components/stark_board` or
+`main/`, `scripts/check_caps.py` (new), `scripts/test_check_caps.py` (new), `docs/PLATFORM.md`
+(the matrix section points at the source), `TASKS.md` (this entry).
+
+**Deps.** STARK-0901.
+
+**AC.**
+1. The matrix lives in one committed place; the launcher's gating (`stark_app_set_caps`, ADR-0009)
+   and the tests derive from it, not from duplicated literals.
+2. `scripts/check_caps.py` fails if a capability named in the matrix has no bit/flag, if an app's
+   `caps_required` names an unknown capability, or if `grep -ri '#ifdef.*\(WIFI\|STM32\|RP2350\|LINUX\)'`
+   over `components/ apps/ main/` is non-empty; it runs in the lint job.
+3. `scripts/test_check_caps.py` covers the pass and each failure; `python3 -m unittest` green.
+4. No firmware behaviour change (the matrix equals today's flags/bits); host tests green.
+
+**Security.** None. **Physical HIL.** None.
+
+## STARK-0903 — Second-port open questions (no port)
+
+**Goal.** Record what a second architecture (STM32, RP2350, or a Linux SoC) would actually add,
+so the seam is designed against real questions, without porting anything (ROADMAP platform exit 4).
+
+**Files.** `docs/PLATFORM.md` ("A second port" section), `DECISIONS.md` only if a sub-decision is
+forced (a new ADR, per hygiene rule 5), `TASKS.md` (this entry).
+
+**AC.**
+1. For each candidate (STM32 / RP2350 / Linux), the note states what of the HAL seam it would
+   satisfy natively, what it would lack (e.g. integrated radio), and the open question it raises —
+   referencing ADR-0001's original rejection reasons.
+2. It states plainly that no port is implemented and that multi-architecture work is a milestone of
+   its own, gated on the seam being clean (STARK-0901/0902).
+3. No code changes.
+
+**Security.** None. **Physical HIL.** None.
+
+---
+
 ## Task hygiene rules for the implementing agent
 
 1. **One task per branch, one branch per PR.** The PR description names the task ID and
