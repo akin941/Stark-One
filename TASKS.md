@@ -6552,6 +6552,12 @@ pointers from `ARCHITECTURE.md` §6.2 (the "small port layer" note → ADR-0025 
 3. The (board × feature → present/absent) matrix is rendered for the one board that exists.
 4. No code changes; no behaviour change.
 
+**As built.** `docs/PLATFORM.md`: the port files (ESP-IDF users) grouped by concern with the
+grep that lists them, the pure cores defined by the host build, both guards cited
+(`check_layers.py`, the host build); the capability surface (board pin presence + the six
+`stark_caps.h` bits); and the matrix of all 18 apps (only `ir`/`nfc`/`subghz` gated) against the
+bare DevKitC-1 board. `ARCHITECTURE.md` §6.2 points to it. No code changed.
+
 **Security.** None (documentation). **Physical HIL.** None.
 
 ## STARK-0902 — Capability matrix in one place, with a checker
