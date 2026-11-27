@@ -6736,6 +6736,20 @@ struct out; no I/O, no ESP-IDF.
 4. Spec-derived vectors (ADV_IND with a name, a service-UUID advert, manufacturer data, a malformed
    length) pass host tests; `check_layers.py` green; `test_host.sh` green.
 
+**As built.** `components/stark_ble/{ble_adv.c,include/ble_adv.h,CMakeLists.txt}` (new, L2 pure,
+`REQUIRES stark_err` only). `ble_adv_parse` reads the PDU header (type, TxAdd/RxAdd, ChSel,
+length), validates the payload length against the buffer, and fills the addresses for the type
+(AdvA for the advertising PDUs; AdvA + TargetA for ADV_DIRECT_IND). For the AdvData-bearing types
+(ADV_IND/ADV_NONCONN_IND/SCAN_RSP/ADV_SCAN_IND) it walks the AD structures via `ble_adv_find_ad`
+and surfaces Flags, local name (complete/shortened), 16-bit service UUIDs (complete/incomplete) and
+manufacturer-specific data — all views, no allocation, only public advertised fields. Malformed or
+truncated input returns `STARK_ERR_INVALID_ARG` and never over-reads. Host suite
+`test/host/test_ble_adv.c` (new, wired in `test/host/CMakeLists.txt`): ADV_IND, ADV_DIRECT_IND,
+SCAN_RSP, the AD-walker bounds (past-end and zero-length), every-byte truncation (ASan) and the
+malformed paths — host tests green. `scripts/check_layers.py` classes `stark_ble` L2 (added to its
+map + ARCHITECTURE §10); `docs/PLATFORM.md` names it under the pure cores. No transport, service or
+app yet (STARK-1005+).
+
 **Security.** None (pure parser). **Physical HIL.** None.
 
 ## STARK-1003 — channel/RSSI survey aggregation and capture record (pure, host-tested)

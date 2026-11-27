@@ -61,7 +61,8 @@ grep -rlE '#include[ ]+[<"](driver/|esp_|freertos/|hal/|soc/|nvs|sdmmc|esp_priva
 
 Everything the host build compiles: the protocol codecs (IR NEC/RC5/RC6/SIRC, NDEF, PN532
 framing, CC1101 register logic, Manchester/OOK decoders, the `stark_wifi` 802.11 frame
-dissector — STARK-1001, ADR-0027), the UI model, `stark_gfx`,
+dissector and the `stark_ble` advertising-PDU dissector — STARK-1001/1002, ADR-0027), the UI
+model, `stark_gfx`,
 `stark_input_core`, the event model, `stark_err`, and each service's pure logic that receives
 its hardware by **injected transport** (`test/fake/*` in tests, the real port on the device).
 These include no ESP-IDF header and are tested on the host under ASan/UBSan. The seam is the

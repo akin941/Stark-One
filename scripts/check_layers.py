@@ -58,6 +58,9 @@ LAYERS = {
     # L2 pure 802.11 dissector (STARK-1001, ADR-0027). The esp_wifi promiscuous
     # transport and the service task arrive at STARK-1004 (a separate component).
     "stark_wifi": 2,
+    # L2 pure BLE advertising-PDU dissector (STARK-1002, ADR-0027). The
+    # BLE-controller observer transport and service arrive at STARK-1005.
+    "stark_ble": 2,
     "stark_ui": 4,
     "stark_app": 4,
 }
