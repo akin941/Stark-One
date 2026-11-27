@@ -127,3 +127,33 @@ defined bits disagree, if an app's `caps_required` names an unknown bit, or if a
 code with a per-feature/per-target `#if[def]` (WIFI / STM32 / RP2350 / LINUX). `check_caps.py
 --list` prints the app → capabilities view. A written analysis of what a second architecture
 (STM32 / RP2350 / Linux) would satisfy or lack behind this seam is STARK-0903.
+
+---
+
+## 4. A second port — the open questions (no port implemented)
+
+STARK-0903. This section does not port anything and decides nothing; it records what a second
+architecture would have to satisfy behind the seam of §1, and the open question each one raises,
+so the seam is designed against real constraints. Multi-architecture work is a **milestone of its
+own**, gated on the seam being clean and the matrix machine-checked (STARK-0901, STARK-0902).
+ADR-0001 chose the ESP32-S3 and rejected these same candidates for the V0 device; the reasons
+below are from that ADR, re-read through ADR-0025's "features follow the board" lens.
+
+**What a port must provide** (from §1.1): a board package (pin map, clocks, `board_init`,
+capability declaration), the HAL (time, task, GPIO, SPI, I²C, PWM), the event loop, the log sink,
+and the transports the features need (display, input, storage/SD, and per feature IR / NFC /
+module bus / Sub-GHz / lab / — under ADR-0025 — Wi-Fi/BLE, 125 kHz, 1-Wire, USB-HID). The pure
+cores (§1.2) move unchanged; only these ports are rewritten.
+
+| Candidate | Satisfies natively | Lacks / costs | Open question |
+| --- | --- | --- | --- |
+| **STM32 (H7-class)** | MCU model, FreeRTOS, deterministic GPIO/SPI/I²C/PWM and good analogue — the whole HAL and the wired transports map cleanly | **No integrated radio** (ADR-0001): Wi-Fi/BLE analysis would need an external part or be absent on that board — which the capability matrix already expresses. Loses the esp-emulator simulation-first flow (ADR-0017) | What replaces `esp-emulator` as the Tier-3 gate for an STM32 build? Without it, the host tests (§1.2) carry more of the weight |
+| **RP2350** | Dual-core, USB, and PIO — PIO is an excellent fit for the lab-tool and IR timing the RMT port does today | **No radio** (ADR-0001): Wi-Fi needs a companion (CYW43-class); weaker vendor RTOS story. Every radio capability becomes a companion-chip capability | Does the existing **module bus** (ADR-0009/0021) already model "radio lives on a companion", so an RP2350 board simply declares its radios as modules? |
+| **Linux SoC (RK3576-class)** | The pure cores are plain C and run as a Linux process; the ports become userspace drivers (`spidev`, `i2c-dev`, GPIO char dev, `libusb`) | **Not an MCU**: no FreeRTOS, no bare-metal timing. Hard-real-time IR/Sub-GHz capture and the UI frame budget do not survive a general-purpose scheduler (ADR-0001 "destroys the real-time story") | Does STARK's real-time story demand a **two-processor topology** (a Linux brain + an MCU for timing), i.e. exactly the split comparable Linux tools use? If so, the "port" is really two ports and a link protocol |
+
+**Plainly:** no second port exists or is started here. The value of this track is the seam and
+the matrix (STARK-0901/0902), which make a future port a bounded, well-posed task instead of a
+fork. When a specific second target is chosen, it opens its own milestone and — where it forces a
+structural choice such as the Linux two-processor question above — its own ADR (ADR-0001's revisit
+trigger: "if the module bus grows beyond what one SPI + one I²C can serve, or if power targets
+fail badly at V2").
