@@ -54,11 +54,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install clang-format
-        run: sudo apt-get update -qq && sudo apt-get install -y clang-format && clang-format --version
+      - name: Install clang-format and clang-tidy
+        run: sudo apt-get update -qq && sudo apt-get install -y clang-format clang-tidy && clang-format --version && clang-tidy --version
 
       - name: clang-format --check
         run: scripts/fmt.sh --check
+
+      - name: clang-tidy (scripts/tidy.sh, pure cores)
+        run: scripts/tidy.sh
 
       - name: Repository static checks (scripts/check.sh)
         run: bash scripts/check.sh

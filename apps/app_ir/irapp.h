@@ -33,7 +33,7 @@ void irapp_save(const ir_signal_t *s);
 stark_err_t irapp_load(const char *name, ir_signal_t *out);
 
 /* "NEC 00/12", "RC5 05/35", "NEC repeat", "RAW 67" (ir_view.c). */
-void irapp_describe(const ir_signal_t *s, char *out, size_t len);
+void irapp_describe(const ir_signal_t *s, char *label, size_t len);
 
 /* ---- Receive view (ir_view.c, STARK-0305) ---- */
 void irview_reset(void);                           /* app start: no captures */

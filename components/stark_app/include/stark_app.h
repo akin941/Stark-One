@@ -31,10 +31,10 @@ typedef struct {
  * builds the launcher — the root menu: a header row per category, the
  * categories in the order their first app appears in the registry, apps
  * by title within each, with their icons (STARK-0107) — and pushes it. Call after stark_ui_init().
- * STARK_ERR_STATE if already initialised; STARK_ERR_INVALID_ARG for a NULL array with count > 0 or
+ * STARK_ERR_STATE if already initialised; STARK_ERR_INVALID_ARG for a NULL array with n > 0 or
  * an entry (or its id) that is NULL.
  */
-stark_err_t stark_app_init(const stark_app_t *const *apps, size_t count);
+stark_err_t stark_app_init(const stark_app_t *const *apps, size_t n);
 
 /* The registered app with this id, or NULL. */
 const stark_app_t *stark_app_find(const char *id);

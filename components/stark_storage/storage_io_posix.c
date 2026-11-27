@@ -3,6 +3,7 @@
  * target (ESP-IDF VFS → FATFS) and the host (a real directory).
  */
 /* POSIX.1-2008 (open, fsync, opendir, mkdtemp): the host build is strict C11. */
+/* NOLINTNEXTLINE(bugprone-reserved-identifier,cert-dcl37-c,cert-dcl51-cpp): feature-test macro */
 #define _POSIX_C_SOURCE 200809L
 #include "storage_io.h"
 #include <dirent.h>

@@ -126,7 +126,7 @@ static void ascii_row(const uint8_t *b, size_t n, char *buf, size_t sz)
 {
     size_t len = 0;
     for (size_t i = 0; i < n && len + 1u < sz; i++) {
-        buf[len++] = (b[i] >= 0x20u && b[i] <= 0x7Eu) ? (char)b[i] : '.';
+        buf[len++] = (char)((b[i] >= 0x20u && b[i] <= 0x7Eu) ? b[i] : (uint8_t)'.');
     }
     if (sz > 0u) {
         buf[len] = '\0';

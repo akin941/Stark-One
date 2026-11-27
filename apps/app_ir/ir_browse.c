@@ -38,7 +38,7 @@ static bool collect(const char *name, uint32_t size, void *ctx)
     if (n < 4 || strcmp(name + n - 3, ".ir") != 0 || s_count == IRAPP_BROWSE_MAX) {
         return s_count < IRAPP_BROWSE_MAX;
     }
-    snprintf(s_list[s_count++].name, sizeof s_list[0].name, "%s", name);
+    (void)snprintf(s_list[s_count++].name, sizeof s_list[0].name, "%s", name);
     return true;
 }
 
@@ -61,7 +61,7 @@ static void list_worker(void *ctx)
         if (e->valid) {
             irapp_describe(&irapp_work.signal, e->what, sizeof e->what);
         } else {
-            snprintf(e->what, sizeof e->what, "(invalid)");
+            (void)snprintf(e->what, sizeof e->what, "(invalid)");
         }
     }
     notify(NOTE_LISTED);

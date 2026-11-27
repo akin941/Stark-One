@@ -249,14 +249,16 @@ stark_err_t stark_app_init(const stark_app_t *const *apps, size_t n)
 
     app_catalog_row_t *rows = NULL;
     if (n > 0) {
-        s_sorted = calloc(n, sizeof *s_sorted);
+        /* NOLINTNEXTLINE(bugprone-sizeof-expression): an array of pointers, sized as one */
+        s_sorted = (const stark_app_t **)calloc(n, sizeof *s_sorted);
         s_items = calloc(2 * n, sizeof *s_items);
-        s_row_app = calloc(2 * n, sizeof *s_row_app);
+        /* NOLINTNEXTLINE(bugprone-sizeof-expression): an array of pointers, sized as one */
+        s_row_app = (const stark_app_t **)calloc(2 * n, sizeof *s_row_app);
         rows = calloc(2 * n, sizeof *rows);
         if (s_sorted == NULL || s_items == NULL || s_row_app == NULL || rows == NULL) {
-            free(s_sorted);
+            free((void *)s_sorted);
             free(s_items);
-            free(s_row_app);
+            free((void *)s_row_app);
             free(rows);
             s_sorted = NULL;
             s_items = NULL;

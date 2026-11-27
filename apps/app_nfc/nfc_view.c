@@ -69,10 +69,11 @@ static void tag_rows(void)
     for (unsigned i = 0; i < t->uid_len; i++) {
         n += (size_t)snprintf(s_values[0] + n, sizeof s_values[0] - n, "%02X", t->uid[i]);
     }
-    snprintf(s_values[1], sizeof s_values[1], "%04X/%02X", (unsigned)t->atqa, (unsigned)t->sak);
-    snprintf(s_values[2], sizeof s_values[2], "%u pages", (unsigned)t->pages);
-    snprintf(s_values[3], sizeof s_values[3], "%s",
-             s_read.read_err == STARK_OK ? "read" : stark_err_str(s_read.read_err));
+    (void)snprintf(s_values[1], sizeof s_values[1], "%04X/%02X", (unsigned)t->atqa,
+                   (unsigned)t->sak);
+    (void)snprintf(s_values[2], sizeof s_values[2], "%u pages", (unsigned)t->pages);
+    (void)snprintf(s_values[3], sizeof s_values[3], "%s",
+                   s_read.read_err == STARK_OK ? "read" : stark_err_str(s_read.read_err));
     row(nfc_tech_name(t->tech), s_values[3], false);
     row("UID", s_values[0], false);
     row("ATQA/SAK", s_values[1], false);

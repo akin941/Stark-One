@@ -158,6 +158,6 @@ void subghz_svc_capture_finish(subghz_svc_t *s);
 subghz_tx_verdict_t subghz_svc_tx_check(subghz_svc_t *s, const subghz_raw_t *raw, const char *name,
                                         subghz_tx_info_t *info);
 subghz_tx_verdict_t subghz_svc_tx(subghz_svc_t *s, const subghz_raw_t *raw, const char *name,
-                                  uint32_t hash, subghz_tx_info_t *info);
+                                  uint32_t hash, subghz_tx_info_t *out);
 void subghz_svc_stop(subghz_svc_t *s);
 void subghz_svc_status(const subghz_svc_t *s, stark_subghz_status_t *out);

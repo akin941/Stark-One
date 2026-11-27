@@ -24,7 +24,7 @@ static void notify(void *ctx, size_t index, const stark_selftest_row_t *row, con
     size_t i = 0;
     for (; row->name[i] != '\0' && i < sizeof name - 1u; i++) {
         char c = row->name[i];
-        name[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+        name[i] = (char)((c >= 'A' && c <= 'Z') ? (c - 'A' + 'a') : c);
     }
     name[i] = '\0';
     STARK_LOGI("selftest", "%s %s%s%s", name, selftest_result_name(row->result),

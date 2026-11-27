@@ -157,7 +157,8 @@ static void activate(size_t index, void *ctx)
             sgview_refresh();
             show(SGAPP_METER);
         }
-    } else if (s_mode == SGAPP_HOME && sgview_is_scan_row(index)) {
+    } else if ((s_mode == SGAPP_HOME && sgview_is_scan_row(index)) ||
+               (s_mode == SGAPP_SCAN && sgview_is_again_row(index))) {
         if (stark_subghz_scan_start() == STARK_OK) {
             sgview_refresh();
             show(SGAPP_SCAN);
@@ -166,11 +167,6 @@ static void activate(size_t index, void *ctx)
         show(SGAPP_CAPTURE); /* the setup: nothing is received until Start */
     } else if (s_mode == SGAPP_HOME && sgview_is_saved_row(index)) {
         sgfile_list(); /* SGFILE_NOTE_LISTED shows it */
-    } else if (s_mode == SGAPP_SCAN && sgview_is_again_row(index)) {
-        if (stark_subghz_scan_start() == STARK_OK) {
-            sgview_refresh();
-            show(SGAPP_SCAN);
-        }
     } else if (s_mode == SGAPP_CAPTURE) {
         if (sgview_is_start_row(index) || sgview_is_restart_row(index)) {
             capture_start();

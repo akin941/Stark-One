@@ -242,6 +242,7 @@ stark_err_t ndef_uri_make(const char *uri, uint8_t *payload, size_t cap, ndef_re
         return STARK_ERR_NO_SPACE;
     }
     payload[0] = (uint8_t)code;
+    /* NOLINTNEXTLINE(bugprone-not-null-terminated-result): NDEF payload bytes, not a string */
     memcpy(payload + 1, uri + best, rest);
     *out = (ndef_record_t){.tnf = NDEF_TNF_WELL_KNOWN,
                            .type = k_type_uri,
@@ -287,7 +288,9 @@ stark_err_t ndef_text_make(const char *lang, const char *text, uint8_t *payload,
         return STARK_ERR_NO_SPACE;
     }
     payload[0] = (uint8_t)lang_len;
+    /* NOLINTNEXTLINE(bugprone-not-null-terminated-result): NDEF payload bytes, not a string */
     memcpy(payload + 1, lang, lang_len);
+    /* NOLINTNEXTLINE(bugprone-not-null-terminated-result): NDEF payload bytes, not a string */
     memcpy(payload + 1 + lang_len, text, text_len);
     *out = (ndef_record_t){.tnf = NDEF_TNF_WELL_KNOWN,
                            .type = k_type_text,
@@ -314,7 +317,7 @@ static void line_bytes(line_t *l, const uint8_t *src, size_t n)
             break;
         }
         uint8_t c = src[i];
-        l->out[l->pos++] = (c < 0x20u || c == 0x7Fu) ? '?' : (char)c;
+        l->out[l->pos++] = (char)((c < 0x20u || c == 0x7Fu) ? '?' : c);
     }
     l->out[l->pos] = '\0';
 }
@@ -327,7 +330,7 @@ static void line_str(line_t *l, const char *s)
 static void line_size(line_t *l, uint32_t n)
 {
     char num[16];
-    snprintf(num, sizeof num, " %u B", (unsigned)n);
+    (void)snprintf(num, sizeof num, " %u B", (unsigned)n);
     line_str(l, num);
 }
 

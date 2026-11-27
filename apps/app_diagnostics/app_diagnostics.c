@@ -33,25 +33,25 @@ static void format_rows(char rows[ROWS][ROW_CHARS])
     stark_diag_snapshot_t d = {0};
     (void)stark_diag_snapshot(&d);
     memset(rows, 0, ROWS * ROW_CHARS);
-    snprintf(rows[0], ROW_CHARS, "Heap free   %lu B", (unsigned long)d.heap_free);
-    snprintf(rows[1], ROW_CHARS, "Heap min    %lu B", (unsigned long)d.heap_min);
-    snprintf(rows[2], ROW_CHARS, "Largest     %lu B", (unsigned long)d.heap_largest);
-    snprintf(rows[3], ROW_CHARS, "FPS         %lu.%lu", (unsigned long)(d.fps_x10 / 10),
-             (unsigned long)(d.fps_x10 % 10));
-    snprintf(rows[4], ROW_CHARS, "Frames      %lu", (unsigned long)d.ui.frames);
-    snprintf(rows[5], ROW_CHARS, "Overruns    %lu", (unsigned long)d.ui.overruns);
-    snprintf(rows[6], ROW_CHARS, "Render err  %lu", (unsigned long)d.ui.render_errors);
-    snprintf(rows[7], ROW_CHARS, "Join t/o    %lu", (unsigned long)d.ui.join_timeouts);
-    snprintf(rows[8], ROW_CHARS, "Events      %lu pub %lu drop %lu peak",
-             (unsigned long)d.ev_published, (unsigned long)d.ev_dropped,
-             (unsigned long)d.ev_max_depth);
-    snprintf(rows[9], ROW_CHARS, "Uptime      %lu s", (unsigned long)d.uptime_s);
-    snprintf(rows[11], ROW_CHARS, "Task         stack free (B)");
+    (void)snprintf(rows[0], ROW_CHARS, "Heap free   %lu B", (unsigned long)d.heap_free);
+    (void)snprintf(rows[1], ROW_CHARS, "Heap min    %lu B", (unsigned long)d.heap_min);
+    (void)snprintf(rows[2], ROW_CHARS, "Largest     %lu B", (unsigned long)d.heap_largest);
+    (void)snprintf(rows[3], ROW_CHARS, "FPS         %lu.%lu", (unsigned long)(d.fps_x10 / 10),
+                   (unsigned long)(d.fps_x10 % 10));
+    (void)snprintf(rows[4], ROW_CHARS, "Frames      %lu", (unsigned long)d.ui.frames);
+    (void)snprintf(rows[5], ROW_CHARS, "Overruns    %lu", (unsigned long)d.ui.overruns);
+    (void)snprintf(rows[6], ROW_CHARS, "Render err  %lu", (unsigned long)d.ui.render_errors);
+    (void)snprintf(rows[7], ROW_CHARS, "Join t/o    %lu", (unsigned long)d.ui.join_timeouts);
+    (void)snprintf(rows[8], ROW_CHARS, "Events      %lu pub %lu drop %lu peak",
+                   (unsigned long)d.ev_published, (unsigned long)d.ev_dropped,
+                   (unsigned long)d.ev_max_depth);
+    (void)snprintf(rows[9], ROW_CHARS, "Uptime      %lu s", (unsigned long)d.uptime_s);
+    (void)snprintf(rows[11], ROW_CHARS, "Task         stack free (B)");
     stark_diag_task_t tasks[MAX_TASKS];
     size_t n = stark_diag_tasks(tasks, MAX_TASKS);
     for (size_t i = 0; i < n; i++) {
-        snprintf(rows[TASK_ROW0 + i], ROW_CHARS, "%-12.12s %lu", tasks[i].name,
-                 (unsigned long)tasks[i].stack_free);
+        (void)snprintf(rows[TASK_ROW0 + i], ROW_CHARS, "%-12.12s %lu", tasks[i].name,
+                       (unsigned long)tasks[i].stack_free);
     }
     STARK_LOGI("diagnostics", "heap=%lu fps=%lu.%lu", (unsigned long)d.heap_free,
                (unsigned long)(d.fps_x10 / 10), (unsigned long)(d.fps_x10 % 10));

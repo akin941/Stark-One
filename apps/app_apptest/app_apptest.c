@@ -46,7 +46,7 @@ static void activate(size_t index, void *ctx)
     if (index == 0) {
         /* A stack buffer on purpose: the dialog copies what it shows. */
         char message[64];
-        snprintf(message, sizeof message, "Run the confirmed action? (%s)", "App Test");
+        (void)snprintf(message, sizeof message, "Run the confirmed action? (%s)", "App Test");
         (void)stark_ui_dialog_confirm("Confirm", message, confirm_done, NULL);
     } else if (index == 1) {
         (void)stark_ui_dialog_alert("Alert", "This is an alert. OK or BACK closes it.",
@@ -62,7 +62,7 @@ static void activate(size_t index, void *ctx)
 static bool apptest_event(stark_screen_t *self, const stark_event_t *e)
 {
     if (e->type == STARK_EVT_APP_REQUEST && e->app.id == STARK_APP_REQ_NOTIFY) {
-        snprintf(s_worker_label, sizeof s_worker_label, "Worker demo  n=%d", (int)e->app.arg);
+        (void)snprintf(s_worker_label, sizeof s_worker_label, "Worker demo  n=%d", (int)e->app.arg);
         STARK_LOGI("apptest", "worker n=%d", (int)e->app.arg);
         stark_ui_invalidate(self, stark_ui_content_rect());
         return true;
@@ -73,7 +73,7 @@ static bool apptest_event(stark_screen_t *self, const stark_event_t *e)
 static stark_screen_t *apptest_screen(void *state)
 {
     (void)state;
-    snprintf(s_worker_label, sizeof s_worker_label, "Worker demo");
+    (void)snprintf(s_worker_label, sizeof s_worker_label, "Worker demo");
     ui_menu_init(&s_menu, "App Test", k_items, sizeof k_items / sizeof k_items[0], activate, NULL);
     s_menu_event = s_menu.screen.on_event;
     s_menu.screen.on_event = apptest_event;

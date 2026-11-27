@@ -12,6 +12,7 @@ dependencies.lock.bak
 
 # Host tests
 build-host/
+build-tidy/
 *.gcda
 *.gcno
 *.gcov

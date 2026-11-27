@@ -1,0 +1,44 @@
+# clang-tidy configuration (STARK-0808, TESTING.md §3, ADR-0026).
+#
+# Run by scripts/tidy.sh over the pure sources the host build compiles. Every enabled
+# finding fails CI. An inline suppression names the check and gives its reason:
+#   /* NOLINTNEXTLINE(<check>): <reason> */
+#
+# The families are bugprone-*, cert-* and readability-*. Disabled, with the reason:
+#   readability-identifier-length, -magic-numbers, -uppercase-literal-suffix
+#       house style (ARCHITECTURE §4): short loop and math names, protocol constants
+#       written where they are used, lower-case literal suffixes.
+#   readability-function-cognitive-complexity, -avoid-nested-conditional-operator
+#       style metrics, not defects; review owns them.
+#   readability-isolate-declaration
+#       house style allows paired declarations (`uint32_t a = .., b = ..`).
+#   readability-redundant-casting
+#       the host build is LP64 and the target ILP32 Xtensa, where uint32_t is
+#       `unsigned long`: a cast that is redundant on the host is what makes `%u` right
+#       on the target.
+#   readability-non-const-parameter
+#       reports pointers that are stored into a writable struct field.
+#   bugprone-implicit-widening-of-multiplication-result
+#       size_t and ptrdiff_t are 32-bit on the target, so the widening exists on the host
+#       build only.
+#   bugprone-easily-swappable-parameters
+#       (x, y, w, h)-style signatures are the drawing API; fixing them means wrapper types
+#       on every call.
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-uppercase-literal-suffix,
+  -readability-function-cognitive-complexity,
+  -readability-avoid-nested-conditional-operator,
+  -readability-isolate-declaration,
+  -readability-redundant-casting,
+  -readability-non-const-parameter,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: '*'
+HeaderFilterRegex: '/(components|apps|main)/'
+FormatStyle: none

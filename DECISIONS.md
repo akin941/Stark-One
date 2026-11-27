@@ -2154,3 +2154,54 @@ here. No code behaviour changes in this ADR's own change set — it is the plan.
 **Revisit trigger:** the first non-ESP32 port attempt (does the seam hold?); any reference import
 that cannot be reimplemented from a spec (opens its own licence ADR); or a feature request that
 tests the SECURITY_SCOPE boundary (evaluated against §3 before it becomes a task).
+## ADR-0026 — clang-tidy over the pure sources, in the lint job, with a named-check suppression rule
+
+**Status:** accepted (2026-11-27). Resolves the `clang-tidy` item in the TASKS.md infrastructure
+debt register (promised in TESTING §3/§7, "not yet active"). STARK-0808. The owner delegated tooling
+decisions and asked for autonomous progress.
+
+**Context.** TESTING §3 names `clang-tidy` (bugprone/cert/readability subset) as a build-quality gate
+but marked it "not yet active": it needed a compile database clang can digest for our flags, or a
+host-side run over pure sources only. The host test build already emits `compile_commands.json` for
+exactly the pure cores (ARCHITECTURE §2, `test/host`), with no ESP-IDF in the include path — the
+missing piece was a runner and a policy, not new infrastructure. Run broadly, clang-tidy's
+readability family floods the output (1 274 identifier-length, 792 literal-suffix, 674 magic-number
+findings) against choices ARCHITECTURE §4 and the ILP32-target `%u`/`uint32_t` idiom make
+deliberately; the real signal (cert-err33, redundant declarations, a shared-bit style slip) is a few
+dozen findings under it.
+
+**Decision.**
+1. **Scope: the pure cores.** `scripts/tidy.sh` configures the host build, derives the exact file
+   list and flags from its `compile_commands.json` (one entry per source), and runs `clang-tidy` over
+   the files under `components/`, `apps/`, `main/`. The ESP-IDF ports are not host-compilable and are
+   not checked; `--list` prints both sets. This is the same core/port boundary `check_layers.py` and
+   the host build already enforce (docs/PLATFORM.md).
+2. **Checks: `bugprone-*`, `cert-*`, `readability-*`**, minus the families that encode house style or
+   the LP64-host/ILP32-target mismatch, each disabled with its reason in `.clang-tidy`
+   (`identifier-length`, `magic-numbers`, `uppercase-literal-suffix`, `function-cognitive-complexity`,
+   `avoid-nested-conditional-operator`, `isolate-declaration`, `redundant-casting`,
+   `non-const-parameter`, `implicit-widening-of-multiplication-result`, `easily-swappable-parameters`).
+   `WarningsAsErrors: '*'`.
+3. **Suppression rule.** A finding is fixed, or suppressed in-line as
+   `/* NOLINTNEXTLINE(<check>): <reason> */` — the check named, a reason given. A bare `NOLINT` is not
+   allowed (it is the clang-tidy analogue of TESTING §3's "no `-Wno-*`, no reasonless pragma").
+4. **In the lint job.** `scripts/tidy.sh` runs in CI's `lint` job (ubuntu-24.04, clang-tidy 18.x, the
+   same major as the committed `.clang-tidy`). A finding fails the build.
+
+**Alternatives rejected**
+
+| Option | Why rejected |
+| --- | --- |
+| The full `readability-*` family | ~2 700 findings against ARCHITECTURE §4 style and the target's integer idiom; it would train everyone to ignore the tool |
+| A second compile database built just for tidy | The host build already emits the right one for exactly the cores; a second would drift |
+| Checking the ESP-IDF ports too | They are not host-compilable; tidy would need the full IDF toolchain and would mostly report vendor-header noise (the `-Wundef` precedent, TESTING §3) |
+| `clang-tidy` in the firmware build | Needs the Xtensa compile DB and IDF headers; the pure-core host run is where our logic lives and is cheap |
+
+**Consequences.** TESTING §3 marks the gate active and the debt register entry is resolved. The
+tree's existing findings were fixed in this change (mostly `(void)` on intentionally-ignored
+`snprintf`, a few `NOLINTNEXTLINE` with reasons, two redundant declarations removed, a parameter-name
+and a shared-`sizeof` tidy). New code is held to the same bar by the lint job. The size-regression
+flag, the other debt-register item, is untouched.
+
+**Revisit trigger:** a clang-tidy major-version bump that changes the finding set (re-verify on
+ubuntu's pinned image), or a check whose value no longer justifies its suppressions.

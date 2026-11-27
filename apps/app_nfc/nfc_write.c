@@ -72,15 +72,15 @@ void nfcwrite_activate(size_t index)
     }
     s_tag = r->tag;
     for (unsigned i = 0; i < s_tag.uid_len; i++) {
-        snprintf(s_uid + 2 * i, 3, "%02X", s_tag.uid[i]);
+        (void)snprintf(s_uid + 2 * i, 3, "%02X", s_tag.uid[i]);
     }
     s_uid[2 * s_tag.uid_len] = '\0';
     char what[48];
     char msg[128];
     ndef_describe(&rec, what, sizeof what);
     /* SECURITY_SCOPE §2: say exactly what will be written, and to which tag. */
-    snprintf(msg, sizeof msg, "%s: %s (%u B of %u). Own tags only.", s_uid, what, (unsigned)s_len,
-             (unsigned)r->ndef_capacity);
+    (void)snprintf(msg, sizeof msg, "%s: %s (%u B of %u). Own tags only.", s_uid, what,
+                   (unsigned)s_len, (unsigned)r->ndef_capacity);
     STARK_LOGI("nfcapp", "confirm %s", msg);
     (void)stark_ui_dialog_confirm("Write NFC tag?", msg, confirmed, NULL);
 }

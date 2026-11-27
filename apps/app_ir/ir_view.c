@@ -22,12 +22,12 @@ void irapp_describe(const ir_signal_t *s, char *label, size_t len)
 {
     const ir_frame_t *f = &s->frame;
     if (f->protocol == IR_PROTO_UNKNOWN) {
-        snprintf(label, len, "RAW %u", (unsigned)s->timings.n);
+        (void)snprintf(label, len, "RAW %u", (unsigned)s->timings.n);
     } else if (f->repeat) {
-        snprintf(label, len, "%s repeat", ir_protocol_name(f->protocol));
+        (void)snprintf(label, len, "%s repeat", ir_protocol_name(f->protocol));
     } else {
-        snprintf(label, len, "%s %02X/%02X", ir_protocol_name(f->protocol), (unsigned)f->address,
-                 (unsigned)f->command);
+        (void)snprintf(label, len, "%s %02X/%02X", ir_protocol_name(f->protocol),
+                       (unsigned)f->address, (unsigned)f->command);
     }
 }
 
@@ -46,8 +46,8 @@ const ui_menu_item_t *irview_items(size_t *count)
         s_labels[i][0] = '\0';
         if (i < s_count) {
             irapp_describe(&s_caps[i], s_labels[i], sizeof s_labels[i]);
-            snprintf(s_values[i], sizeof s_values[i], "%uk n%u",
-                     (unsigned)(s_caps[i].carrier_hz / 1000u), (unsigned)s_caps[i].timings.n);
+            (void)snprintf(s_values[i], sizeof s_values[i], "%uk n%u",
+                           (unsigned)(s_caps[i].carrier_hz / 1000u), (unsigned)s_caps[i].timings.n);
         }
         s_items[ROW_FIRST_CAPTURE + i] =
             (ui_menu_item_t){.label = s_labels[i], .disabled = i >= s_count};
