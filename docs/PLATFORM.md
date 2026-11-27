@@ -121,7 +121,9 @@ Wi-Fi/BLE), a pure core behind a transport seam, and one gated app — present o
 board declares the capability, dimmed and unlaunchable on one that does not. No feature is ever
 compiled out of the shared logic.
 
-A machine-checked version of this matrix, and the guard that no per-feature or per-target
-`#ifdef` creeps into the cores, is STARK-0902 (`scripts/check_caps.py`). A written analysis of
-what a second architecture (STM32 / RP2350 / Linux) would satisfy or lack behind this seam is
-STARK-0903.
+`scripts/check_caps.py` (CI lint, STARK-0902) is the machine guard for this section: it derives
+the matrix from the code — never a second copy of it — and fails if `STARK_CAPS_KNOWN` and the
+defined bits disagree, if an app's `caps_required` names an unknown bit, or if any source gates
+code with a per-feature/per-target `#if[def]` (WIFI / STM32 / RP2350 / LINUX). `check_caps.py
+--list` prints the app → capabilities view. A written analysis of what a second architecture
+(STM32 / RP2350 / Linux) would satisfy or lack behind this seam is STARK-0903.

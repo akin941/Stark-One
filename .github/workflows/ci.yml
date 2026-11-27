@@ -1,6 +1,6 @@
 # STARK-0004/0005/0006: CI pipeline.
 #
-#   lint      — clang-format --check + check.sh + check_layers.py (STARK-0100) + check_pins.py
+#   lint      — clang-format --check + check.sh + check_layers.py (STARK-0100) + check_pins.py + check_caps.py (STARK-0902)
 #               + gitleaks (STARK-0004/0006)
 #   firmware  — idf.py build (pinned espressif/idf image) + idf.py size (STARK-0004)
 #   host      — scripts/test_host.sh on ubuntu-latest + macos-latest (STARK-0005)
@@ -68,6 +68,9 @@ jobs:
 
       - name: check_pins.py
         run: python3 scripts/check_pins.py
+
+      - name: check_caps.py
+        run: python3 scripts/check_caps.py
 
       - name: IR test vectors up to date (scripts/gen_ir_vectors.py --check)
         run: python3 scripts/gen_ir_vectors.py --check
