@@ -18,5 +18,6 @@ menu "STARK"
     rsource "../components/stark_storage_medium/Kconfig.stark"
     rsource "../components/stark_subghz/Kconfig.stark"
     rsource "../components/stark_ui/Kconfig.stark"
+    rsource "../components/stark_wifi/Kconfig.stark"
 
 endmenu

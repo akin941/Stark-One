@@ -6824,44 +6824,45 @@ green. `stark_wifi` stays L2 pure (no new ESP-IDF). No capability bit, transport
 
 **Security.** None (pure composition of host-tested cores). **Physical HIL.** None.
 
-## STARK-1005 — Wi-Fi radio: esp_wifi transport, service, STARK_CAP_WIFI, fake + emulator
+## STARK-1005 — Wi-Fi radio: esp_wifi promiscuous transport + the lazy service (ADR-0028)
 
 **Goal.** `components/stark_wifi_transport` is the only code that calls `esp_wifi`: open, set channel,
-promiscuous RX, take frames, stop. **No transmit/inject function in the API** (ADR-0027 §3).
-`components/stark_wifi/stark_wifi.c` is the service task that pumps the transport into `wifi_svc`
-(STARK-1004) and publishes events. `STARK_CAP_WIFI` (bit 6) is declared onboard and confirmed only
-when `esp_wifi` comes up. A fake transport injects spec-derived frames for the emulator; the service
-degrades gracefully (WIFI unconfirmed, no hang) when the radio does not initialise, so the production
-emulator scenes still boot.
+promiscuous RX, take frames, close. **No transmit/inject function in the API** (ADR-0027 §3).
+`components/stark_wifi/stark_wifi.c` is the service that, on `stark_wifi_start()`, opens the transport
+and pumps received frames into `wifi_svc` (STARK-1004), and on `stark_wifi_stop()` closes it. The
+radio comes up **lazily, never at boot** (ADR-0028): `stark_wifi_init()` starts a dormant task, so the
+unmodelled RF path never runs in the emulator and the production scenes boot unchanged. No capability
+bit, no gate and no emulator scan scene here — those land with the app that triggers the radio
+(STARK-1007).
 
 **Layers.** L1 `components/stark_wifi_transport` (production: `esp_wifi` promiscuous); the service
-`stark_wifi.c` makes `stark_wifi` an L3 component (its pure cores unchanged); root
-`main/module_bridge.c` (declare onboard + confirm).
+`stark_wifi.c` makes `stark_wifi` an L3 component (its pure cores unchanged). No `module_bridge` or
+`stark_caps.h` change (ADR-0028 §2).
 
-**Files.** `components/stark_module/include/stark_caps.h` (bit 6 + `STARK_CAPS_KNOWN`;
-`test/host/test_module_core.c` + the fake catalog follow the new frontier bit),
-`components/stark_wifi_transport/*`, `components/stark_wifi/{stark_wifi.c,include/stark_wifi.h,CMakeLists.txt}`,
-`main/{module_bridge.c,stark_main.c,CMakeLists.txt,Kconfig.projbuild}`,
+**Files.** `components/stark_wifi_transport/{include/stark_wifi_transport.h,wifi_transport.c,CMakeLists.txt}`,
+`components/stark_wifi/{stark_wifi.c,include/stark_wifi.h,CMakeLists.txt}`,
+`main/{stark_main.c,CMakeLists.txt,Kconfig.projbuild}`,
 `test/emu/storage_image/components/stark_wifi_transport/*`, `test/fake/fake_wifi*`,
-`test/emu/*.toml` (a Wi-Fi scan scene), `scripts/{check_emu_image.py,test_emu.py,check_layers.py}`,
-`docs/PLATFORM.md`, `ARCHITECTURE.md` (§6, §7, §10), `TASKS.md` (this entry).
+`scripts/{check_emu_image.py,check_layers.py}`, `docs/PLATFORM.md`, `ARCHITECTURE.md` (§6, §7, §10),
+`DECISIONS.md` (ADR-0028), `TASKS.md` (this entry).
 
-**Deps.** STARK-1004.
+**Deps.** STARK-1004, ADR-0028.
 
 **AC.**
-1. The transport API is open/set-channel/rx/stop only; `grep -rn` finds no transmit, inject, deauth
-   or beacon symbol in the tree. `STARK_CAP_WIFI` is defined and in `STARK_CAPS_KNOWN`; `check_caps.py`
-   passes.
-2. `STARK_CAP_WIFI` is confirmed only when the radio initialises; absent otherwise, with a logged
-   reason, and the boot is unaffected. The emulator substitutes the seam with the fake and a scan
-   scene drives the survey (a frame counted); the production scenes still boot.
-3. Survey summaries may be logged (aggregate counts only); captures go to `logs/…` on the card, never
-   the console; no credential material stored.
+1. The transport API is open/set-channel/rx/close only; `grep -rn` finds no transmit, inject, deauth
+   or beacon symbol anywhere in the tree.
+2. The radio is never opened at boot; `stark_wifi_init()` leaves it down. Every production emulator
+   scene boots unchanged (same `module: caps` mask, no new RF activity, no hang) — verified locally
+   and in CI.
+3. The service pumps `stark_wifi_transport_rx` into `wifi_svc` while started; the storage image
+   substitutes the transport with a fake so a later app scene can drive it. Captures go to `logs/…`,
+   never the console; no credential material stored.
 4. `test_host.sh`, `test_emu.sh`, `idf.py build` (zero warnings), `check_layers.py`, `check_caps.py`
    all green.
 
 **Security.** Receive-only onboard radio; no transmit path exists (ADR-0027 §3). **Physical HIL.**
-Deferred — on-air validation is a later HIL step; this task is emulator-verified.
+Deferred — on-air receive is a later HIL step; this task is compile- and production-emulator-verified
+(ADR-0028 §3).
 
 ## STARK-1006 — BLE observer transport seam, STARK_CAP_BLE, fake + emulator
 
@@ -6901,17 +6902,27 @@ transports expose none.
 **Layers.** L4 `apps/app_wifi` (views + the app descriptor), consuming the 1001–1004 cores and the
 1005/1006 services. No new port code.
 
-**Files.** `apps/app_wifi/*`, `main/{app_manager.c,CMakeLists.txt}` (register + `caps_required`),
-`test/host/*` (view-model tests where pure), `test/emu/*.toml` (the app reachable under the scan
-scene), `docs/PLATFORM.md` (the matrix row), `TASKS.md` (this entry).
+**Capability (ADR-0028 §2).** This task introduces `STARK_CAP_WIFI` (bit 6; `STARK_CAPS_KNOWN` and the
+`test/host/test_module_core.c` frontier-bit test follow it) and `STARK_CAP_BLE` (bit 7): declared
+onboard and confirmed when `stark_wifi_start` / the BLE observer actually bring the radio up on app
+entry. The app's `caps_required` gates on them. The emulator scan scene triggers `stark_wifi_start`,
+so the radio (and the confirm) come up only under the app — the `module: caps` scenes that do not open
+the app are unaffected.
+
+**Files.** `apps/app_wifi/*`, `components/stark_module/include/stark_caps.h` (the two bits),
+`test/host/test_module_core.c` + the fake catalog (frontier bit), `main/{app_manager.c,module_bridge.c,CMakeLists.txt}`
+(register + `caps_required` + declare/confirm), `test/host/*` (view-model tests where pure),
+`test/emu/*.toml` (the scan scene that drives the app), `scripts/{test_emu.py,check_caps.py}`,
+`docs/PLATFORM.md` (the matrix row), `TASKS.md` (this entry).
 
 **Deps.** STARK-1005 (and STARK-1006 for the BLE view).
 
 **AC.**
-1. The app launches only when `STARK_CAP_WIFI` is confirmed; dimmed and unlaunchable otherwise
-   (capability gating, ADR-0009). The BLE view appears only with `STARK_CAP_BLE`.
-2. The survey and list render from the fake-fed emulator scene; a capture writes to `logs/…` and the
-   console stays clean.
+1. The app launches only when `STARK_CAP_WIFI` is confirmed (on `stark_wifi_start` succeeding); dimmed
+   and unlaunchable otherwise (capability gating, ADR-0009). The BLE view appears only with
+   `STARK_CAP_BLE`. `check_caps.py` passes.
+2. The survey and list render from the fake-fed emulator scan scene (the app triggers the radio); a
+   capture writes to `logs/…` and the console stays clean.
 3. No transmit/offensive control anywhere in the app (SECURITY_SCOPE §3); `grep -rn` clean.
 4. `test_host.sh`, `test_emu.sh`, `idf.py build` (zero warnings), all checks green.
 
